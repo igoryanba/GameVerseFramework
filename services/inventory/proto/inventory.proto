@@ -1,0 +1,204 @@
+syntax = "proto3";
+
+package inventory;
+
+// Сервис управления инвентарем
+service InventoryService {
+  // Получение информации об инвентаре
+  rpc GetInventory(GetInventoryRequest) returns (GetInventoryResponse);
+  
+  // Получение предметов в инвентаре
+  rpc GetInventoryItems(GetInventoryItemsRequest) returns (GetInventoryItemsResponse);
+  
+  // Добавление предмета в инвентарь
+  rpc AddItem(AddItemRequest) returns (AddItemResponse);
+  
+  // Удаление предмета из инвентаря
+  rpc RemoveItem(RemoveItemRequest) returns (RemoveItemResponse);
+  
+  // Перемещение предмета между инвентарями
+  rpc MoveItem(MoveItemRequest) returns (MoveItemResponse);
+  
+  // Обновление предмета
+  rpc UpdateItem(UpdateItemRequest) returns (UpdateItemResponse);
+  
+  // Крафт предмета
+  rpc CraftItem(CraftItemRequest) returns (CraftItemResponse);
+  
+  // Использование предмета
+  rpc UseItem(UseItemRequest) returns (UseItemResponse);
+  
+  // Получение шаблонов предметов
+  rpc GetItemTemplates(GetItemTemplatesRequest) returns (GetItemTemplatesResponse);
+}
+
+// Типы инвентарей
+enum inventory_type {
+  INVENTORY_TYPE_UNSPECIFIED = 0;
+  INVENTORY_TYPE_PLAYER = 1;
+  INVENTORY_TYPE_VEHICLE = 2;
+  INVENTORY_TYPE_CONTAINER = 3;
+  INVENTORY_TYPE_SHOP = 4;
+  INVENTORY_TYPE_TEMP = 5;
+}
+
+// Модель инвентаря
+message Inventory {
+  string id = 1;
+  string owner_id = 2;
+  string owner_type = 3;
+  int32 inventory_type = 4;
+  float max_weight = 5;
+  int32 max_slots = 6;
+  string name = 7;
+  map<string, string> metadata = 8;
+}
+
+// Модель предмета
+message Item {
+  string id = 1;
+  string inventory_id = 2;
+  string template_id = 3;
+  int32 position = 4;
+  int32 quantity = 5;
+  float durability = 6;
+  map<string, string> metadata = 7;
+}
+
+// Модель шаблона предмета
+message ItemTemplate {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  float weight = 4;
+  bool stackable = 5;
+  int32 max_stack = 6;
+  float max_durability = 7;
+  string icon = 8;
+  string category = 9;
+  map<string, string> properties = 10;
+}
+
+// Запрос на получение инвентаря
+message GetInventoryRequest {
+  string inventory_id = 1;
+}
+
+// Ответ с информацией об инвентаре
+message GetInventoryResponse {
+  Inventory inventory = 1;
+}
+
+// Запрос на получение предметов в инвентаре
+message GetInventoryItemsRequest {
+  string inventory_id = 1;
+}
+
+// Ответ со списком предметов в инвентаре
+message GetInventoryItemsResponse {
+  repeated Item items = 1;
+  int32 total_count = 2;
+}
+
+// Запрос на добавление предмета в инвентарь
+message AddItemRequest {
+  string inventory_id = 1;
+  string template_id = 2;
+  int32 position = 3;
+  int32 quantity = 4;
+  map<string, string> metadata = 5;
+}
+
+// Ответ на добавление предмета
+message AddItemResponse {
+  Item item = 1;
+  bool success = 2;
+  string error_message = 3;
+}
+
+// Запрос на удаление предмета из инвентаря
+message RemoveItemRequest {
+  string item_id = 1;
+  int32 quantity = 2; // 0 - удалить весь стак
+}
+
+// Ответ на удаление предмета
+message RemoveItemResponse {
+  bool success = 1;
+  int32 remaining_quantity = 2;
+  string error_message = 3;
+}
+
+// Запрос на перемещение предмета
+message MoveItemRequest {
+  string item_id = 1;
+  string target_inventory_id = 2;
+  int32 target_position = 3;
+  int32 quantity = 4; // 0 - весь стак
+}
+
+// Ответ на перемещение предмета
+message MoveItemResponse {
+  bool success = 1;
+  Item source_item = 2; // Может быть null, если весь стак перемещен
+  Item target_item = 3; // Новый предмет в целевом инвентаре
+  string error_message = 4;
+}
+
+// Запрос на обновление предмета
+message UpdateItemRequest {
+  string item_id = 1;
+  int32 quantity = 2;
+  float durability = 3;
+  map<string, string> metadata = 4;
+}
+
+// Ответ на обновление предмета
+message UpdateItemResponse {
+  bool success = 1;
+  Item item = 2;
+  string error_message = 3;
+}
+
+// Запрос на крафт предмета
+message CraftItemRequest {
+  string inventory_id = 1;
+  string recipe_id = 2;
+  repeated string source_item_ids = 3;
+  int32 target_position = 4;
+}
+
+// Ответ на крафт предмета
+message CraftItemResponse {
+  bool success = 1;
+  Item crafted_item = 2;
+  string error_message = 3;
+}
+
+// Запрос на использование предмета
+message UseItemRequest {
+  string item_id = 1;
+  string target_id = 2; // ID цели (игрок, объект и т.д.)
+  map<string, string> parameters = 3;
+}
+
+// Ответ на использование предмета
+message UseItemResponse {
+  bool success = 1;
+  Item updated_item = 2;
+  string error_message = 3;
+  map<string, string> result_data = 4;
+}
+
+// Запрос на получение шаблонов предметов
+message GetItemTemplatesRequest {
+  string category = 1; // Пустая строка - все категории
+  int32 page = 2;
+  int32 page_size = 3;
+}
+
+// Ответ со списком шаблонов предметов
+message GetItemTemplatesResponse {
+  repeated ItemTemplate templates = 1;
+  int32 total_count = 2;
+} 

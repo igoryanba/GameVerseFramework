@@ -1,0 +1,95 @@
+
+running 1 test
+[DEBUG rust_type_helper] param_type_json: type = Object {"Array": Object {"element_type": String("Char"), "size_info": Object {"Known": Number(32)}}}, value = {"Array":{"element_type":"Char","size_info":{"Known":32}}}
+[DEBUG rust_type_helper] Ошибка десериализации Array: invalid value: map, expected map with a single key
+[DEBUG determine_rust_type] param_type = Any, is_return_type_flag = false, func_context = Some("GET_LABEL")
+[DEBUG rust_type_helper] param_type_json: type = Object {"Array": Object {"element_type": String("Char"), "size_info": Object {"Known": Number(32)}}}, value = {"Array":{"element_type":"Char","size_info":{"Known":32}}}
+[DEBUG rust_type_helper] Ошибка десериализации Array: invalid value: map, expected map with a single key
+[DEBUG determine_rust_type] param_type = Any, is_return_type_flag = true, func_context = Some("GET_LABEL")
+[DEBUG ffi_call_param_helper] current_param_json: type = Object {"default_value": Null, "description": Null, "name": String("buffer"), "optional": Bool(false), "param_type": Object {"Array": Object {"element_type": String("Char"), "size_info": Object {"Known": Number(32)}}}}, value = {"default_value":null,"description":null,"name":"buffer","optional":false,"param_type":{"Array":{"element_type":"Char","size_info":{"Known":32}}}}
+[DEBUG ffi_call_param_helper] configured_length_out_param_name отсутствует!
+[DEBUG safe_return_wrap_helper] native_function = NativeFunction {
+    name: "GET_LABEL",
+    hash: None,
+    description: None,
+    return_type: Array {
+        element_type: Char,
+        size_info: Some(
+            Known(
+                32,
+            ),
+        ),
+    },
+    parameters: [
+        NativeParameter {
+            name: "buffer",
+            param_type: Array {
+                element_type: Char,
+                size_info: Some(
+                    Known(
+                        32,
+                    ),
+                ),
+            },
+            description: None,
+            optional: false,
+            default_value: None,
+        },
+    ],
+    category: "STRINGS",
+    examples: [],
+    deprecated: false,
+    platform_specific: None,
+    raw_data: {},
+    return_array_length_out_param: None,
+}
+[DEBUG determine_rust_type] param_type = Char, is_return_type_flag = true, func_context = Some("GET_LABEL")
+[DEBUG raw_rust_type_helper] param_type_json: type = Object {"Array": Object {"element_type": String("Char"), "size_info": Object {"Known": Number(32)}}}, value = {"Array":{"element_type":"Char","size_info":{"Known":32}}}
+[DEBUG raw_rust_type_helper] param_type_json: type = Object {"Array": Object {"element_type": String("Char"), "size_info": Object {"Known": Number(32)}}}, value = {"Array":{"element_type":"Char","size_info":{"Known":32}}}
+[DEBUG GENERATED FUNCTION]
+/// GET_LABEL native function
+
+
+
+pub fn get_label_safe(
+        
+        
+    buffer: Any
+) -> NativeResult<Any> {
+    // Variable declarations for CString, Vec<*const c_char> for char**, Vector3 mutable copy, etc.
+    debug!("Calling native function: GET_LABEL ({:?}) with hash ", json!("buffer": buffer));
+    let result = unsafe {
+        crate::raw::GET_LABEL( 
+            buffer.as_mut_ptr() as *mut _
+            
+        )
+    };
+    Ok(
+    let value = result;
+        Ok(value.into())
+)
+}
+
+/// Raw native function: GET_LABEL
+/// Hash: 
+/// Description: N/A
+/// 
+/// # Safety
+/// This function calls directly into the game's native function without validation or type conversion.
+/// Ensure all parameters match the expected FFI types and that game state allows this call.
+/// Use the safe wrapper `get_label_safe` instead for most use cases.
+#[allow(clippy::too_many_arguments)]
+pub unsafe fn get_label_raw(buffer: *mut std::os::raw::c_char) -> *mut std::os::raw::c_char {
+    raw::GET_LABEL(buffer)
+}
+
+[END GENERATED FUNCTION]
+test rust_generator::tests::test_generate_safe_wrapper_for_fixed_size_char_array ... FAILED
+
+failures:
+
+failures:
+    rust_generator::tests::test_generate_safe_wrapper_for_fixed_size_char_array
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 21 filtered out; finished in 0.01s
+

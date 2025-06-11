@@ -1,0 +1,266 @@
+syntax = "proto3";
+
+package gameverse.chat.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+// Сервис чата
+service ChatService {
+    // Отправить сообщение
+    rpc SendMessage(SendMessageRequest) returns (SendMessageResponse);
+    
+    // Получить историю сообщений
+    rpc GetMessages(GetMessagesRequest) returns (GetMessagesResponse);
+    
+    // Редактировать сообщение
+    rpc EditMessage(EditMessageRequest) returns (EditMessageResponse);
+    
+    // Удалить сообщение
+    rpc DeleteMessage(DeleteMessageRequest) returns (google.protobuf.Empty);
+    
+    // Начать печатать
+    rpc StartTyping(TypingRequest) returns (google.protobuf.Empty);
+    
+    // Прекратить печатать
+    rpc StopTyping(TypingRequest) returns (google.protobuf.Empty);
+}
+
+// Сервис каналов
+service ChannelService {
+    // Создать канал
+    rpc CreateChannel(CreateChannelRequest) returns (CreateChannelResponse);
+    
+    // Получить канал
+    rpc GetChannel(GetChannelRequest) returns (GetChannelResponse);
+    
+    // Получить каналы пользователя
+    rpc GetUserChannels(GetUserChannelsRequest) returns (GetUserChannelsResponse);
+    
+    // Присоединиться к каналу
+    rpc JoinChannel(JoinChannelRequest) returns (google.protobuf.Empty);
+    
+    // Покинуть канал
+    rpc LeaveChannel(LeaveChannelRequest) returns (google.protobuf.Empty);
+}
+
+// Сервис голосового чата
+service VoiceService {
+    // Начать голосовую сессию
+    rpc StartVoiceSession(StartVoiceSessionRequest) returns (StartVoiceSessionResponse);
+    
+    // Завершить голосовую сессию
+    rpc EndVoiceSession(EndVoiceSessionRequest) returns (google.protobuf.Empty);
+    
+    // Обновить позицию в голосовой сессии
+    rpc UpdateVoicePosition(UpdateVoicePositionRequest) returns (google.protobuf.Empty);
+}
+
+// Модели данных
+
+message ChatMessage {
+    string id = 1;
+    string channel_id = 2;
+    string user_id = 3;
+    string username = 4;
+    string content = 5;
+    MessageType message_type = 6;
+    MessageMetadata metadata = 7;
+    google.protobuf.Timestamp created_at = 8;
+    google.protobuf.Timestamp updated_at = 9;
+}
+
+message ChatChannel {
+    string id = 1;
+    string name = 2;
+    string description = 3;
+    ChannelType channel_type = 4;
+    ChannelSettings settings = 5;
+    repeated string members = 6;
+    repeated string moderators = 7;
+    string created_by = 8;
+    google.protobuf.Timestamp created_at = 9;
+}
+
+message VoiceSession {
+    string id = 1;
+    string user_id = 2;
+    string channel_id = 3;
+    Position position = 4;
+    VoiceSessionStatus status = 5;
+    repeated string participants = 6;
+    VoiceSettings settings = 7;
+    google.protobuf.Timestamp started_at = 8;
+}
+
+message MessageMetadata {
+    string reply_to = 1;
+    string forward_from = 2;
+    repeated string attachments = 3;
+    repeated string mentions = 4;
+    map<string, string> custom_data = 5;
+}
+
+message ChannelSettings {
+    bool is_private = 1;
+    bool require_permission = 2;
+    int32 max_members = 3;
+    double range_limit = 4;
+    repeated string allowed_roles = 5;
+}
+
+message VoiceSettings {
+    double proximity_range = 1;
+    double volume = 2;
+    bool positional_audio = 3;
+    string codec = 4;
+}
+
+message Position {
+    double x = 1;
+    double y = 2;
+    double z = 3;
+}
+
+// Enums
+
+enum MessageType {
+    MESSAGE_TYPE_UNSPECIFIED = 0;
+    MESSAGE_TYPE_TEXT = 1;
+    MESSAGE_TYPE_VOICE = 2;
+    MESSAGE_TYPE_IMAGE = 3;
+    MESSAGE_TYPE_SYSTEM = 4;
+    MESSAGE_TYPE_COMMAND = 5;
+    MESSAGE_TYPE_EMOTE = 6;
+}
+
+enum ChannelType {
+    CHANNEL_TYPE_UNSPECIFIED = 0;
+    CHANNEL_TYPE_GLOBAL = 1;
+    CHANNEL_TYPE_LOCAL = 2;
+    CHANNEL_TYPE_RADIO = 3;
+    CHANNEL_TYPE_PHONE = 4;
+    CHANNEL_TYPE_GROUP = 5;
+    CHANNEL_TYPE_DIRECT = 6;
+    CHANNEL_TYPE_OOC = 7;
+    CHANNEL_TYPE_ADMIN = 8;
+}
+
+enum VoiceSessionStatus {
+    VOICE_SESSION_STATUS_UNSPECIFIED = 0;
+    VOICE_SESSION_STATUS_ACTIVE = 1;
+    VOICE_SESSION_STATUS_MUTED = 2;
+    VOICE_SESSION_STATUS_PAUSED = 3;
+    VOICE_SESSION_STATUS_ENDED = 4;
+}
+
+// Request/Response messages
+
+message SendMessageRequest {
+    string channel_id = 1;
+    string user_id = 2;
+    string username = 3;
+    string content = 4;
+    MessageType message_type = 5;
+    MessageMetadata metadata = 6;
+}
+
+message SendMessageResponse {
+    ChatMessage message = 1;
+}
+
+message GetMessagesRequest {
+    string channel_id = 1;
+    string user_id = 2;
+    int32 limit = 3;
+    int32 offset = 4;
+    google.protobuf.Timestamp before = 5;
+    google.protobuf.Timestamp after = 6;
+}
+
+message GetMessagesResponse {
+    repeated ChatMessage messages = 1;
+    int32 total_count = 2;
+    bool has_more = 3;
+}
+
+message EditMessageRequest {
+    string message_id = 1;
+    string user_id = 2;
+    string new_content = 3;
+    MessageMetadata metadata = 4;
+}
+
+message EditMessageResponse {
+    ChatMessage message = 1;
+}
+
+message DeleteMessageRequest {
+    string message_id = 1;
+    string user_id = 2;
+}
+
+message TypingRequest {
+    string channel_id = 1;
+    string user_id = 2;
+}
+
+message CreateChannelRequest {
+    string name = 1;
+    string description = 2;
+    ChannelType channel_type = 3;
+    ChannelSettings settings = 4;
+    string created_by = 5;
+}
+
+message CreateChannelResponse {
+    ChatChannel channel = 1;
+}
+
+message GetChannelRequest {
+    string channel_id = 1;
+}
+
+message GetChannelResponse {
+    ChatChannel channel = 1;
+}
+
+message GetUserChannelsRequest {
+    string user_id = 1;
+}
+
+message GetUserChannelsResponse {
+    repeated ChatChannel channels = 1;
+}
+
+message JoinChannelRequest {
+    string channel_id = 1;
+    string user_id = 2;
+}
+
+message LeaveChannelRequest {
+    string channel_id = 1;
+    string user_id = 2;
+}
+
+message StartVoiceSessionRequest {
+    string user_id = 1;
+    string channel_id = 2;
+    Position position = 3;
+    VoiceSettings settings = 4;
+}
+
+message StartVoiceSessionResponse {
+    VoiceSession session = 1;
+}
+
+message EndVoiceSessionRequest {
+    string session_id = 1;
+    string user_id = 2;
+}
+
+message UpdateVoicePositionRequest {
+    string session_id = 1;
+    string user_id = 2;
+    Position position = 3;
+} 

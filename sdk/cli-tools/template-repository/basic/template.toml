@@ -1,0 +1,91 @@
+[template]
+name = "basic"
+description = "Базовый плагин для GameVerse Framework"
+author = "GameVerse Team"
+version = "0.2.0"
+gameverse_version = ">=0.2.0"
+category = "basic"
+tags = ["starter", "template", "basic"]
+
+[languages]
+rust = { min_version = "1.70", features = ["dynamic-loading", "ffi"] }
+typescript = { min_version = "5.0", frameworks = ["node"] }
+lua = { compatibility = "gameverse", version = "5.4" }
+
+[variables]
+[variables.plugin_name]
+description = "Название плагина (lowercase, дефисы разрешены)"
+type = "string"
+default = "my-plugin"
+validation = "^[a-z][a-z0-9-]*$"
+
+[variables.plugin_name_camel]
+description = "Название плагина в CamelCase для Rust структур"
+type = "string"
+default = "MyPlugin"
+transform = "camelcase"
+
+[variables.plugin_version]
+description = "Версия плагина"
+type = "string"
+default = "0.1.0"
+validation = "^\\d+\\.\\d+\\.\\d+$"
+
+[variables.plugin_description]
+description = "Описание плагина"
+type = "string"
+default = "Базовый плагин для GameVerse"
+
+[variables.plugin_author]
+description = "Автор плагина"
+type = "string"
+default = "Разработчик"
+
+[variables.use_database]
+description = "Использовать интеграцию с базой данных"
+type = "boolean"
+default = false
+
+[variables.use_ui]
+description = "Добавить UI компоненты"
+type = "boolean"
+default = false
+
+[dependencies]
+# Нет дополнительных зависимостей для базового шаблона
+
+[features]
+dynamic_loading = true
+hot_reload = true
+event_system = true
+command_system = true
+database_integration = false
+ui_components = false
+
+[structure]
+# Rust структура проекта
+rust = [
+    "gameverse.toml",
+    "Cargo.toml",
+    "src/lib.rs",
+    "README.md",
+    "tests/",
+    ".gitignore"
+]
+
+# TypeScript структура проекта (планируется)
+typescript = [
+    "gameverse.toml",
+    "package.json",
+    "src/index.ts",
+    "README.md",
+    "tests/",
+    ".gitignore"
+]
+
+# Lua структура проекта (планируется)
+lua = [
+    "gameverse.toml",
+    "main.lua",
+    "README.md"
+] 

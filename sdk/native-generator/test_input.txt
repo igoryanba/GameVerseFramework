@@ -1,0 +1,15 @@
+# Test FiveM Native Documentation
+
+This is a mock file for testing the native parser.
+
+## PLAYER Functions
+
+GET_PLAYER_PED
+GET_PLAYER_NAME
+SET_PLAYER_HEALTH
+
+## VEHICLE Functions  
+
+CREATE_VEHICLE
+GET_VEHICLE_ENGINE_HEALTH
+SET_VEHICLE_ENGINE_ON 

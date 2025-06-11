@@ -1,0 +1,57 @@
+[package]
+name = "gameverse-native-generator"
+version = "0.1.0"
+edition = "2021"
+authors = ["GameVerse Team"]
+description = "Automatic FiveM native function wrapper generator with type safety"
+license = "MIT"
+
+[dependencies]
+# Web scraping & HTTP
+reqwest = { version = "0.11", features = ["json"] }
+scraper = "0.18"
+url = "2.4"
+
+# JSON/TOML parsing
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Async runtime
+tokio = { version = "1.0", features = ["full"] }
+
+# Template engine
+handlebars = "4.4"
+
+# CLI interface
+clap = { version = "4.4", features = ["derive", "env"] }
+
+# File system operations
+walkdir = "2.4"
+regex = "1.10"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Code generation
+quote = "1.0"
+proc-macro2 = "1.0"
+syn = { version = "2.0", features = ["full"] }
+
+# Progress tracking
+indicatif = "0.17"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# Date/time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+[dev-dependencies]
+tempfile = "3.8"
+
+[[bin]]
+name = "generate-natives"
+path = "src/main.rs" 

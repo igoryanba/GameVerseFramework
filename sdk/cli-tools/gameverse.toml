@@ -1,0 +1,31 @@
+[plugin]
+default_template = "basic"
+default_language = "rust"
+auto_reload = true
+default_license = "MIT"
+
+[server]
+default_host = "localhost"
+default_port = 8080
+use_tls = false
+timeout = 30
+
+[marketplace]
+url = "https://marketplace.gameverse.dev"
+auto_update_check = true
+
+[build]
+default_targets = [
+    "windows",
+    "linux",
+    "macos",
+]
+optimization = "release"
+parallel = true
+
+[build.cross_compile]
+
+[templates]
+repository = "https://github.com/gameverse/plugin-templates"
+local_dir = "./template-repository"
+cache_duration = 24

@@ -1,0 +1,104 @@
+syntax = "proto3";
+
+package gameverse.logging.v1;
+
+// Сервис логирования для приема логов от других микросервисов
+service LoggingService {
+  // Отправка одного лога
+  rpc SendLog (LogRequest) returns (LogResponse);
+  
+  // Отправка пакета логов (для оптимизации)
+  rpc SendLogBatch (LogBatchRequest) returns (LogBatchResponse);
+  
+  // Потоковая отправка логов
+  rpc StreamLogs (stream LogRequest) returns (LogBatchResponse);
+}
+
+// Уровни логирования
+enum LogLevel {
+  LOG_LEVEL_UNSPECIFIED = 0;
+  LOG_LEVEL_TRACE = 1;
+  LOG_LEVEL_DEBUG = 2;
+  LOG_LEVEL_INFO = 3;
+  LOG_LEVEL_WARN = 4;
+  LOG_LEVEL_ERROR = 5;
+  LOG_LEVEL_FATAL = 6;
+}
+
+// Запрос для отправки одного лога
+message LogRequest {
+  // Временная метка в формате RFC 3339
+  string timestamp = 1;
+  
+  // Уровень логирования
+  LogLevel level = 2;
+  
+  // Имя сервиса, отправляющего лог
+  string service = 3;
+  
+  // Компонент внутри сервиса
+  string component = 4;
+  
+  // Сообщение лога
+  string message = 5;
+  
+  // Контекстная информация
+  LogContext context = 6;
+  
+  // Метрики
+  LogMetrics metrics = 7;
+}
+
+// Контекст лога с дополнительной информацией
+message LogContext {
+  // Идентификатор запроса (UUID)
+  string request_id = 1;
+  
+  // Идентификатор пользователя (если применимо)
+  string user_id = 2;
+  
+  // Идентификатор сущности (если применимо)
+  string entity_id = 3;
+  
+  // Дополнительные данные в формате key-value
+  map<string, string> additional_data = 4;
+}
+
+// Метрики производительности
+message LogMetrics {
+  // Продолжительность операции в миллисекундах
+  uint64 duration_ms = 1;
+  
+  // Использование памяти в байтах
+  uint64 memory_usage = 2;
+}
+
+// Ответ на отправку лога
+message LogResponse {
+  // Статус операции
+  bool success = 1;
+  
+  // Сообщение об ошибке (если есть)
+  string error_message = 2;
+}
+
+// Запрос для отправки пакета логов
+message LogBatchRequest {
+  // Список логов
+  repeated LogRequest logs = 1;
+}
+
+// Ответ на отправку пакета логов
+message LogBatchResponse {
+  // Количество успешно обработанных логов
+  uint32 processed_count = 1;
+  
+  // Количество логов с ошибками
+  uint32 failed_count = 2;
+  
+  // Статус операции
+  bool success = 3;
+  
+  // Сообщение об ошибке (если есть)
+  string error_message = 4;
+} 

@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: gameverse-chat-postgres
+    environment:
+      POSTGRES_DB: gameverse_chat
+      POSTGRES_USER: gameverse
+      POSTGRES_PASSWORD: gameverse
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    networks:
+      - chat-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gameverse -d gameverse_chat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: gameverse-chat-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - chat-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: redis-server --appendonly yes
+
+  adminer:
+    image: adminer:4-standalone
+    container_name: gameverse-chat-adminer
+    ports:
+      - "8090:8080"
+    networks:
+      - chat-network
+    depends_on:
+      - postgres
+
+  # Микросервис чата (для полной разработки)
+  chat-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gameverse-chat-service
+    environment:
+      DATABASE_URL: postgresql://gameverse:gameverse@postgres:5432/gameverse_chat
+      REDIS_URL: redis://redis:6379
+      HTTP_PORT: 8080
+      GRPC_PORT: 50053
+      WEBSOCKET_PORT: 8081
+      LOG_LEVEL: info
+    ports:
+      - "8080:8080"   # HTTP API
+      - "50053:50053" # gRPC API  
+      - "8081:8081"   # WebSocket
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - chat-network
+    profiles:
+      - full-stack
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  chat-network:
+    driver: bridge 

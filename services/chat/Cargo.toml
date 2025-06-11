@@ -1,0 +1,79 @@
+[package]
+name = "gameverse-chat"
+version = "0.1.0"
+edition = "2021"
+authors = ["GameVerse Framework Team"]
+description = "Chat microservice with Telegram integration for GameVerse Framework"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.0", features = ["full"] }
+
+# Web framework
+axum = { version = "0.7.9", features = ["ws", "multipart"] }
+axum-extra = { version = "0.9.6", features = ["typed-header"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "fs", "trace"] }
+hyper = "1.0"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Database
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "migrate"] }
+
+# Redis for real-time messaging and caching
+redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
+
+# UUID generation
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
+# Date and time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Validation
+validator = { version = "0.16", features = ["derive"] }
+
+# gRPC
+tonic = "0.10"
+tonic-build = "0.10"
+prost = "0.12"
+prost-types = "0.12"
+
+# WebSocket
+tokio-tungstenite = "0.20"
+futures-util = "0.3"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Logging and tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Configuration
+config = "0.14"
+
+# JWT for authentication
+jsonwebtoken = "8.0"
+
+# Telegram Bot API
+teloxide = { version = "0.12", features = ["macros"] }
+reqwest = { version = "0.11", features = ["json"] }
+
+# Rate limiting
+governor = "0.6"
+
+# Password hashing (for admin functions)
+argon2 = "0.5"
+
+# Environment variables
+dotenv = "0.15"
+
+[build-dependencies]
+tonic-build = "0.10"
+
+[dev-dependencies]
+tokio-test = "0.4" 

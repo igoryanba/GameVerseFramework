@@ -1,0 +1,145 @@
+syntax = "proto3";
+
+package auth;
+
+// Сервис аутентификации
+service AuthService {
+  // Регистрация нового пользователя
+  rpc RegisterUser(RegisterRequest) returns (RegisterResponse);
+  
+  // Аутентификация пользователя
+  rpc AuthenticateUser(AuthRequest) returns (AuthResponse);
+  
+  // Валидация токена
+  rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
+  
+  // Получение информации о пользователе
+  rpc GetUserInfo(UserInfoRequest) returns (UserInfoResponse);
+  
+  // Обновление разрешений пользователя
+  rpc UpdateUserPermissions(UpdatePermissionsRequest) returns (UpdatePermissionsResponse);
+  
+  // Выход пользователя
+  rpc LogoutUser(LogoutRequest) returns (LogoutResponse);
+  
+  // Обновление токена
+  rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse);
+}
+
+// Запрос на регистрацию
+message RegisterRequest {
+  string username = 1;
+  string email = 2;
+  string password = 3;
+}
+
+// Ответ на регистрацию
+message RegisterResponse {
+  bool success = 1;
+  string message = 2;
+  string user_id = 3;
+  string token = 4;
+}
+
+// Запрос на аутентификацию
+message AuthRequest {
+  // Возможна аутентификация по имени пользователя или email
+  oneof identifier {
+    string username = 1;
+    string email = 2;
+  }
+  string password = 3;
+}
+
+// Ответ на аутентификацию
+message AuthResponse {
+  bool success = 1;
+  string message = 2;
+  string token = 3;
+  string refresh_token = 4;
+  UserInfo user = 5;
+}
+
+// Запрос на валидацию токена
+message ValidateTokenRequest {
+  string token = 1;
+}
+
+// Ответ на валидацию токена
+message ValidateTokenResponse {
+  bool valid = 1;
+  string user_id = 2;
+  repeated string permissions = 3;
+}
+
+// Запрос информации о пользователе
+message UserInfoRequest {
+  string user_id = 1;
+}
+
+// Ответ с информацией о пользователе
+message UserInfoResponse {
+  UserInfo user = 1;
+}
+
+// Информация о пользователе
+message UserInfo {
+  string id = 1;
+  string username = 2;
+  string email = 3;
+  string created_at = 4;
+  string last_login = 5;
+  UserStatus status = 6;
+  repeated string roles = 7;
+  repeated string permissions = 8;
+}
+
+// Статус пользователя
+enum UserStatus {
+  ACTIVE = 0;
+  INACTIVE = 1;
+  BANNED = 2;
+  PENDING = 3;
+}
+
+// Запрос на обновление разрешений
+message UpdatePermissionsRequest {
+  string user_id = 1;
+  repeated string add_roles = 2;
+  repeated string remove_roles = 3;
+  repeated string add_permissions = 4;
+  repeated string remove_permissions = 5;
+}
+
+// Ответ на обновление разрешений
+message UpdatePermissionsResponse {
+  bool success = 1;
+  string message = 2;
+  repeated string roles = 3;
+  repeated string permissions = 4;
+}
+
+// Запрос на выход
+message LogoutRequest {
+  string token = 1;
+  string user_id = 2;
+}
+
+// Ответ на выход
+message LogoutResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// Запрос на обновление токена
+message RefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+// Ответ на обновление токена
+message RefreshTokenResponse {
+  bool success = 1;
+  string message = 2;
+  string token = 3;
+  string refresh_token = 4;
+} 

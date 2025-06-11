@@ -1,0 +1,64 @@
+[[override]]
+name = "GET_DYNAMIC_ARRAY"
+return_array_length_out_param = "count_out"
+
+# Example of TypeScript specific overrides
+[[override]]
+name = "GET_PLAYER_NAME" # Original native function name
+# Rust-specific overrides (if any, could be here)
+# return_type_override = "MyCustomRustStringWrapper" 
+
+# TypeScript-specific overrides
+typescript_name_override = "getPlayerNameAsync" # Override the function name in TypeScript
+typescript_return_type_override = "Promise<string>" # Override the return type in TypeScript
+
+# Parameter-specific TypeScript overrides
+parameter_typescript_overrides = [
+  { original_name = "player", typescript_name_override = "playerId", typescript_type_override = "PlayerHandle" },
+  # { original_name = "anotherParam", typescript_type_override = "MyCustomType" } # Example for another param
+]
+
+[[override]]
+name = "SOME_OTHER_FUNCTION"
+# Only override TypeScript parameter type
+parameter_typescript_overrides = [
+  { original_name = "dataBuffer", typescript_type_override = "ArrayBuffer" }
+] 
+
+# Test overrides for Rust generator features
+[[override]]
+name = "TEST_FUNCTION_FOR_RUST_OVERRIDES"
+hash = "0xABCDEF01" # Example hash
+rust_mark_safe_wrapper_unsafe = true
+rust_prologue_code = """
+    // Prologue: Start of TEST_FUNCTION_FOR_RUST_OVERRIDES
+    debug!("TEST_FUNCTION_FOR_RUST_OVERRIDES: Executing with params: {{first_param_renamed}}, {{param2_val}}, {{param3_bool_override}}");
+    let _internal_prologue_var = 42;
+"""
+rust_epilogue_code = """
+    // Epilogue: End of TEST_FUNCTION_FOR_RUST_OVERRIDES
+    debug!("TEST_FUNCTION_FOR_RUST_OVERRIDES: Finished execution. Result: {{result_val}}");
+"""
+rust_return_type_override = "Option<i32>" # Example for testing return type override
+
+parameter_rust_overrides = [
+    { original_name = "p0", rust_new_name = "first_param_renamed", rust_type_override = "u64", rust_any_type_hint = "This should be a u64 value representing an ID" },
+    { original_name = "p1_some_struct_ptr", rust_type_override = "crate::native_types::EntityId" }, # Assuming EntityId is a known type
+    { original_name = "p2_any_type", rust_type_override = "bool" }, # Overriding an 'Any' type to 'bool'
+    { original_name = "p3_invalid_type_str", rust_type_override = "InvalidType<[&str]>"}, # Expect this to fail parsing and use original type
+    { original_name = "p4_with_transform", rust_transform_input_with = "my_custom_transformation_fn" },
+    { original_name = "p5_optional_val", rust_default_value_for_optional = "Some(Default::default())" }
+] 
+
+[NATIVES.GET_PLAYER_NAME]
+return_type_override = "String"
+
+[NATIVES.SET_ENTITY_COORDS]
+parameter_rust_overrides = [
+  { name = "x", type = "f32" },
+  { name = "y", type = "f32" },
+  { name = "z", type = "f32" }
+]
+
+[NATIVES.REGISTER_COMMAND]
+function_callback = "CommandHandler" 

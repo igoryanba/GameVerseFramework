@@ -1,0 +1,45 @@
+[package]
+name = "gameverse-inventory"
+version = "0.1.0"
+edition = "2021"
+authors = ["GameVerse Framework Team"]
+description = "Сервис управления инвентарем для GameVerse Framework"
+
+[dependencies]
+# Асинхронность
+tokio = { version = "1.28", features = ["full"] }
+async-trait = "0.1.68"
+
+# Сериализация
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# gRPC
+tonic = "0.9"
+prost = "0.11"
+
+# База данных
+sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "uuid", "chrono", "json"] }
+redis = { version = "0.23", features = ["tokio-comp"] }
+
+# Утилиты
+uuid = { version = "1.4", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Логирование
+gameverse-logging = { path = "../logging" }
+tracing = "0.1"
+
+# HTTP сервер для REST API
+axum = "0.6"
+tower = "0.4"
+tower-http = { version = "0.4", features = ["trace", "cors"] }
+
+[build-dependencies]
+tonic-build = "0.9"
+
+[dev-dependencies]
+tokio-test = "0.4"
+mockall = "0.11" 

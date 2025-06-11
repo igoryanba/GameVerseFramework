@@ -1,0 +1,34 @@
+target/
+.git/
+.gitignore
+README.md
+.env
+.env.local
+.env.example
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+# Rust
+Cargo.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+
+# Test artifacts
+coverage/
+*.profraw 

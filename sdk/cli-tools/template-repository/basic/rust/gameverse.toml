@@ -1,0 +1,41 @@
+[plugin]
+name = "{{plugin_name}}"
+version = "{{plugin_version}}"
+description = "{{plugin_description}}"
+author = "{{plugin_author}}"
+abi_version = "0.2.0"
+category = "basic"
+tags = ["gameverse", "basic"]
+
+[plugin.metadata]
+min_gameverse_version = "0.2.0"
+max_gameverse_version = "0.3.0"
+
+[plugin.permissions]
+required = ["basic_access"]
+optional = []
+
+[plugin.dependencies]
+# gameverse-sdk = "0.2.0"
+
+[build]
+type = "rust"
+entry_point = "lib.rs"
+
+[build.rust]
+crate_type = ["cdylib"]  # Dynamic library for plugin loading
+edition = "2021"
+min_version = "1.70"
+
+[build.targets]
+windows = "target/release/{{plugin_name}}.dll"
+linux = "target/release/lib{{plugin_name}}.so"
+macos = "target/release/lib{{plugin_name}}.dylib"
+
+[plugin.exports]
+# Functions that this plugin exposes to other plugins
+functions = []
+
+[plugin.imports]
+# Functions that this plugin needs from other plugins or core
+functions = [] 

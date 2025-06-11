@@ -1,0 +1,75 @@
+warning: unused import: `serde_json::to_value`
+ --> src/rust_generator.rs:7:5
+  |
+7 | use serde_json::to_value;
+  |     ^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: function `create_mock_md_file` is never used
+   --> src/fivem_parser.rs:798:8
+    |
+798 |     fn create_mock_md_file(dir: &Path, filename: &str, content: &str) -> PathBuf {
+    |        ^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` on by default
+
+warning: `gameverse-native-generator` (bin "generate-natives" test) generated 2 warnings (run `cargo fix --bin "generate-natives" --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.37s
+     Running unittests src/main.rs (target/debug/deps/generate_natives-9f49585380e89efd)
+
+running 1 test
+[DEBUG rust_type_helper] param_type_json: type = Object {"Array": Object {"element_type": String("Char"), "size_info": Object {"Known": Number(32)}}}, value = {"Array":{"element_type":"Char","size_info":{"Known":32}}}
+[DEBUG rust_type_helper] param_type_json: type = Object {"Array": Object {"element_type": String("Char"), "size_info": Object {"Known": Number(32)}}}, value = {"Array":{"element_type":"Char","size_info":{"Known":32}}}
+[DEBUG ffi_call_param_helper] current_param_json: type = Object {"default_value": Null, "description": Null, "name": String("buffer"), "optional": Bool(false), "param_type": Object {"Array": Object {"element_type": String("Char"), "size_info": Object {"Known": Number(32)}}}}, value = {"default_value":null,"description":null,"name":"buffer","optional":false,"param_type":{"Array":{"element_type":"Char","size_info":{"Known":32}}}}
+[DEBUG ffi_call_param_helper] configured_length_out_param_name отсутствует!
+[DEBUG safe_return_wrap_helper] native_function = NativeFunction {
+    name: "GET_LABEL",
+    hash: None,
+    description: None,
+    return_type: Array {
+        element_type: Char,
+        size_info: Some(
+            Known(
+                32,
+            ),
+        ),
+    },
+    parameters: [
+        NativeParameter {
+            name: "buffer",
+            param_type: Array {
+                element_type: Char,
+                size_info: Some(
+                    Known(
+                        32,
+                    ),
+                ),
+            },
+            description: None,
+            optional: false,
+            default_value: None,
+        },
+    ],
+    category: "STRINGS",
+    examples: [],
+    deprecated: false,
+    platform_specific: None,
+    raw_data: {},
+    return_array_length_out_param: None,
+}
+[DEBUG raw_rust_type_helper] param_type_json: type = Object {"Array": Object {"element_type": String("Char"), "size_info": Object {"Known": Number(32)}}}, value = {"Array":{"element_type":"Char","size_info":{"Known":32}}}
+[DEBUG raw_rust_type_helper] param_type_json: type = Object {"Array": Object {"element_type": String("Char"), "size_info": Object {"Known": Number(32)}}}, value = {"Array":{"element_type":"Char","size_info":{"Known":32}}}
+thread 'rust_generator::tests::test_generate_safe_wrapper_for_fixed_size_char_array' panicked at src/rust_generator.rs:1421:9:
+assertion failed: content.contains("buffer: [u8; 32]")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test rust_generator::tests::test_generate_safe_wrapper_for_fixed_size_char_array ... FAILED
+
+failures:
+
+failures:
+    rust_generator::tests::test_generate_safe_wrapper_for_fixed_size_char_array
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 21 filtered out; finished in 0.02s
+
+error: test failed, to rerun pass `--bin generate-natives`

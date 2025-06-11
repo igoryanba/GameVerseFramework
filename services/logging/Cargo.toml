@@ -1,0 +1,41 @@
+[package]
+name = "gameverse-logging"
+version = "0.1.0"
+edition = "2021"
+authors = ["GameVerse Framework Team"]
+description = "Централизованная система логирования для GameVerse Framework"
+
+[dependencies]
+# Асинхронность
+tokio = { version = "1.28", features = ["full"] }
+tokio-stream = "0.1"
+async-trait = "0.1.68"
+
+# Сериализация
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Время и даты
+chrono = { version = "0.4", features = ["serde"] }
+
+# Идентификаторы
+uuid = { version = "1.4", features = ["v4", "serde"] }
+
+# gRPC
+tonic = "0.9"
+prost = "0.11"
+futures-util = "0.3"
+
+# HTTP клиент для ElasticSearch
+reqwest = { version = "0.11", features = ["json"] }
+
+# Дополнительные утилиты
+thiserror = "1.0"
+tracing = "0.1"
+anyhow = "1.0"
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[build-dependencies]
+tonic-build = "0.9" 

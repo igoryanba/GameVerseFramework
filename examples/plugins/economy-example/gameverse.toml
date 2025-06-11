@@ -1,0 +1,172 @@
+# GameVerse Plugin Manifest
+# Пример экономического плагина для демонстрации hot reload
+
+[plugin]
+name = "economy-example"
+version = "1.0.0"
+author = "GameVerse Team"
+description = "Advanced economy system with currency management and trading"
+license = "MIT"
+homepage = "https://gameverse.dev/plugins/economy"
+repository = "https://github.com/gameverse/economy-plugin"
+
+# Система тегов для поиска и категоризации
+tags = ["economy", "currency", "trading", "roleplay"]
+
+# Минимальная версия ядра
+[dependencies]
+core = ">=0.1.0"
+chat = ">=1.0.0"  # Для экономических уведомлений в чат
+inventory = ">=1.0.0"  # Для работы с предметами
+
+# Скрипты и ресурсы плагина
+[scripts]
+# Серверная логика
+server = [
+    "src/economy.rs",        # Основная логика экономики
+    "src/currency.rs",       # Система валют
+    "src/bank.rs",          # Банковская система
+    "scripts/balance.lua"    # Lua скрипты для совместимости с FiveM
+]
+
+# Клиентские скрипты и UI
+client = [
+    "ui/economy.tsx",        # React компоненты для UI
+    "ui/bank-panel.tsx",     # Банковская панель
+    "assets/styles.css"      # Стили для интерфейса
+]
+
+# Ресурсы плагина
+[resources]
+# Звуки
+sounds = [
+    { path = "assets/sounds/money.ogg", type = "Sound" },
+    { path = "assets/sounds/card-swipe.wav", type = "Sound" }
+]
+
+# Текстуры
+textures = [
+    { path = "assets/ui/dollar-icon.png", type = "Texture" },
+    { path = "assets/ui/bank-logo.png", type = "Texture" }
+]
+
+# Локализация
+[localization]
+default_language = "en"
+
+[localization.strings.en]
+welcome = "Welcome to the economy system!"
+balance = "Your balance: ${balance}"
+insufficient_funds = "Insufficient funds"
+
+[localization.strings.ru]
+welcome = "Добро пожаловать в экономическую систему!"
+balance = "Ваш баланс: ${balance}₽"
+insufficient_funds = "Недостаточно средств"
+
+# Конфигурация экономики
+[config]
+# Стартовый баланс для новых игроков
+starting_balance = 5000
+
+# Максимальная сумма наличных
+max_cash = 100000
+
+# Налог на транзакции (в процентах)
+transaction_tax = 0.05
+
+# Банковские настройки
+[config.bank]
+# Процентная ставка по депозитам (годовая)
+deposit_interest_rate = 0.02
+
+# Максимальная сумма кредита
+max_loan_amount = 500000
+
+# Комиссия за перевод между банками
+transfer_fee = 50
+
+# Валюты в системе
+[config.currencies]
+# Основная валюта (доллары)
+cash = { name = "Cash", symbol = "$", decimal_places = 2 }
+
+# Дополнительные валюты
+bank = { name = "Bank Account", symbol = "$", decimal_places = 2 }
+crypto = { name = "GTA Coin", symbol = "GTC", decimal_places = 8 }
+
+# События и хуки
+[events]
+# События, на которые реагирует плагин
+listen = [
+    "player_connect",     # Подключение игрока
+    "player_disconnect",  # Отключение игрока  
+    "item_purchase",      # Покупка предмета
+    "vehicle_purchase"    # Покупка транспорта
+]
+
+# События, которые генерирует плагин
+emit = [
+    "balance_changed",    # Изменение баланса
+    "transaction_completed",  # Завершение транзакции
+    "loan_approved",      # Одобрение кредита
+]
+
+# Разрешения и безопасность
+[permissions]
+# Команды администратора
+admin = [
+    "economy.give_money",     # Выдать деньги
+    "economy.set_balance",    # Установить баланс
+    "economy.view_all_accounts"  # Просмотр всех счетов
+]
+
+# Команды модератора
+moderator = [
+    "economy.view_transactions",  # Просмотр транзакций
+    "economy.freeze_account"      # Заморозка аккаунта
+]
+
+# Обычные команды игроков
+player = [
+    "economy.balance",        # Проверить баланс
+    "economy.transfer",       # Перевести деньги
+    "economy.withdraw",       # Снять наличные
+    "economy.deposit"         # Внести деньги
+]
+
+# Настройки производительности
+[performance]
+# Кешировать балансы в памяти
+cache_balances = true
+
+# Интервал сохранения в БД (секунды)  
+save_interval = 30
+
+# Максимальное количество транзакций в очереди
+max_transaction_queue = 1000
+
+# Интеграции с другими плагинами
+[integrations]
+# Интеграция с чатом для уведомлений
+chat = { enabled = true, prefix = "[Economy]" }
+
+# Интеграция с инвентарем для покупок
+inventory = { enabled = true, currency = "cash" }
+
+# Интеграция с банковской системой
+banking = { enabled = true, provider = "central_bank" }
+
+# Метаданные для GameVerse
+[metadata]
+# Минимальная версия сервера
+min_server_version = "1.0.0"
+
+# Поддерживаемые платформы
+platforms = ["windows", "linux", "macos"]
+
+# Требования к ресурсам
+system_requirements = { min_ram_mb = 128, min_disk_mb = 50 }
+
+# Hot reload настройки
+hot_reload = { enabled = true, watch_files = ["src/**/*.rs", "ui/**/*.tsx", "scripts/**/*.lua"] } 

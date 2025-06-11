@@ -1,0 +1,29 @@
+[package]
+name = "test-basic-plugin"
+version = "1.0.0"
+edition = "2021"
+description = "A test-basic-plugin plugin for GameVerse Framework"
+authors = ["GameVerse Developer"]
+
+[lib]
+crate-type = ["cdylib"]  # Dynamic library for GameVerse plugin system
+
+[dependencies]
+# Основные зависимости для GameVerse плагинов
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.0", features = ["full"] }
+tracing = "0.1"
+
+# GameVerse SDK будет добавлен позже
+# gameverse-sdk = "0.2.0"
+
+[dependencies.libc]
+version = "0.2"
+
+[features]
+default = []
+
+# Development dependencies
+[dev-dependencies]
+tokio-test = "0.4" 

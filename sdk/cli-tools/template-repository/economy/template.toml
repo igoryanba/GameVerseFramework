@@ -1,0 +1,100 @@
+[template]
+name = "economy"
+description = "Система экономики с банковскими операциями и транзакциями"
+author = "GameVerse Team"
+version = "0.2.0"
+gameverse_version = ">=0.2.0"
+category = "gameplay"
+tags = ["economy", "banking", "money", "transactions"]
+
+[languages]
+rust = { min_version = "1.70", features = ["database", "api", "async"] }
+typescript = { min_version = "5.0", frameworks = ["react", "node"] }
+
+[variables]
+[variables.plugin_name]
+description = "Название плагина экономики"
+type = "string"
+default = "economy-system"
+validation = "^[a-z][a-z0-9-]*$"
+
+[variables.plugin_name_camel]
+description = "Название в CamelCase"
+type = "string"
+default = "EconomySystem"
+transform = "camelcase"
+
+[variables.plugin_version]
+description = "Версия плагина"
+type = "string"
+default = "1.0.0"
+validation = "^\\d+\\.\\d+\\.\\d+$"
+
+[variables.plugin_description]
+description = "Описание системы экономики"
+type = "string"
+default = "Продвинутая система экономики с банковскими операциями"
+
+[variables.plugin_author]
+description = "Автор плагина"
+type = "string"
+default = "Разработчик"
+
+[variables.currency_name]
+description = "Название внутриигровой валюты"
+type = "string"
+default = "dollars"
+validation = "^[a-zA-Z]+$"
+
+[variables.starting_money]
+description = "Стартовые деньги для новых игроков"
+type = "integer"
+default = 5000
+min = 0
+max = 1000000
+
+[variables.bank_interest_rate]
+description = "Процентная ставка банка (в процентах)"
+type = "float"
+default = 2.5
+min = 0.0
+max = 50.0
+
+[variables.transaction_fee]
+description = "Комиссия за перевод (в процентах)"
+type = "float"
+default = 1.0
+min = 0.0
+max = 10.0
+
+[dependencies]
+database = "postgresql"
+cache = "redis"
+api = "grpc"
+
+[features]
+dynamic_loading = true
+hot_reload = true
+event_system = true
+command_system = true
+database_integration = true
+api_endpoints = true
+banking_system = true
+transaction_history = true
+ui_components = true
+admin_panel = true
+
+[structure]
+rust = [
+    "gameverse.toml",
+    "Cargo.toml", 
+    "src/lib.rs",
+    "src/models/",
+    "src/services/",
+    "src/api/",
+    "src/database/",
+    "migrations/",
+    "README.md",
+    "tests/",
+    ".gitignore"
+] 

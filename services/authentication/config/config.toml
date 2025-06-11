@@ -1,0 +1,69 @@
+# Конфигурация сервиса аутентификации GameVerse Framework
+
+[server]
+# Хост и порт для REST API
+rest_host = "0.0.0.0"
+rest_port = 8081
+# Хост и порт для gRPC
+grpc_host = "0.0.0.0"
+grpc_port = 9091
+# Таймаут запросов в секундах
+request_timeout = 30
+# Максимальное количество соединений
+max_connections = 1000
+
+[logging]
+# Уровень логирования: trace, debug, info, warn, error
+level = "debug"
+# Директория для файлов логов
+log_dir = "logs"
+# Использовать JSON формат
+json_format = true
+# Отправлять логи в центральный сервис логирования
+send_to_central = true
+# Адрес центрального сервиса логирования
+central_logging_url = "http://localhost:9070"
+
+[database]
+# Строка подключения к PostgreSQL
+postgres_url = "postgres://gameverse:password@localhost/gameverse_auth"
+# Строка подключения к Redis
+redis_url = "redis://localhost:6379/0"
+# Максимальное количество соединений в пуле
+max_connections = 10
+# Таймаут соединения в секундах
+connection_timeout = 5
+# Интервал проверки соединения в секундах
+health_check_interval = 30
+
+[auth]
+# Время жизни токена доступа в минутах
+access_token_lifetime = 15
+# Время жизни refresh токена в днях
+refresh_token_lifetime = 7
+# Путь к приватному ключу для подписи JWT
+private_key_path = "config/keys/private.pem"
+# Путь к публичному ключу для верификации JWT
+public_key_path = "config/keys/public.pem"
+# Алгоритм подписи JWT (RS256, RS384, RS512)
+jwt_algorithm = "RS256"
+# Issuer для JWT
+jwt_issuer = "gameverse-auth"
+# Audience для JWT
+jwt_audience = "gameverse"
+# Сложность хеширования паролей (memory cost)
+password_memory_cost = 65536
+# Количество итераций хеширования
+password_iterations = 3
+# Длина соли в байтах
+password_salt_length = 16
+
+[security]
+# Разрешенные источники для CORS
+cors_origins = ["http://localhost:3000", "https://gameverse.example.com"]
+# Максимальное количество попыток ввода пароля
+max_login_attempts = 5
+# Время блокировки после превышения количества попыток в минутах
+lockout_duration = 15
+# Включить двухфакторную аутентификацию
+enable_2fa = false 
