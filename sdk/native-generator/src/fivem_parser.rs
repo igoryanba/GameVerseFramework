@@ -788,7 +788,7 @@ impl FiveMDocParser {
                 for param_to_update in native_fn.parameters.iter_mut() {
                     if let Some(param_type_override_str) = param_overrides_map.get(&param_to_update.name) {
                         let overridden_param_type = NativeType::from_fivem_type(param_type_override_str);
-                        if overridden_param_type != NativeType::Any || param_type_override_str.to_lowercase() == "any" {
+                        if !matches!(overridden_param_type, NativeType::Any(_)) || param_type_override_str.eq_ignore_ascii_case("any") {
                             trace!("Applying override for parameter '{}' in function: {}. Old: {:?}, New: {:?}, From String: '{}'", 
                                    param_to_update.name, final_name, param_to_update.param_type, overridden_param_type, param_type_override_str);
                             param_to_update.param_type = overridden_param_type;
@@ -940,12 +940,19 @@ impl FiveMDocParser {
         // Эвристика для автоматического определения параметра размера
         let size_params = ["size", "count", "length", "arraySize"];
         
-        for param in &function.parameters {
-            if size_params.iter().any(|sp| param.name.contains(sp)) {
-                if let Some(array_param) = function.parameters.iter_mut().find(|p| {
-                    matches!(p.param_type, NativeType::Array(_, None))
-                }) {
-                    array_param.size_param = Some(param.name.clone());
+        let size_param_names: Vec<String> = function
+            .parameters
+            .iter()
+            .filter(|p| size_params.iter().any(|sp| p.name.contains(sp)))
+            .map(|p| p.name.clone())
+            .collect();
+
+        for array_param in function.parameters.iter_mut().filter(|p| matches!(p.param_type, NativeType::Array { size_info: None, .. })) {
+            if let NativeType::Array { size_info: ref mut si, .. } = &mut array_param.param_type {
+                if si.is_none() {
+                    if let Some(size_name) = size_param_names.first() {
+                        *si = Some(crate::native_types::ArraySizeInfo::Dynamic { size_param_name: size_name.clone() });
+                    }
                 }
             }
         }
@@ -1246,5 +1253,37 @@ mod tests {
             }
             _ => panic!("Expected NativeType::Array for text, got {:?}", params4[0].param_type),
         }
+    }
+
+    /// Регрессионный тест: убеждаемся, что наличие нестандартной YAML-директивы
+    /// (например, `returns:`) во фронт-маттере **не** приводит к ошибкам парсинга
+    /// и функция корректно извлекается.
+    #[test]
+    fn test_regression_no_yaml_directive_warning() {
+        let parser = default_parser();
+
+        // Фронт-маттер содержит лишнюю директиву `returns`, которая раньше вызывала warning
+        let md_content = r#"---
+ns: PLAYER
+returns: BOOL
+---
+## REGRESSION_TEST_FUNC
+
+```c
+// 0xDEADBEEF
+void REGRESSION_TEST_FUNC();
+```
+"#;
+
+        let native_opt = parser
+            .parse_native_from_markdown_content(md_content, "PLAYER")
+            .expect("Парсер не должен возвращать ошибку");
+
+        // Должна быть успешно распознана одна функция
+        let native = native_opt.expect("Функция должна быть распознана");
+        assert_eq!(native.name, "REGRESSION_TEST_FUNC");
+        assert_eq!(native.category, "PLAYER");
+        // Тип возврата по умолчанию void, так как сигнатура void
+        assert_eq!(native.return_type, crate::native_types::NativeType::Void);
     }
 } 

@@ -6,4 +6,5 @@ pub mod marketplace;
 pub mod templates;
 pub mod init;
 pub mod version;
-pub mod completions; 
+pub mod completions;
+pub mod sdk; 

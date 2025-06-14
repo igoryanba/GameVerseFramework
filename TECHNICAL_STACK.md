@@ -1132,3 +1132,5 @@ Migration Potential:
 - [ ] Advanced Any/Callback/Opaque
 - [ ] Улучшение парсера и тестов (edge-cases)
 - [ ] Документация по новым возможностям 
+
+## Parsers: `fivem_parser.rs` (GTA V), `rdr2_parser.rs` (полный импорт Markdown из RDR2NativesDB, автосинхронизация скриптом `fetch_rdr2_natives.sh`). 

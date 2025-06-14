@@ -111,8 +111,18 @@ pub enum NativeType {
     Pickup,
     Char, // For single characters, often used in char[]
     
+    // RDR2-specific high-level game types
+    Horse,
+    HorseEntity,
+    Camp,
+    Prompt,
+    Volume,
+    
     // Collections
-    Array(Box<NativeType>, Option<ArraySizeInfo>),
+    Array {
+        element_type: Box<NativeType>,
+        size_info: Option<ArraySizeInfo>,
+    },
     
     // Pointers and references
     Pointer(Box<NativeType>),
@@ -267,7 +277,7 @@ impl NativeFunction {
         let mut array_params = Vec::new();
         
         for (i, param) in self.parameters.iter().enumerate() {
-            if let NativeType::Array(_, size_info) = &param.param_type {
+            if let NativeType::Array { element_type, size_info } = &param.param_type {
                 if size_info.is_none() {
                     array_params.push((i, param.name.clone()));
                 }
@@ -284,7 +294,7 @@ impl NativeFunction {
                 let (size_param_idx, size_param_name) = possible_size_params[0].clone();
                 
                 // Обновляем тип массива с информацией о размере
-                if let NativeType::Array(inner_type, size_info) = &mut self.parameters[array_idx].param_type {
+                if let NativeType::Array { element_type, size_info } = &mut self.parameters[array_idx].param_type {
                     *size_info = Some(ArraySizeInfo::Dynamic { 
                         size_param_name: size_param_name.clone() 
                     });
@@ -297,7 +307,7 @@ impl NativeFunction {
         }
         
         // Проверяем возвращаемое значение, если это массив
-        if let NativeType::Array(_, size_info) = &mut self.return_type {
+        if let NativeType::Array { element_type, size_info } = &mut self.return_type {
             if size_info.is_none() && self.return_array_length_out_param.is_some() {
                 // Устанавливаем информацию о размере возвращаемого массива
                 *size_info = Some(ArraySizeInfo::Dynamic { 
@@ -444,8 +454,12 @@ impl NativeType {
                 
                 // Парсинг размера массива
                 let array_size_info = if size_str.is_empty() {
-                    // Пустой размер: тип[]
-                    Some(ArraySizeInfo::Infer)
+                    // Пустой размер: тип[] — трактуем как NullTerminated (частый случай для char[]), иначе Infer
+                    if base_type.trim().eq_ignore_ascii_case("char") || base_type.trim().eq_ignore_ascii_case("char*") || base_type.trim().eq_ignore_ascii_case("const char") {
+                        Some(ArraySizeInfo::NullTerminated)
+                    } else {
+                        Some(ArraySizeInfo::Infer)
+                    }
                 } else if let Ok(size) = size_str.parse::<usize>() {
                     // Фиксированный размер: тип[42]
                     Some(ArraySizeInfo::Known(size))
@@ -455,8 +469,16 @@ impl NativeType {
                     Some(ArraySizeInfo::Infer)
                 };
                 
-                return NativeType::Array(Box::new(inner_type), array_size_info);
+                return NativeType::Array {
+                    element_type: Box::new(inner_type),
+                    size_info: array_size_info,
+                };
             }
+        }
+        
+        // Обрабатываем строковые указатели заранее, чтобы не превратить их в Pointer(Opaque)
+        if type_str == "char*" || type_str == "const char*" {
+            return NativeType::String;
         }
         
         // Handle pointers and references
@@ -468,11 +490,6 @@ impl NativeType {
         if type_str.ends_with('&') {
             let inner_type = NativeType::from_fivem_type(&type_str[0..type_str.len()-1].trim());
             return NativeType::Reference(Box::new(inner_type));
-        }
-        
-        // Handle char* as String
-        if type_str == "char*" || type_str == "const char*" {
-            return NativeType::String;
         }
         
         // Handle char as Char
@@ -498,8 +515,13 @@ impl NativeType {
             "Interior" => NativeType::Interior,
             "ItemSet" => NativeType::ItemSet,
             "Pickup" => NativeType::Pickup,
+            "Horse" | "HorseEntity" => NativeType::HorseEntity,
+            "Camp" => NativeType::Camp,
+            "Prompt" => NativeType::Prompt,
+            "Volume" => NativeType::Volume,
             "Any" => NativeType::Any(None),
-            "FUNC_..." | "callback" => NativeType::FunctionCallback(None),
+            // Стандартный FiveM placeholder для callback без сигнатуры
+            "FUNC_CALLBACK" | "callback" => NativeType::FunctionCallback(None),
             // Обработка неизвестных типов (они могут быть typedef'ами)
             _ => {
                 if type_str.contains("callback") || type_str.contains("FUNC") {
@@ -535,9 +557,13 @@ impl NativeType {
             NativeType::ItemSet => "i64".to_string(),
             NativeType::Pickup => "i64".to_string(),
             NativeType::Char => "char".to_string(),
+            NativeType::Horse | NativeType::HorseEntity => "crate::types::HorseEntity".to_string(),
+            NativeType::Camp => "crate::types::CampId".to_string(),
+            NativeType::Prompt => "crate::types::PromptId".to_string(),
+            NativeType::Volume => "crate::types::VolumeId".to_string(),
             
-            NativeType::Array(inner_type, size_info) => {
-                let inner_rust_type = inner_type.to_rust_type_string();
+            NativeType::Array { element_type, size_info } => {
+                let inner_rust_type = element_type.to_rust_type_string();
                 
                 match size_info {
                     Some(ArraySizeInfo::Known(size)) => {
@@ -611,9 +637,13 @@ impl NativeType {
             NativeType::ItemSet => "i64".to_string(),
             NativeType::Pickup => "i64".to_string(),
             NativeType::Char => "std::os::raw::c_char".to_string(),
+            NativeType::Horse | NativeType::HorseEntity => "i32".to_string(),
+            NativeType::Camp => "i32".to_string(),
+            NativeType::Prompt => "i32".to_string(),
+            NativeType::Volume => "i32".to_string(),
             
-            NativeType::Array(inner_type, _) => {
-                format!("*mut {}", inner_type.to_raw_rust_type_string())
+            NativeType::Array { element_type, size_info } => {
+                format!("*mut {}", element_type.to_raw_rust_type_string())
             },
             
             NativeType::Pointer(_) | NativeType::Reference(_) | NativeType::Opaque(_) => {
@@ -640,6 +670,7 @@ impl NativeType {
             NativeType::Blip |
             NativeType::Cam |
             NativeType::Vector3 => true,
+            NativeType::Horse | NativeType::HorseEntity | NativeType::Camp | NativeType::Prompt | NativeType::Volume => true,
             _ => false
         }
     }
@@ -745,15 +776,15 @@ mod tests {
     #[test]
     fn test_from_fivem_type_advanced() {
         // Проверка различных вариантов массивов
-        if let NativeType::Array(inner, size_info) = NativeType::from_fivem_type("int[5]") {
-            assert_eq!(*inner, NativeType::Int);
+        if let NativeType::Array { element_type, size_info } = NativeType::from_fivem_type("int[5]") {
+            assert_eq!(*element_type, NativeType::Int);
             assert_eq!(size_info, Some(ArraySizeInfo::Known(5)));
         } else {
             panic!("Expected Array type");
         }
         
-        if let NativeType::Array(inner, size_info) = NativeType::from_fivem_type("float[]") {
-            assert_eq!(*inner, NativeType::Float);
+        if let NativeType::Array { element_type, size_info } = NativeType::from_fivem_type("float[]") {
+            assert_eq!(*element_type, NativeType::Float);
             assert_eq!(size_info, Some(ArraySizeInfo::Infer));
         } else {
             panic!("Expected Array type");
@@ -781,7 +812,10 @@ mod tests {
             parameters: vec![
                 NativeParameter::new(
                     "data".to_string(), 
-                    NativeType::Array(Box::new(NativeType::Int), None)
+                    NativeType::Array {
+                        element_type: Box::new(NativeType::Int),
+                        size_info: None,
+                    }
                 ),
                 NativeParameter::new(
                     "data_size".to_string(), 
@@ -795,7 +829,7 @@ mod tests {
         func.detect_array_size_params();
         
         // Проверяем, что размер был правильно определен
-        if let NativeType::Array(_, size_info) = &func.parameters[0].param_type {
+        if let NativeType::Array { element_type, size_info } = &func.parameters[0].param_type {
             assert!(size_info.is_some());
             if let Some(ArraySizeInfo::Dynamic { size_param_name }) = size_info {
                 assert_eq!(size_param_name, "data_size");
@@ -810,24 +844,24 @@ mod tests {
     #[test]
     fn test_array_size_info() {
         // Тест с фиксированным размером
-        let array_fixed = NativeType::Array(
-            Box::new(NativeType::Int), 
-            Some(ArraySizeInfo::Known(10))
-        );
+        let array_fixed = NativeType::Array {
+            element_type: Box::new(NativeType::Int),
+            size_info: Some(ArraySizeInfo::Known(10)),
+        };
         assert_eq!(array_fixed.to_rust_type_string(), "[i64; 10]");
         
         // Тест с динамическим размером
-        let array_dynamic = NativeType::Array(
-            Box::new(NativeType::String), 
-            Some(ArraySizeInfo::Dynamic { size_param_name: "count".to_string() })
-        );
+        let array_dynamic = NativeType::Array {
+            element_type: Box::new(NativeType::String),
+            size_info: Some(ArraySizeInfo::Dynamic { size_param_name: "count".to_string() }),
+        };
         assert_eq!(array_dynamic.to_rust_type_string(), "Vec<String>");
         
         // Тест с null-terminated массивом
-        let array_null_term = NativeType::Array(
-            Box::new(NativeType::Char), 
-            Some(ArraySizeInfo::NullTerminated)
-        );
+        let array_null_term = NativeType::Array {
+            element_type: Box::new(NativeType::Char),
+            size_info: Some(ArraySizeInfo::NullTerminated),
+        };
         assert_eq!(array_null_term.to_rust_type_string(), "Vec<char>");
     }
 } 

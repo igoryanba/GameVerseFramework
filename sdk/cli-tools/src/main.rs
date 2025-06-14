@@ -17,6 +17,7 @@ use commands::{
     server::ServerCommands,
     marketplace::MarketplaceCommands,
     templates::TemplatesCommands,
+    sdk::SdkCommands,
 };
 
 /// GameVerse Framework CLI - Plugin Development Tools
@@ -71,6 +72,10 @@ pub enum Commands {
     #[command(subcommand)]
     Templates(TemplatesCommands),
     
+    /// SDK management commands (e.g., update native SDK)
+    #[command(subcommand)]
+    Sdk(SdkCommands),
+    
     /// Initialize GameVerse project
     Init {
         /// Project name
@@ -118,6 +123,9 @@ async fn main() -> Result<()> {
         }
         Commands::Templates(cmd) => {
             commands::templates::execute(cmd, &config).await?;
+        }
+        Commands::Sdk(cmd) => {
+            commands::sdk::execute(cmd, &config).await?;
         }
         Commands::Init { name, template, directory } => {
             commands::init::execute(name, template, directory, &config).await?;

@@ -8,6 +8,7 @@ mod rust_generator;
 mod typescript_generator;
 mod native_types;
 mod utils;
+mod rdr2_parser;
 
 use fivem_parser::FiveMDocParser;
 use rust_generator::RustWrapperGenerator;
@@ -31,10 +32,18 @@ enum Commands {
         #[arg(long, default_value = "https://docs.fivem.net/natives/")]
         source: String,
         
+        /// Target game: gta5 (FiveM) | rdr2 (RedM)
+        #[arg(long, value_enum, default_value_t = GameTarget::Gta5)]
+        game: GameTarget,
+        
         /// Optional path to a local directory containing FiveM natives documentation (e.g., a clone of natives-master)
         /// If provided, this will be used instead of the --source URL for categories found locally.
         #[arg(long)]
         local_natives_path: Option<PathBuf>,
+        
+        /// Optional path to a local directory containing RDR2 natives documentation (Markdown from rdr3-nativedb)
+        #[arg(long)]
+        rdr2_local_path: Option<PathBuf>,
         
         /// Optional path to a TOML file with native function overrides and configurations.
         #[arg(long)]
@@ -98,6 +107,16 @@ enum TargetLanguage {
     Both,
 }
 
+#[derive(clap::ValueEnum, Clone, Debug)]
+enum GameTarget {
+    Gta5,
+    Rdr2,
+}
+
+impl Default for GameTarget {
+    fn default() -> Self { GameTarget::Gta5 }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logging
@@ -108,7 +127,9 @@ async fn main() -> Result<()> {
     match cli.command {
         Commands::Generate { 
             source, 
+            game,
             local_natives_path,
+            rdr2_local_path,
             native_configs_path,
             target, 
             output, 
@@ -120,18 +141,28 @@ async fn main() -> Result<()> {
             if let Some(local_path) = &local_natives_path {
                 info!("📁 Using local natives path: {}", local_path.display());
             }
+            if let Some(rdr2_path) = &rdr2_local_path {
+                info!("📁 Using local RDR2 natives path: {}", rdr2_path.display());
+            }
             if let Some(config_path_val) = &native_configs_path {
                 info!("⚙️ Using native configs from: {}", config_path_val.display());
             } else {
                 info!("⚙️ No native_configs.toml path provided. Proceeding without overrides.");
             }
-            let parser = FiveMDocParser::new(local_natives_path.clone(), native_configs_path.clone());
+            let parser_choice = match game {
+                GameTarget::Gta5 => {
+                    info!("🎮 Target game: GTA V / FiveM");
+                    EitherParser::FiveM(FiveMDocParser::new(local_natives_path.clone(), native_configs_path.clone()))
+                },
+                GameTarget::Rdr2 => {
+                    info!("🎮 Target game: RDR2 / RedM");
+                    let path_for_rdr2 = rdr2_local_path.clone();
+                    EitherParser::Rdr2(crate::rdr2_parser::Rdr2DocParser::new(path_for_rdr2.or(local_natives_path.clone()), native_configs_path.clone()))
+                }
+            };
             
-            // FiveMDocParser::parse_from_url теперь сама решает, использовать ли локальный путь,
-            // URL, или комбинацию, на основе local_natives_path и specified_categories.
-            // Аргумент source (URL) используется как базовый URL для скачивания, если какие-то категории не найдены локально.
             info!("📖 Determining categories and parsing documentation...");
-            let natives = parser.parse_from_url(&source, categories.as_ref()).await?;
+            let natives = parser_choice.parse(&source, categories.as_ref()).await?;
             
             info!("✅ Parsed {} native functions in {} categories", 
                   natives.total_functions(), natives.categories().len());
@@ -235,5 +266,19 @@ mod tests {
         assert!(matches!(TargetLanguage::from_str("rust", true), Ok(TargetLanguage::Rust)));
         assert!(matches!(TargetLanguage::from_str("type-script", true), Ok(TargetLanguage::TypeScript)));
         assert!(matches!(TargetLanguage::from_str("both", true), Ok(TargetLanguage::Both)));
+    }
+}
+
+enum EitherParser {
+    FiveM(FiveMDocParser),
+    Rdr2(crate::rdr2_parser::Rdr2DocParser),
+}
+
+impl EitherParser {
+    async fn parse(&self, source: &str, cats: Option<&Vec<String>>) -> anyhow::Result<crate::native_types::NativeCollection> {
+        match self {
+            EitherParser::FiveM(p) => p.parse_from_url(source, cats).await,
+            EitherParser::Rdr2(p) => p.parse_from_url(source, cats).await,
+        }
     }
 } 

@@ -16,7 +16,8 @@
 - [x] **Dead Code Elimination**: Проанализированы и устранены основные предупреждения `dead_code`, `unused_imports`, `unused_variables` в `native-generator`. **Проект успешно собирается.**
 - [x] **NativeType::Any Handling (Basic)**: Реализована базовая безопасная обработка `NativeType::Any` (маппинг в `*mut std::ffi::c_void`), что решило множество проблем компиляции.
 - [ ] **Markdown Parser Warnings**: Исследовать и устранить оставшиеся предупреждения от Markdown-парсера для повышения надежности.
-- [x] **NativeType::Array Handling**: Реализована поддержка массивов в генераторе Rust, включая возврат массивов с out-параметром длины через конфиг. **Тесты проходят, поддержка фиксированных и динамических массивов реализована.**
+- [x] **NativeType::Array Handling**: Реализована поддержка массивов.
+- [x] **RDR2 Parser MVP**: Создан `rdr2_parser.rs`, CLI флаг `--game` позволяет генерировать SDK для RDR2 (пока 2 примера функций).
 - [x] **Testing Framework Expansion**: Тесты генератора покрывают массивы, out-параметры, кастомные override, ошибки шаблонов. **Тесты устойчивы к форматированию.**
 - [ ] **Basic VS Code Integration**: Продолжить работу над улучшением IntelliSense для сгенерированных нативов (по мере стабилизации API).
 
@@ -242,9 +243,10 @@ graph LR
 
 ### **Today (немедленно):**
 1. **Setup Native Generator**: Create project structure
-2. **Download FiveM Docs**: Automated scraping setup
-3. **VS Code Extension**: Basic project scaffolding
-4. **QBCore Analysis**: Download popular resources
+2. **Run `scripts/fetch_rdr2_natives.sh`**: Download RDR2 Markdown docs
+3. **Download FiveM Docs**: Automated scraping setup (ensure local cache)
+4. **VS Code Extension**: Basic project scaffolding (add RDR2 signatures)
+5. **QBCore Analysis**: Download popular resources
 
 ### **This Week:**
 1. **Native Functions**: 1000+ type-safe wrappers
@@ -353,4 +355,7 @@ graph LR
 - Начало работы над гибкой обработкой `NativeType::Any`.
 - Сокращение количества предупреждений `dead_code`.
 - Более полное тестовое покрытие для `native-generator`.
-- Документация по конфигурированию генерации и шаблонам обновлена. 
+- Документация по конфигурированию генерации и шаблонам обновлена.
+
+- [x] **RDR2 Full Markdown Ingest**: Интегрирован автоматический импорт Markdown из RDR3 NativeDB, генерация полного Rust/TS SDK, обновлена IntelliSense.
+- [x] **VS Code Extension Update**: Добавлен переключатель Target Game и база сигнатур RDR2. 

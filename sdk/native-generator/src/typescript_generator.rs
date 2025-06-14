@@ -14,6 +14,8 @@ impl TypeScriptGenerator {
     }
     
     pub fn generate_all(&self, collection: &NativeCollection, output_dir: &Path) -> Result<()> {
+        // Убеждаемся, что директория существует
+        std::fs::create_dir_all(output_dir)?;
         let mut ts_code = String::from("// Auto-generated TypeScript definitions\n\n");
         for category in collection.categories.values() {
             for func in &category.functions {
@@ -62,6 +64,7 @@ impl TypeScriptGenerator {
 
     /// Пример: генерация одного файла с одной функцией (MVP)
     pub fn generate_single_function_example(&self, output_dir: &Path) -> Result<()> {
+        std::fs::create_dir_all(output_dir)?;
         let ts_code = r#"// Auto-generated TypeScript definition
 export function getPlayerName(playerId: number): string;
 "#;
@@ -84,10 +87,11 @@ fn map_native_type_to_ts(ty: &crate::native_types::NativeType) -> String {
         NativeType::Player | NativeType::Ped | NativeType::Vehicle | NativeType::Entity | NativeType::Object | NativeType::Blip | NativeType::Cam | NativeType::Hash | NativeType::FireId | NativeType::Interior | NativeType::ItemSet | NativeType::Pickup => "number".to_string(),
         NativeType::Vector3 => "{ x: number, y: number, z: number }".to_string(),
         NativeType::Char => "number".to_string(), // или string, если char как символ
+        NativeType::Horse | NativeType::HorseEntity | NativeType::Camp | NativeType::Prompt | NativeType::Volume => "number".to_string(),
         NativeType::Array { element_type, .. } => format!("{}[]", map_native_type_to_ts(element_type)),
         NativeType::Pointer(inner) | NativeType::Reference(inner) => map_native_type_to_ts(inner),
-        NativeType::Any => "any".to_string(),
-        NativeType::FunctionCallback => "(...args: any[]) => any".to_string(),
+        NativeType::Any(_) => "any".to_string(),
+        NativeType::FunctionCallback(_) => "(...args: any[]) => any".to_string(),
         NativeType::Opaque(_) => "any".to_string(),
     }
 }
@@ -114,6 +118,10 @@ mod tests {
             platform_specific: None,
             raw_data: Default::default(),
             return_array_length_out_param: None,
+            rust_mark_safe_wrapper_unsafe: None,
+            rust_prologue_code: None,
+            rust_epilogue_code: None,
+            rust_return_type_override: None,
         }
     }
 
@@ -126,6 +134,11 @@ mod tests {
             typescript_type_override: ts_type_override.map(String::from),
             optional: false,
             default_value: None,
+            rust_new_name: None,
+            rust_type_override: None,
+            rust_any_type_hint: None,
+            rust_transform_input_with: None,
+            rust_default_value_for_optional: None,
         }
     }
 
@@ -203,6 +216,11 @@ mod tests {
                         typescript_type_override: None,
                         optional: false,
                         default_value: None,
+                        rust_new_name: None,
+                        rust_type_override: None,
+                        rust_any_type_hint: None,
+                        rust_transform_input_with: None,
+                        rust_default_value_for_optional: None,
                     }],
                     category: "PLAYER".to_string(),
                     examples: vec![],
@@ -210,6 +228,10 @@ mod tests {
                     platform_specific: None,
                     raw_data: Default::default(),
                     return_array_length_out_param: None,
+                    rust_mark_safe_wrapper_unsafe: None,
+                    rust_prologue_code: None,
+                    rust_epilogue_code: None,
+                    rust_return_type_override: None,
                 },
                 NativeFunction {
                     name: "IS_PLAYER_DEAD".to_string(),
@@ -226,6 +248,11 @@ mod tests {
                         typescript_type_override: None,
                         optional: false,
                         default_value: None,
+                        rust_new_name: None,
+                        rust_type_override: None,
+                        rust_any_type_hint: None,
+                        rust_transform_input_with: None,
+                        rust_default_value_for_optional: None,
                     }],
                     category: "PLAYER".to_string(),
                     examples: vec![],
@@ -233,6 +260,10 @@ mod tests {
                     platform_specific: None,
                     raw_data: Default::default(),
                     return_array_length_out_param: None,
+                    rust_mark_safe_wrapper_unsafe: None,
+                    rust_prologue_code: None,
+                    rust_epilogue_code: None,
+                    rust_return_type_override: None,
                 },
             ],
         };
@@ -264,6 +295,11 @@ mod tests {
                     typescript_type_override: None,
                     optional: false,
                     default_value: None,
+                    rust_new_name: None,
+                    rust_type_override: None,
+                    rust_any_type_hint: None,
+                    rust_transform_input_with: None,
+                    rust_default_value_for_optional: None,
                 },
                 NativeParameter {
                     name: "param2".to_string(),
@@ -273,6 +309,11 @@ mod tests {
                     typescript_type_override: None,
                     optional: true,
                     default_value: Some("true".to_string()),
+                    rust_new_name: None,
+                    rust_type_override: None,
+                    rust_any_type_hint: None,
+                    rust_transform_input_with: None,
+                    rust_default_value_for_optional: None,
                 },
             ],
             category: "TEST_DOCS".to_string(),
@@ -281,6 +322,10 @@ mod tests {
             platform_specific: None,
             raw_data: Default::default(),
             return_array_length_out_param: None,
+            rust_mark_safe_wrapper_unsafe: None,
+            rust_prologue_code: None,
+            rust_epilogue_code: None,
+            rust_return_type_override: None,
         };
         let mut cat = NativeCategory {
             name: "TEST_DOCS".to_string(),

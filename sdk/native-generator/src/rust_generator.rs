@@ -53,8 +53,8 @@ impl RustWrapperGenerator {
         // Generate lib.rs
         self.generate_lib_rs(collection, output_dir)?;
         
-        // Generate types.rs
-        self.generate_types_rs(output_dir)?;
+        // Generate types.rs (с учётом Opaque/FunctionCallback псевдотипов)
+        self.generate_types_rs(collection, output_dir)?;
         
         // Generate error types
         self.generate_error_types(output_dir)?;
@@ -138,11 +138,74 @@ debug-logging = ["tracing"]
         Ok(())
     }
     
-    /// Generate types.rs with GameVerse-specific types
-    fn generate_types_rs(&self, output_dir: &Path) -> Result<()> {
-        let content = self.handlebars.render("types", &json!({}))
+    /// Generate types.rs with GameVerse-specific types + авто-сгенерированные псевдотипы (Opaque / FunctionCallback)
+    fn generate_types_rs(&self, collection: &NativeCollection, output_dir: &Path) -> Result<()> {
+        use std::collections::HashSet;
+
+        // 1) Рендерим базовый шаблон
+        let mut content = self
+            .handlebars
+            .render("types", &json!({}))
             .context("Failed to render types template")?;
-            
+
+        // 2) Собираем уникальные имена Opaque и флаг наличия FunctionCallback
+        let mut opaque_names: HashSet<String> = HashSet::new();
+        let mut has_function_callback = false;
+
+        // рекурсивная функция обхода типов
+        fn collect_types(nt: &crate::native_types::NativeType, opaques: &mut HashSet<String>, has_fc: &mut bool) {
+            use crate::native_types::NativeType::*;
+            match nt {
+                Opaque(opt_name) => {
+                    let name = opt_name.clone().unwrap_or_else(|| "Opaque".to_string());
+                    opaques.insert(name);
+                }
+                FunctionCallback(_) => {
+                    *has_fc = true;
+                }
+                Array { element_type, .. } => collect_types(element_type, opaques, has_fc),
+                Pointer(inner) | Reference(inner) => collect_types(inner, opaques, has_fc),
+                _ => {}
+            }
+        }
+
+        for category in collection.categories.values() {
+            for func in &category.functions {
+                collect_types(&func.return_type, &mut opaque_names, &mut has_function_callback);
+                for param in &func.parameters {
+                    collect_types(&param.param_type, &mut opaque_names, &mut has_function_callback);
+                }
+            }
+        }
+
+        // 3) Добавляем секцию с псевдотипами
+        content.push_str("\n\n// ===== Auto-generated pseudo-types =====\n");
+
+        if has_function_callback {
+            content.push_str("/// Generic function callback (signature unknown)\n");
+            content.push_str("pub type FunctionCallback = Option<unsafe extern \"C\" fn()>;\n\n");
+        }
+
+        for name in &opaque_names {
+            // Приводим имя к корректному идентификатору Rust (CamelCase, без пробелов)
+            let rust_name = name
+                .split(|c: char| !c.is_alphanumeric())
+                .filter(|s| !s.is_empty())
+                .map(|s| {
+                    let mut chrs = s.chars();
+                    match chrs.next() {
+                        Some(first) => first.to_uppercase().collect::<String>() + chrs.as_str(),
+                        None => String::new(),
+                    }
+                })
+                .collect::<String>();
+
+            content.push_str(&format!(
+                "/// Opaque pointer type automatically generated for `{}`\n#[repr(transparent)]\npub struct {}(pub *mut std::ffi::c_void);\nimpl {} {{\n    pub fn null() -> Self {{ Self(std::ptr::null_mut()) }}\n}}\n\n",
+                name, rust_name, rust_name
+            ));
+        }
+
         fs::write(output_dir.join("src/types.rs"), content)?;
         Ok(())
     }
@@ -626,7 +689,7 @@ fn determine_rust_type(original_native_type: NativeType, type_override_str: Opti
             // Возможно, понадобится более гибкий парсер или явное указание формата.
             // Пока что используем существующий, предполагая, что он достаточно гибок или форматы совместимы.
             match NativeType::from_fivem_type(override_str) { // TODO: Убедиться, что from_fivem_type подходит
-                parsed_type if parsed_type != NativeType::Any || override_str.eq_ignore_ascii_case("any") => {
+                parsed_type if !matches!(parsed_type, NativeType::Any(_)) || override_str.eq_ignore_ascii_case("any") => {
                     debug!("Applied type override: '{}' -> {:?}", override_str, parsed_type);
                     effective_native_type = parsed_type;
                 }
@@ -654,10 +717,10 @@ fn determine_rust_type(original_native_type: NativeType, type_override_str: Opti
         NativeType::Cam => "Cam".to_string(),
         NativeType::Hash => "Hash".to_string(),
         NativeType::Vector3 => "Vector3".to_string(),
-        NativeType::Any => "Any".to_string(),
+        NativeType::Any(_) => "Any".to_string(),
         NativeType::Pointer(inner) => match *inner {
             NativeType::Vector3 => "&mut Vector3".to_string(),
-            NativeType::Any => "*mut std::ffi::c_void".to_string(),
+            NativeType::Any(_) => "*mut std::ffi::c_void".to_string(),
             NativeType::Char => "*mut std::os::raw::c_char".to_string(),
             it => format!("*mut {}", determine_rust_type(it, None, None, false)),
         },
@@ -671,32 +734,39 @@ fn determine_rust_type(original_native_type: NativeType, type_override_str: Opti
                 Some(crate::native_types::ArraySizeInfo::Known(n)) => {
                     format!("[{}; {}]", inner_rust_type, n)
                 },
-                _ => {
-                    // Для возврата Vec<T> только если это не фиксированный Known(N)
-            if is_return_type_flag {
-                if let Some(func) = func_context {
-                    if func.return_array_length_out_param.is_some() {
-                        return format!("Vec<{}>", inner_rust_type);
+                Some(crate::native_types::ArraySizeInfo::NullTerminated)
+                | Some(crate::native_types::ArraySizeInfo::Infer)
+                | Some(crate::native_types::ArraySizeInfo::Dynamic { .. })
+                | Some(crate::native_types::ArraySizeInfo::SizeParamIndex(_))
+                | None => {
+                    // Особый случай: char[] null-terminated → String
+                    if matches!(**inner_array_type, NativeType::Char) {
+                        return "String".to_string();
                     }
-                }
-                let raw_inner_ffi_type = determine_raw_rust_ffi_type(*inner_array_type.clone());
-                if raw_inner_ffi_type.starts_with("*mut") || raw_inner_ffi_type.starts_with("*const") {
-                    return raw_inner_ffi_type;
-                } else {
-                    return format!("*mut {}", raw_inner_ffi_type);
-                }
-            }
-            format!("Vec<{}>", inner_rust_type)
+                    // Для возврата Vec<T> только если это не фиксированный Known(N)
+                    if is_return_type_flag {
+                        if let Some(func) = func_context {
+                            if func.return_array_length_out_param.is_some() {
+                                return format!("Vec<{}>", inner_rust_type);
+                            }
+                        }
+                        let raw_inner_ffi_type = determine_raw_rust_ffi_type(*inner_array_type.clone());
+                        if raw_inner_ffi_type.starts_with("*mut") || raw_inner_ffi_type.starts_with("*const") {
+                            return raw_inner_ffi_type;
+                        } else {
+                            return format!("*mut {}", raw_inner_ffi_type);
+                        }
+                    }
+                    format!("Vec<{}>", inner_rust_type)
                 }
             }
         },
         NativeType::Char => "char".to_string(),
-        NativeType::FunctionCallback => "FunctionCallback".to_string(),
+        NativeType::FunctionCallback(_) => "FunctionCallback".to_string(),
         NativeType::Opaque(opt_name) => opt_name.unwrap_or_else(|| "Opaque".to_string()),
-        _ => {
-            warn!("determine_rust_type: Unhandled or unknown NativeType variant: {:?}. Defaulting to 'Any'.", effective_native_type);
-            "Any".to_string()
-        }
+        NativeType::Pickup => "std::os::raw::c_int".to_string(),
+        NativeType::Horse | NativeType::HorseEntity | NativeType::Camp | NativeType::Prompt | NativeType::Volume => "std::os::raw::c_int".to_string(),
+        _ => "std::os::raw::c_int".to_string(),
     }
 }
 
@@ -717,7 +787,7 @@ fn raw_rust_type_helper(
             "Bool" => NativeType::Bool,
             "String" => NativeType::String,
             "Char" => NativeType::Char,
-            _ => NativeType::Any,
+            _ => NativeType::Any(None),
         }
     } else if param_type_json.is_object() {
         let obj = param_type_json.as_object().unwrap();
@@ -729,10 +799,10 @@ fn raw_rust_type_helper(
                     "Bool" => NativeType::Bool,
                     "String" => NativeType::String,
                     "Char" => NativeType::Char,
-                    _ => NativeType::Any,
+                    _ => NativeType::Any(None),
                 }
             } else {
-                serde_json::from_value(ptr_val.clone()).unwrap_or(NativeType::Any)
+                serde_json::from_value(ptr_val.clone()).unwrap_or(NativeType::Any(None))
             };
             NativeType::Pointer(Box::new(inner))
         } else if let Some(arr_val) = obj.get("Array") {
@@ -746,17 +816,17 @@ fn raw_rust_type_helper(
                             "Bool" => NativeType::Bool,
                             "String" => NativeType::String,
                             "Char" => NativeType::Char,
-                            _ => NativeType::Any,
+                            _ => NativeType::Any(None),
                         }
                     } else {
-                        serde_json::from_value(el_val.clone()).unwrap_or(NativeType::Any)
+                        serde_json::from_value(el_val.clone()).unwrap_or(NativeType::Any(None))
                     };
                     NativeType::Array { element_type: Box::new(element_type), size_info: None }
                 } else {
-                    NativeType::Any
+                    NativeType::Any(None)
                 }
             } else {
-                NativeType::Any
+                NativeType::Any(None)
             }
         } else if let Some(ref_val) = obj.get("Reference") {
             let inner = if ref_val.is_string() {
@@ -766,17 +836,17 @@ fn raw_rust_type_helper(
                     "Bool" => NativeType::Bool,
                     "String" => NativeType::String,
                     "Char" => NativeType::Char,
-                    _ => NativeType::Any,
+                    _ => NativeType::Any(None),
                 }
             } else {
-                serde_json::from_value(ref_val.clone()).unwrap_or(NativeType::Any)
+                serde_json::from_value(ref_val.clone()).unwrap_or(NativeType::Any(None))
             };
             NativeType::Reference(Box::new(inner))
         } else {
-            serde_json::from_value(param_type_json.clone()).unwrap_or(NativeType::Any)
+            serde_json::from_value(param_type_json.clone()).unwrap_or(NativeType::Any(None))
         }
     } else {
-        serde_json::from_value(param_type_json.clone()).unwrap_or(NativeType::Any)
+        serde_json::from_value(param_type_json.clone()).unwrap_or(NativeType::Any(None))
     };
     out.write(&determine_raw_rust_ffi_type(param_type))?;
     Ok(())
@@ -805,12 +875,16 @@ fn determine_raw_rust_ffi_type(param_type: NativeType) -> String {
         NativeType::Interior => "std::os::raw::c_int".to_string(), 
         NativeType::ItemSet => "std::os::raw::c_int".to_string(),   
         NativeType::Pickup => "std::os::raw::c_int".to_string(),     
-        NativeType::Array { element_type, .. } => {
-            let element_ffi_type = determine_raw_rust_ffi_type(*element_type);
-            format!("*mut {}", element_ffi_type)
+        NativeType::Horse | NativeType::HorseEntity | NativeType::Camp | NativeType::Prompt | NativeType::Volume => "std::os::raw::c_int".to_string(),
+        NativeType::Array { element_type, size_info } => {
+            if matches!(*element_type, NativeType::Char) {
+                "*mut std::os::raw::c_char".to_string()
+            } else {
+                format!("*mut {}", element_type.to_raw_rust_type_string())
+            }
         }
         NativeType::Pointer(inner_type) => { // Handles non-char pointers
-            if *inner_type == NativeType::Any {
+            if matches!(*inner_type, NativeType::Any(_)) {
                 "*mut std::ffi::c_void".to_string()
             } else {
                 let inner_ffi_type = determine_raw_rust_ffi_type(*inner_type);
@@ -821,10 +895,11 @@ fn determine_raw_rust_ffi_type(param_type: NativeType) -> String {
             let inner_ffi_type = determine_raw_rust_ffi_type(*inner_type);
             format!("*mut {}", inner_ffi_type) 
         }
-        NativeType::Any => "*mut std::ffi::c_void".to_string(),
-        NativeType::FunctionCallback => r#"Option<unsafe extern "C" fn()>"#.to_string(),
+        NativeType::Any(_) => "*mut std::ffi::c_void".to_string(),
+        NativeType::FunctionCallback(_) => r#"Option<unsafe extern "C" fn()>"#.to_string(),
         NativeType::Opaque(Some(name)) => format!("/* Opaque C type: {} */ *mut std::ffi::c_void", name),
         NativeType::Opaque(None) => "/* Opaque C type */ *mut std::ffi::c_void".to_string(),
+        _ => "std::os::raw::c_int".to_string(),
     }
 }
 
