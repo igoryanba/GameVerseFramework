@@ -19,7 +19,12 @@
 - [x] **NativeType::Array Handling**: Реализована поддержка массивов.
 - [x] **RDR2 Parser MVP**: Создан `rdr2_parser.rs`, CLI флаг `--game` позволяет генерировать SDK для RDR2 (пока 2 примера функций).
 - [x] **Testing Framework Expansion**: Тесты генератора покрывают массивы, out-параметры, кастомные override, ошибки шаблонов. **Тесты устойчивы к форматированию.**
-- [ ] **Basic VS Code Integration**: Продолжить работу над улучшением IntelliSense для сгенерированных нативов (по мере стабилизации API).
+- [ ] **Basic VS Code Integration**: Продолжить работу над улучшением IntelliSense
+
+✅ **Server IPC Layer Implemented (Feb 18)**
+   - `ServerRuntime` запускает Unix-socket `/tmp/gameverse_server.sock`
+   - CLI поддерживает `status` и `reload` через IPC
+   - Windows Named Pipe –  ✅ **РЕАЛИЗОВАНО** (Feb 20)
 
 **Ожидаемый результат к концу недели:**
 - Стабильный парсер Markdown с минимумом предупреждений.
