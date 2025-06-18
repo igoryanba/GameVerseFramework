@@ -1,80 +1,41 @@
 [package]
-name = "gameverse-cli"
+name = "gameverse"
 version = "0.2.0"
 edition = "2021"
-authors = ["GameVerse Framework Team"]
-description = "Command-line interface for GameVerse Framework plugin development"
+description = "Command-line tools for GameVerse Framework"
+authors = ["GameVerse Team"]
 license = "MIT"
-repository = "https://github.com/gameverse/gameverse-framework"
-keywords = ["gameverse", "plugin", "cli", "development", "fivem"]
-categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+clap = { version = "4.3.0", features = ["derive"] }
+anyhow = "1.0.71"
+toml = "0.8.8"
+serde = { version = "1.0.163", features = ["derive"] }
+serde_json = "1.0.96"
+handlebars = "4.3.7"
+tokio = { version = "1.28.1", features = ["full"] }
+reqwest = { version = "0.11.18", features = ["json"] }
+walkdir = "2.3.3"
+glob = "0.3.1"
+semver = "1.0.17"
+chrono = "0.4.24"
+colored = "2.0.0"
+indicatif = "0.17.3"
+dialoguer = "0.10.4"
+which = "4.4.0"
+tracing = "0.1.37"
+tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
+console = "0.15.7"
+clap_complete = "4.3.0"
+flate2 = "1.0.28"
+tar = "0.4.40"
+regex = "1.10.3"
+dirs = "5.0.1"
+
+[build-dependencies]
+clap = { version = "4.3.0", features = ["derive"] }
+clap_complete = "4.3.0"
 
 [[bin]]
 name = "gameverse"
 path = "src/main.rs"
-
-[dependencies]
-# Command-line interface
-clap = { version = "4.4", features = ["derive", "cargo"] }
-clap_complete = "4.4"
-
-# Async runtime 
-tokio = { version = "1.35", features = ["full"] }
-
-# Error handling
-anyhow = "1.0"
-thiserror = "1.0"
-
-# File system operations
-walkdir = "2.4"
-tempfile = "3.8"
-fs_extra = "1.3"
-
-# Serialization
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-toml = "0.8"
-
-# HTTP client for plugin marketplace
-reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
-
-# Template engine
-handlebars = "4.5"
-
-# Progress bars and user interaction
-indicatif = "0.17"
-dialoguer = "0.11"
-console = "0.15"
-
-# Compression for plugin packages
-flate2 = "1.0"
-tar = "0.4"
-
-# Logging
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-
-# Version management
-semver = "1.0"
-
-# Git integration
-git2 = "0.18"
-
-# Cross-platform paths
-path-absolutize = "3.1"
-dirs = "5.0"
-
-# Date/time utilities
-chrono = { version = "0.4", features = ["serde"] }
-
-# Regular expressions for template validation
-regex = "1.10"
-
-# File globbing for packaging
-glob = "0.3"
-
-[dev-dependencies]
-criterion = "0.5"
-tempfile = "3.8"
-assert_cmd = "2.0"
-predicates = "3.0"

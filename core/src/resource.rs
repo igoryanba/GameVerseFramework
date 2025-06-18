@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 /// Менеджер ресурсов
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ResourceManager {
     /// Загруженные ресурсы
     resources: HashMap<String, Resource>,
@@ -125,10 +125,70 @@ impl ResourceManager {
     
     /// Инициализировать менеджер ресурсов
     pub async fn initialize(&mut self) -> Result<()> {
-        // TODO: Реализовать сканирование директории ресурсов
+        use tokio_stream::wrappers::ReadDirStream;
+        use tokio_stream::StreamExt;
+
+        if !self.resources_directory.exists() {
+            tracing::warn!(
+                "Resources directory '{}' does not exist. Creating...",
+                self.resources_directory.display()
+            );
+            tokio::fs::create_dir_all(&self.resources_directory).await?;
+        }
+
+        let mut dir = tokio::fs::read_dir(&self.resources_directory).await?;
+        let mut stream = ReadDirStream::new(dir);
+
+        while let Some(entry_res) = stream.next().await {
+            let entry = entry_res?;
+            let path = entry.path();
+
+            if path.is_dir() {
+                let manifest_path = path.join("gameverse.toml");
+                if manifest_path.exists() {
+                    match tokio::fs::read_to_string(&manifest_path).await {
+                        Ok(contents) => {
+                            match toml::from_str::<ResourceManifest>(&contents) {
+                                Ok(manifest) => {
+                                    let id = uuid::Uuid::new_v4().to_string();
+                                    let res_name = manifest.resource.name.clone();
+                                    let resource = Resource {
+                                        id,
+                                        name: res_name.clone(),
+                                        version: manifest.resource.version.clone(),
+                                        author: manifest.resource.author.clone(),
+                                        description: manifest.resource.description.clone(),
+                                        path: path.clone(),
+                                        manifest,
+                                        state: ResourceState::Loaded,
+                                    };
+                                    self.resources.insert(res_name, resource);
+                                }
+                                Err(e) => {
+                                    tracing::error!(
+                                        "Failed to parse manifest '{}': {}",
+                                        manifest_path.display(),
+                                        e
+                                    );
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                "Failed to read manifest '{}': {}",
+                                manifest_path.display(),
+                                e
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
         self.initialized = true;
         tracing::info!(
-            "🔥 Resource manager initialized with TOML configs and hot reload support"
+            "🔥 Resource manager initialized: {} resources loaded",
+            self.resources.len()
         );
         Ok(())
     }

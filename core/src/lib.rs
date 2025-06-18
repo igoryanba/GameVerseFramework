@@ -22,6 +22,7 @@ pub mod net;
 pub mod plugins;
 pub mod resource;
 pub mod scripting;
+pub mod server;
 pub mod utils;
 
 /// Информация о версии фреймворка
