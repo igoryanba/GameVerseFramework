@@ -63,7 +63,7 @@ impl LoadedLibrary {
 }
 
 /// Статистика производительности плагина
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PluginPerformanceStats {
     /// Общее время выполнения (микросекунды)
     pub total_execution_time_us: u64,
@@ -79,8 +79,8 @@ pub struct PluginPerformanceStats {
     pub last_call_time: chrono::DateTime<chrono::Utc>,
 }
 
-impl Default for PluginPerformanceStats {
-    fn default() -> Self {
+impl PluginPerformanceStats {
+    pub fn new() -> Self {
         Self {
             total_execution_time_us: 0,
             call_count: 0,
@@ -240,7 +240,7 @@ impl PluginManager {
         // Инициализировать статистику
         {
             let mut stats = self.performance_stats.write().await;
-            stats.insert(plugin_id.to_string(), PluginPerformanceStats::default());
+            stats.insert(plugin_id.to_string(), PluginPerformanceStats::new());
         }
         
         // Отправить событие

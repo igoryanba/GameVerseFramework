@@ -445,7 +445,18 @@ impl FiveMDocParser {
         }
 
         let categories_to_scan = if let Some(specified_list) = specified_categories_opt {
-            specified_list.iter().map(|s| s.to_uppercase()).collect::<Vec<_>>()
+            // Если указан "ALL", загружаем все доступные директории
+            if specified_list.len() == 1 && specified_list[0].to_uppercase() == "ALL" {
+                fs::read_dir(&base_path)?
+                    .filter_map(|entry_res| entry_res.ok())
+                    .filter(|entry| entry.path().is_dir())
+                    .filter_map(|entry| entry.file_name().into_string().ok())
+                    .filter(|name| self.is_valid_category_name_heuristic(name))
+                    .map(|name| name.to_uppercase())
+                    .collect::<Vec<_>>()
+            } else {
+                specified_list.iter().map(|s| s.to_uppercase()).collect::<Vec<_>>()
+            }
         } else {
             // Сканировать все поддиректории, если категории не указаны
             fs::read_dir(&base_path)?

@@ -162,14 +162,19 @@ async fn main() -> Result<()> {
             };
             
             info!("📖 Determining categories and parsing documentation...");
-            let natives = parser_choice.parse(&source, categories.as_ref()).await?;
+            let natives = parser_choice.parse(&source, categories.as_ref(), local_natives_path.as_ref()).await?;
             
             info!("✅ Parsed {} native functions in {} categories", 
                   natives.total_functions(), natives.categories().len());
             
             // Filter by categories if specified
             let filtered_natives = if let Some(cats) = categories {
-                natives.filter_categories(&cats)
+                // Если указан "ALL", не фильтруем
+                if cats.len() == 1 && cats[0].to_uppercase() == "ALL" {
+                    natives
+                } else {
+                    natives.filter_categories(&cats)
+                }
             } else {
                 natives
             };
@@ -275,10 +280,24 @@ enum EitherParser {
 }
 
 impl EitherParser {
-    async fn parse(&self, source: &str, cats: Option<&Vec<String>>) -> anyhow::Result<crate::native_types::NativeCollection> {
+    async fn parse(&self, source: &str, cats: Option<&Vec<String>>, local_natives_path: Option<&std::path::PathBuf>) -> anyhow::Result<crate::native_types::NativeCollection> {
         match self {
-            EitherParser::FiveM(p) => p.parse_from_url(source, cats).await,
-            EitherParser::Rdr2(p) => p.parse_from_url(source, cats).await,
+            EitherParser::FiveM(p) => {
+                if source == "local" && local_natives_path.is_some() {
+                    // Use local parsing method when source is "local" and path is provided
+                    p.parse_from_local_only(local_natives_path.unwrap().to_str().unwrap(), cats)
+                } else {
+                    p.parse_from_url(source, cats).await
+                }
+            },
+            EitherParser::Rdr2(p) => {
+                if source == "local" && local_natives_path.is_some() {
+                    // Use local parsing method when source is "local" and path is provided
+                    p.parse_from_local_only(local_natives_path.unwrap().to_str().unwrap(), cats)
+                } else {
+                    p.parse_from_url(source, cats).await
+                }
+            },
         }
     }
 } 

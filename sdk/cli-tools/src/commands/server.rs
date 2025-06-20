@@ -265,7 +265,7 @@ pub async fn execute(cmd: ServerCommands, _config: &Config) -> Result<()> {
             println!("🛑 Stopping GameVerse server...");
             
             if let Some(pid) = get_server_pid() {
-                if force {
+            if force {
                     println!("Force stopping server...");
                     
                     #[cfg(unix)]
@@ -275,7 +275,7 @@ pub async fn execute(cmd: ServerCommands, _config: &Config) -> Result<()> {
                             .arg(pid.to_string())
                             .status()
                             .context("Failed to kill server process")?;
-                    }
+            }
                     
                     #[cfg(windows)]
                     {

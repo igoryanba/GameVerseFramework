@@ -301,6 +301,7 @@ impl ServerRuntime {
         // Для динамических метрик клонируем необходимые менеджеры
         let resource_manager = self.resource_manager.clone();
         let network_manager = self.network_manager.clone();
+        let start_time = self.start_time;
 
         tokio::spawn(async move {
             loop {
@@ -326,7 +327,7 @@ impl ServerRuntime {
                             // Формируем быстрый ответ
                             let reply = match cmd_opt {
                                 Some(ServerCommand::RequestStatus) => {
-                                    let uptime_secs = self.start_time.elapsed().as_secs();
+                                    let uptime_secs = start_time.elapsed().as_secs();
                                     let status_json = serde_json::json!({
                                         "status": if running_flag.load(Ordering::SeqCst) {"running"} else {"stopped"},
                                         "uptime_secs": uptime_secs,

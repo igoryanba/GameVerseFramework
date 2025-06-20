@@ -17,13 +17,18 @@ pub mod config;
 pub mod engine;
 pub mod ffi;
 pub mod game;
+pub mod game_integration;
 pub mod logging;
+pub mod natives;
 pub mod net;
 pub mod plugins;
 pub mod resource;
 pub mod scripting;
 pub mod server;
 pub mod utils;
+pub mod benchmarks;
+pub mod anticheat;
+pub mod wasm_ui;
 
 /// Информация о версии фреймворка
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -125,3 +130,11 @@ mod tests {
         assert!(info.contains("Plugin System"));
     }
 }
+
+// Re-export основных типов для удобства
+pub use engine::GameEngine;
+pub use game_integration::{GameType, GameIntegrator};
+pub use natives::{NativeManager, NativeResult};
+pub use benchmarks::PerformanceBenchmark;
+pub use anticheat::AntiCheatEvasion;
+pub use wasm_ui::WasmUIManager;

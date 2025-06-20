@@ -277,7 +277,7 @@ impl NativeFunction {
         let mut array_params = Vec::new();
         
         for (i, param) in self.parameters.iter().enumerate() {
-            if let NativeType::Array { element_type, size_info } = &param.param_type {
+            if let NativeType::Array { element_type: _, size_info } = &param.param_type {
                 if size_info.is_none() {
                     array_params.push((i, param.name.clone()));
                 }
@@ -291,10 +291,10 @@ impl NativeFunction {
             
             if !possible_size_params.is_empty() {
                 // Берем первый найденный параметр размера
-                let (size_param_idx, size_param_name) = possible_size_params[0].clone();
+                let (_size_param_idx, size_param_name) = possible_size_params[0].clone();
                 
                 // Обновляем тип массива с информацией о размере
-                if let NativeType::Array { element_type, size_info } = &mut self.parameters[array_idx].param_type {
+                if let NativeType::Array { element_type: _, size_info } = &mut self.parameters[array_idx].param_type {
                     *size_info = Some(ArraySizeInfo::Dynamic { 
                         size_param_name: size_param_name.clone() 
                     });
@@ -307,7 +307,7 @@ impl NativeFunction {
         }
         
         // Проверяем возвращаемое значение, если это массив
-        if let NativeType::Array { element_type, size_info } = &mut self.return_type {
+        if let NativeType::Array { element_type: _, size_info } = &mut self.return_type {
             if size_info.is_none() && self.return_array_length_out_param.is_some() {
                 // Устанавливаем информацию о размере возвращаемого массива
                 *size_info = Some(ArraySizeInfo::Dynamic { 
@@ -642,7 +642,7 @@ impl NativeType {
             NativeType::Prompt => "i32".to_string(),
             NativeType::Volume => "i32".to_string(),
             
-            NativeType::Array { element_type, size_info } => {
+            NativeType::Array { element_type, size_info: _ } => {
                 format!("*mut {}", element_type.to_raw_rust_type_string())
             },
             

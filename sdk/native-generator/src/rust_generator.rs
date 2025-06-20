@@ -4,7 +4,7 @@ use std::path::Path;
 use handlebars::{Handlebars, Helper, Context as HbContext, RenderContext, Output, HelperResult, RenderError};
 use serde_json::json;
 use tracing::{info, debug, warn, error};
-use serde_json::to_value;
+// use serde_json::to_value;
 
 use crate::native_types::{NativeCollection, NativeCategory, NativeType, NativeParameter, NativeFunction};
 
@@ -876,7 +876,7 @@ fn determine_raw_rust_ffi_type(param_type: NativeType) -> String {
         NativeType::ItemSet => "std::os::raw::c_int".to_string(),   
         NativeType::Pickup => "std::os::raw::c_int".to_string(),     
         NativeType::Horse | NativeType::HorseEntity | NativeType::Camp | NativeType::Prompt | NativeType::Volume => "std::os::raw::c_int".to_string(),
-        NativeType::Array { element_type, size_info } => {
+        NativeType::Array { element_type, size_info: _ } => {
             if matches!(*element_type, NativeType::Char) {
                 "*mut std::os::raw::c_char".to_string()
             } else {

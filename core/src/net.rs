@@ -10,7 +10,7 @@ use anyhow::Result;
 use std::collections::HashMap;
 
 /// Сетевой менеджер
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NetworkManager {
     /// Активные соединения
     connections: HashMap<u64, Connection>,

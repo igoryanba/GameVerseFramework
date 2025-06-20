@@ -17,6 +17,7 @@ impl TypeScriptGenerator {
         // Убеждаемся, что директория существует
         std::fs::create_dir_all(output_dir)?;
         let mut ts_code = String::from("// Auto-generated TypeScript definitions\n\n");
+        info!("📘 Generating TypeScript definitions for {} categories...", collection.categories.len());
         for category in collection.categories.values() {
             for func in &category.functions {
                 let func_name = func.typescript_name_override.as_ref()
@@ -59,6 +60,7 @@ impl TypeScriptGenerator {
         let file_path = output_dir.join("natives.ts");
         let mut file = fs::File::create(&file_path)?;
         file.write_all(ts_code.as_bytes())?;
+        info!("✅ Generated TypeScript definitions for {} functions", collection.total_functions());
         Ok(())
     }
 

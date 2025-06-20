@@ -15,11 +15,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Проверяем наличие флага --dev или -d
     let dev_mode = env::args().any(|arg| arg == "--dev" || arg == "-d");
-    
+
     // Выводим информацию о версии
     println!("{} v{}", NAME, VERSION);
     println!("Запуск сервера...");
-    
+
     // Создаем и запускаем серверный рантайм
     let config_path = config_path.as_deref().map(Path::new);
     let mut runtime = match ServerRuntime::new(config_path, dev_mode) {
@@ -29,13 +29,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             process::exit(1);
         }
     };
-    
+
     // Запускаем сервер (блокирующий вызов до завершения)
     if let Err(err) = runtime.start().await {
         eprintln!("Ошибка в работе сервера: {}", err);
         process::exit(1);
     }
-    
+
     println!("Сервер завершил работу");
     Ok(())
 } 
