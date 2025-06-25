@@ -1,30 +1,32 @@
-# Сетевая инфраструктура GameVerse Framework
+# GameVerse Framework **Networking Stack**
 
-## Описание
-Данный каталог содержит компоненты сетевой инфраструктуры фреймворка, отвечающие за коммуникацию между клиентами и сервером, синхронизацию игровых сущностей и оптимизацию сетевого трафика.
+> English | [Русский](README_ru.md)
 
-## Структура
-- **protocol/** - Протокол обмена данными (Protocol Buffers/FlatBuffers)
-- **quic/** - Реализация QUIC протокола
-- **sync/** - Система синхронизации игровых сущностей
-- **serialization/** - Сериализация/десериализация данных
-- **routing/** - Маршрутизация пакетов между микросервисами
+## Overview
+This directory contains the networking layer responsible for communication between clients and servers, entity synchronisation, and traffic optimisation.
 
-## Ключевые компоненты
-- **EntitySynchronization** - Синхронизация состояния сущностей
-- **NetworkBridge** - Мост между игровым движком и сетевым слоем
-- **PacketCompression** - Сжатие пакетов для оптимизации трафика
-- **LagCompensation** - Компенсация задержек в сети
+## Structure
+- **protocol/** – data-exchange protocol definitions (Protocol Buffers / FlatBuffers)
+- **quic/** – QUIC transport implementation
+- **sync/** – entity synchronisation engine
+- **serialization/** – (de)serialisation utilities
+- **routing/** – packet routing between micro-services
 
-## Технологии
-- QUIC (быстрый UDP-based протокол)
-- Protocol Buffers/FlatBuffers
-- Tokio (асинхронный рантайм)
-- Quinn (Rust-реализация QUIC)
+## Key Components
+- **EntitySynchronization** – keeps game entities in sync across peers
+- **NetworkBridge** – bridge between the game engine and the network layer
+- **PacketCompression** – reduces bandwidth usage
+- **LagCompensation** – client-side latency compensation algorithms
 
-## Прогресс разработки
-- [ ] Определение сетевого протокола
-- [ ] Реализация базовой QUIC-коммуникации
-- [ ] Система сериализации и синхронизации
-- [ ] Оптимизация для высокой нагрузки
-- [ ] Интеграция с OneSync-подобной системой 
+## Technologies
+- **QUIC / HTTP-3** – fast UDP-based transport
+- **Protocol Buffers / FlatBuffers** – efficient binary serialisation
+- **Tokio** – asynchronous runtime
+- **Quinn** – Rust QUIC implementation
+
+## Development Roadmap
+- [ ] Define on-wire protocol
+- [ ] Implement baseline QUIC communication
+- [ ] Build serialisation & synchronisation system
+- [ ] Optimise for high-concurrency scenarios
+- [ ] Integrate OneSync-like large-session support 
