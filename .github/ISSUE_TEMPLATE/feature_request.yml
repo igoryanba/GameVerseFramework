@@ -1,0 +1,29 @@
+name: "💡 Feature Request"
+description: "Suggest an idea or enhancement"
+labels: "enhancement"
+assignees: []
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Describe the feature
+      description: A clear and concise description of what you want to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: Why is this feature important?  What problem does it solve?
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: What alternatives have you considered?
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      options:
+        - label: I have read and agree to the Code of Conduct
+          required: true 
