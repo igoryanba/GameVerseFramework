@@ -1,54 +1,33 @@
-# Микросервисы GameVerse Framework
+# GameVerse **Micro-Services**
 
-## Описание
-Данный каталог содержит микросервисы, которые обеспечивают модульность и масштабируемость системы. Каждый микросервис отвечает за отдельную функциональность и может быть развернут независимо.
+> English | [Русский](README_ru.md)
 
-## Структура микросервисов
-- **authentication/** - Сервис аутентификации и авторизации
-- **logging/** - Централизованное логирование
-- **inventory/** - Сервис управления инвентарем
-- **chat/** - Сервис чата и коммуникаций
-- **player-data/** - Сервис хранения и управления данными игроков
-- **world-state/** - Сервис синхронизации состояния мира
-- **resource-manager/** - Сервис управления игровыми ресурсами
-- **metrics/** - Сервис сбора метрик и мониторинга
+This directory contains standalone micro-services powering the GameVerse ecosystem. Each service owns a single responsibility and can be deployed, scaled and updated independently.
 
-## Технологии
-- Rust для высокопроизводительных сервисов
-- gRPC/Protocol Buffers для внутреннего взаимодействия
-- Docker для контейнеризации
-- PostgreSQL/Redis для хранения данных
+## Service Catalog
+- **authentication/** – authentication & authorization
+- **logging/** – centralised structured logging
+- **inventory/** – player inventory backend
+- **chat/** – in-game chat & voice
+- **player-data/** – persistent player profiles
+- **world-state/** – global world synchronisation
+- **resource-manager/** – resource loading & hot-reload
+- **metrics/** – telemetry & performance metrics
 
-## Архитектура микросервисов
-Каждый микросервис следует архитектуре чистого домена (Clean Architecture) с четким разделением слоев:
-- **Domain** - ядро бизнес-логики, модели данных и интерфейсы репозиториев
-- **Infrastructure** - реализация репозиториев, работа с базой данных и кешем
-- **API** - REST и gRPC интерфейсы
-- **Config** - конфигурация и настройки
-- **Utils** - утилиты и вспомогательные функции
+## Tech Stack
+- **Rust** for performance-critical logic
+- **gRPC / Protocol Buffers** for fast RPC
+- **Docker** & **Kubernetes** for deployment
+- **PostgreSQL / Redis** for storage & caching
 
-## Межсервисное взаимодействие
-Микросервисы взаимодействуют друг с другом через:
-1. **gRPC** - для синхронных запросов между сервисами
-2. **Централизованная система логирования** - для отладки и мониторинга
-3. **Общие библиотеки** - для переиспользования кода
+## Architecture Principles
+1. **Clean Architecture** – clear separation of concerns
+2. **Event-Driven** – services publish/consume domain events
+3. **Observability** – metrics, tracing, structured logs
 
-## Прогресс разработки
-- [x] Настройка базовой структуры микросервисов
-- [x] Определение API для взаимодействия между сервисами
-- [x] Настройка общей системы логирования
-- [x] Начало реализации сервиса аутентификации
-- [x] Создание библиотеки логирования
-- [ ] Реализация сервиса сбора логов
-- [ ] Завершение микросервиса аутентификации
-- [ ] Настройка мониторинга сервисов
-
-## Текущие задачи
-1. Завершение микросервиса аутентификации:
-   - Реализация бизнес-логики
-   - Настройка базы данных и миграций
-   - Имплементация REST и gRPC API
-2. Развитие микросервиса логирования:
-   - Имплементация gRPC сервера для сбора логов
-   - Настройка ElasticSearch и Kibana
-   - Интеграция с другими микросервисами 
+## Development Roadmap (excerpt)
+- [x] Service skeletons & shared libs
+- [x] Central logging library
+- [ ] Complete authentication service MVP
+- [ ] ElasticSearch log collector
+- [ ] Prometheus + Grafana dashboards 
