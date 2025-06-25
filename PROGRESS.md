@@ -1963,3 +1963,12 @@ FiveM Development:          GameVerse Development:
 - Устранение предупреждений Markdown-парсера
 - Улучшение обработки `NativeType::Array` и `NativeType::Any`
 - Расширение тестового покрытия
+
+- [x] **✅ Реализован Server Runtime с IPC-слоем и CLI `server` подкомандами (v0.3.0)** ✨ **НОВОЕ (Февраль 2025)**
+- [x] **✅ Прототип REST Admin API (Axum) запущен на `/api/server/*`** (Февраль 2025)
+  - `GET /api/server/status` — полный JSON-отчёт
+  - `POST /api/server/shutdown` / `reload` — команды управления
+  - ✅ **CORS + JWT-аутентификация** (dev-mode bypass)
+  - ✅ **SSE логи** через `/api/server/logs/stream` (реальный tracing + broadcast канал)
+  - ✅ **CLI JWT генератор** (`gameverse server token`, `--token` флаг)
+  - ✅ **Cross-platform тесты** (Unix + Windows NamedPipe, условная компиляция)

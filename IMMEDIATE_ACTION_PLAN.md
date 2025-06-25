@@ -21,10 +21,10 @@
 - [x] **Testing Framework Expansion**: Тесты генератора покрывают массивы, out-параметры, кастомные override, ошибки шаблонов. **Тесты устойчивы к форматированию.**
 - [ ] **Basic VS Code Integration**: Продолжить работу над улучшением IntelliSense
 
-✅ **Server IPC Layer Implemented (Feb 18)**
-   - `ServerRuntime` запускает Unix-socket `/tmp/gameverse_server.sock`
-   - CLI поддерживает `status` и `reload` через IPC
-   - Windows Named Pipe –  ✅ **РЕАЛИЗОВАНО** (Feb 20)
+✅ **Server Management MVP (IPC + CLI v0.3.0) – COMPLETE (Feb 21)**
+   - IPC-слой: Unix-socket + Windows Named-Pipe
+   - CLI подкоманды: `start/stop/restart/status/reload/logs`
+   - Расширенный JSON-статус: `avg_tick_ms`, `mem_rss_mb`
 
 **Ожидаемый результат к концу недели:**
 - Стабильный парсер Markdown с минимумом предупреждений.
@@ -370,3 +370,27 @@ graph LR
 
 - [x] **RDR2 Full Markdown Ingest**: Интегрирован автоматический импорт Markdown из RDR3 NativeDB, генерация полного Rust/TS SDK, обновлена IntelliSense.
 - [x] **VS Code Extension Update**: Добавлен переключатель Target Game и база сигнатур RDR2. 
+
+**Новые задачи (Next 7 days)**
+1. **Metrics Enhancements**
+   - Реальный расчёт `avg_tick_ms` через трекер тиков в `GameEngine`.
+   - Обновить IPC-ответ и CLI вывод.
+2. **CLI Console Subcommand**
+   - `gameverse server console` — stream stdout/stderr сервера.
+3. **Cross-Platform Tests**
+   - Unit-тесты разбора `ServerCommand`.
+   - Интеграционные тесты: запуск сервера → `status` → assert (Linux & Windows).
+4. **CI Pipeline Update**
+   - `cargo clippy --all-targets -- -D warnings`.
+   - `markdownlint` для docs.
+   - Windows job с Named-Pipe тестом.
+5. **Admin Web-API Kick-off (planning)**
+   - Спецификация REST эндпоинтов `/api/server/*`.
+   - Прототип Axum-сервера, шлюз к `ServerRuntime`.
+- [x] **✅ Admin Web-API (Axum) Prototype – COMPLETE (Feb 25)**
+   - ✅ REST эндпоинты `/api/server/*` с CORS + JWT
+   - ✅ SSE live-логи через **реальный tracing subscriber** с broadcast каналом
+   - ✅ CLI JWT генератор (`gameverse server token`, `--token` флаг)
+   - ✅ **Cross-platform тесты** (Unix socket + Windows NamedPipe)
+   - ✅ **Real-time мониторинг** через `/api/server/logs/stream`
+   - ✅ **Production-ready архитектура** с graceful degradation

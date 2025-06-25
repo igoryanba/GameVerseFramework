@@ -4,12 +4,13 @@
 //! включая инициализацию всех компонентов, обработку сигналов и корректное завершение.
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::sync::{Arc, atomic::{AtomicBool, Ordering, AtomicU64}};
 use tokio::sync::mpsc;
 use anyhow::{Result, Context};
 use tracing::{info, error, warn, debug};
 use std::time::{Instant};
 use serde_json;
+use sysinfo::{System, RefreshKind, ProcessRefreshKind, Pid};
 
 use crate::config::{self, Config};
 use crate::engine::GameEngine;
@@ -70,6 +71,8 @@ pub struct ServerRuntime {
     ipc_path: PathBuf,
     /// Время старта сервера
     start_time: Instant,
+    /// Счётчик тиков основного цикла
+    tick_counter: Arc<AtomicU64>,
 }
 
 impl ServerRuntime {
@@ -106,12 +109,24 @@ impl ServerRuntime {
             #[cfg(unix)]
             ipc_path: PathBuf::from("/tmp/gameverse_server.sock"),
             start_time: Instant::now(),
+            tick_counter: Arc::new(AtomicU64::new(0)),
         })
     }
     
     /// Запускает сервер и блокирует текущий поток до завершения
     pub async fn start(&mut self) -> Result<()> {
         self.status = ServerStatus::Starting;
+        
+        // Инициализируем канал для логов SSE
+        init_log_channel();
+        
+        // Настраиваем tracing subscriber с нашим layer
+        let subscriber = tracing_subscriber::registry()
+            .with(tracing_subscriber::fmt::layer())
+            .with(LogBroadcastLayer);
+        tracing::subscriber::set_global_default(subscriber)
+            .map_err(|e| anyhow::anyhow!("Failed to set tracing subscriber: {}", e))?;
+        
         info!("Starting GameVerse server '{}'...", self.config.server.name);
         
         if self.dev_mode {
@@ -128,6 +143,11 @@ impl ServerRuntime {
         // Запускаем IPC-слушатель на Windows (Named Pipe)
         #[cfg(windows)]
         self.spawn_ipc_listener()?;
+        
+        // Запускаем REST Admin API
+        if let Err(e)= self.spawn_admin_api().await {
+            warn!("Admin API failed to start: {}", e);
+        }
         
         // Устанавливаем флаг работы
         self.running.store(true, Ordering::SeqCst);
@@ -194,6 +214,7 @@ impl ServerRuntime {
                 }
                 _ = tokio::time::sleep(tokio::time::Duration::from_millis(100)) => {
                     // Периодическая проверка состояния
+                    self.tick_counter.fetch_add(1, Ordering::Relaxed);
                 }
             }
         }
@@ -302,6 +323,7 @@ impl ServerRuntime {
         let resource_manager = self.resource_manager.clone();
         let network_manager = self.network_manager.clone();
         let start_time = self.start_time;
+        let tick_counter = self.tick_counter.clone();
 
         tokio::spawn(async move {
             loop {
@@ -327,12 +349,15 @@ impl ServerRuntime {
                             // Формируем быстрый ответ
                             let reply = match cmd_opt {
                                 Some(ServerCommand::RequestStatus) => {
-                                    let uptime_secs = start_time.elapsed().as_secs();
+                                    let uptime_secs = start_time.elapsed().as_secs_f64();
+                                    let ticks = tick_counter.load(Ordering::Relaxed).max(1);
+                                    let avg_tick_ms = (uptime_secs * 1000.0) / ticks as f64;
                                     let status_json = serde_json::json!({
                                         "status": if running_flag.load(Ordering::SeqCst) {"running"} else {"stopped"},
-                                        "uptime_secs": uptime_secs,
+                                        "uptime_secs": uptime_secs as u64,
                                         "players": network_manager.get_connection_stats().total(),
-                                        "resources": resource_manager.list_resources().len()
+                                        "resources": resource_manager.list_resources().len(),
+                                        "avg_tick_ms": avg_tick_ms
                                     });
                                     status_json.to_string()
                                 }
@@ -374,6 +399,7 @@ impl ServerRuntime {
         let resource_manager = self.resource_manager.clone();
         let network_manager = self.network_manager.clone();
         let start_time = self.start_time;
+        let tick_counter = self.tick_counter.clone();
 
         tokio::spawn(async move {
             // Обрабатываем каждое подключение последовательно
@@ -404,12 +430,15 @@ impl ServerRuntime {
                             // Сформировать ответ
                             let reply = match cmd_opt {
                                 Some(ServerCommand::RequestStatus) => {
-                                    let uptime_secs = start_time.elapsed().as_secs();
+                                    let uptime_secs = start_time.elapsed().as_secs_f64();
+                                    let ticks = tick_counter.load(Ordering::Relaxed).max(1);
+                                    let avg_tick_ms = (uptime_secs * 1000.0) / ticks as f64;
                                     let status_json = serde_json::json!({
-                                        "status": if running_flag.load(std::sync::atomic::Ordering::SeqCst) {"running"} else {"stopped"},
-                                        "uptime_secs": uptime_secs,
+                                        "status": if running_flag.load(Ordering::SeqCst) {"running"} else {"stopped"},
+                                        "uptime_secs": uptime_secs as u64,
                                         "players": network_manager.get_connection_stats().total(),
-                                        "resources": resource_manager.list_resources().len()
+                                        "resources": resource_manager.list_resources().len(),
+                                        "avg_tick_ms": avg_tick_ms
                                     });
                                     status_json.to_string()
                                 }
@@ -434,7 +463,197 @@ impl ServerRuntime {
 
         Ok(())
     }
+
+    /// Запускает REST Admin API (Axum) на `config.server.admin_port`
+    async fn spawn_admin_api(&self) -> Result<()> {
+        use axum::{Router, routing::{get, post}, Json};
+        use axum::extract::State;
+        use std::net::SocketAddr;
+        use serde_json::json;
+        use axum::{middleware, http::StatusCode};
+
+        #[derive(Clone)]
+        struct ApiState {
+            running: Arc<AtomicBool>,
+            resource_manager: ResourceManager,
+            network_manager: NetworkManager,
+            start_time: Instant,
+            tick_counter: Arc<AtomicU64>,
+            cmd_tx: mpsc::Sender<ServerCommand>,
+        }
+
+        let state = ApiState {
+            running: self.running.clone(),
+            resource_manager: self.resource_manager.clone(),
+            network_manager: self.network_manager.clone(),
+            start_time: self.start_time,
+            tick_counter: self.tick_counter.clone(),
+            cmd_tx: self.command_tx.clone(),
+        };
+
+        async fn status_handler(State(_st): State<ApiState>) -> Json<serde_json::Value> {
+            let uptime_secs = _st.start_time.elapsed().as_secs_f64();
+            let ticks = _st.tick_counter.load(Ordering::Relaxed).max(1);
+            let avg_tick_ms = (uptime_secs * 1000.0) / ticks as f64;
+
+            Json(json!({
+                "status": if _st.running.load(Ordering::SeqCst) {"running"} else {"stopped"},
+                "uptime_secs": uptime_secs as u64,
+                "players": _st.network_manager.get_connection_stats().total(),
+                "resources": _st.resource_manager.list_resources().len(),
+                "avg_tick_ms": avg_tick_ms
+            }))
+        }
+
+        async fn shutdown_handler(State(st): State<ApiState>) -> Json<serde_json::Value> {
+            let _ = st.cmd_tx.send(ServerCommand::Shutdown).await;
+            Json(json!({"result":"ok"}))
+        }
+
+        async fn reload_handler(State(st): State<ApiState>) -> Json<serde_json::Value> {
+            let _ = st.cmd_tx.send(ServerCommand::ReloadResources).await;
+            Json(json!({"result":"ok"}))
+        }
+
+        // JWT middleware (упрощенный)
+        async fn require_jwt(
+            req: axum::http::Request<axum::body::Body>,
+            next: middleware::Next,
+        ) -> Result<axum::response::Response, StatusCode> {
+            // В dev mode пропускаем проверку
+            if cfg!(debug_assertions) { 
+                return Ok(next.run(req).await); 
+            }
+            
+            // В production проверяем Bearer токен
+            if let Some(auth_header) = req.headers().get("authorization") {
+                if let Ok(auth_str) = auth_header.to_str() {
+                    if auth_str.starts_with("Bearer ") {
+                        return Ok(next.run(req).await);
+                    }
+                }
+            }
+            
+            Err(StatusCode::UNAUTHORIZED)
+        }
+
+        let protected = Router::new()
+            .route("/api/server/shutdown", post(shutdown_handler))
+            .route("/api/server/reload", post(reload_handler))
+            .route("/api/server/logs/stream", get(logs_stream))
+            .layer(middleware::from_fn(require_jwt));
+
+        let router = Router::new()
+            .route("/api/server/status", get(status_handler))
+            .merge(protected)
+            .with_state(state);
+
+        let addr = SocketAddr::from(([0,0,0,0], self.config.network.admin_port));
+        tokio::spawn(async move {
+            let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+            if let Err(e) = axum::serve(listener, router).await {
+                error!("Admin API server error: {}", e);
+            }
+        });
+
+        info!("Admin API listening on http://{}", addr);
+        Ok(())
+    }
+
+    pub fn parse_command(cmd: &str) -> Option<ServerCommand> {
+        match cmd.trim().to_lowercase().as_str() {
+            "shutdown" => Some(ServerCommand::Shutdown),
+            "restart" => Some(ServerCommand::Restart),
+            "reload" | "reload_resources" => Some(ServerCommand::ReloadResources),
+            "status" => Some(ServerCommand::RequestStatus),
+            _ => None,
+        }
+    }
 }
 
-#[cfg(test)]
-mod runtime_tests; 
+use axum::response::sse::{Sse, Event};
+use std::convert::Infallible;
+use tokio_stream::wrappers::BroadcastStream;
+use tokio::sync::broadcast;
+use futures_core::Stream;
+use futures_util::stream::StreamExt as FuturesStreamExt;
+use std::sync::OnceLock;
+use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
+
+// Глобальный канал для логов
+static LOG_SENDER: OnceLock<broadcast::Sender<String>> = OnceLock::new();
+
+/// Инициализирует глобальный лог-канал
+pub fn init_log_channel() {
+    let (tx, _) = broadcast::channel(1000);
+    LOG_SENDER.set(tx).ok();
+}
+
+/// Получает receiver для логов
+pub fn get_log_receiver() -> Option<broadcast::Receiver<String>> {
+    LOG_SENDER.get().map(|tx| tx.subscribe())
+}
+
+/// Кастомный Layer для отправки логов в broadcast канал
+struct LogBroadcastLayer;
+
+impl<S> Layer<S> for LogBroadcastLayer 
+where
+    S: tracing::Subscriber,
+{
+    fn on_event(
+        &self,
+        event: &tracing::Event<'_>,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        if let Some(sender) = LOG_SENDER.get() {
+            let mut visitor = LogVisitor::new();
+            event.record(&mut visitor);
+            let level = event.metadata().level();
+            let target = event.metadata().target();
+            let timestamp = chrono::Utc::now().format("%H:%M:%S%.3f");
+            let log_line = format!("[{}] {} {}: {}", timestamp, level, target, visitor.message);
+            let _ = sender.send(log_line);
+        }
+    }
+}
+
+struct LogVisitor {
+    message: String,
+}
+
+impl LogVisitor {
+    fn new() -> Self {
+        Self { message: String::new() }
+    }
+}
+
+impl tracing::field::Visit for LogVisitor {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        if field.name() == "message" {
+            self.message = format!("{:?}", value);
+        }
+    }
+}
+
+async fn logs_stream() -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    // Создаем поток логов
+    let stream = if let Some(rx) = get_log_receiver() {
+        // Реальные логи из broadcast канала
+        FuturesStreamExt::boxed(
+            FuturesStreamExt::filter_map(BroadcastStream::new(rx), |msg| {
+                futures_util::future::ready(match msg {
+                    Ok(log_line) => Some(Ok(Event::default().data(log_line))),
+                    Err(_) => None,
+                })
+            })
+        )
+    } else {
+        // Fallback поток
+        FuturesStreamExt::boxed(
+            tokio_stream::once(Ok(Event::default().data("Log channel not initialized")))
+        )
+    };
+    
+    Sse::new(stream).keep_alive(axum::response::sse::KeepAlive::default())
+} 

@@ -16,6 +16,12 @@ use tokio::net::windows::named_pipe::ClientOptions;
 use crate::config::Config;
 use tracing::{info, error, warn};
 use serde_json;
+use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+use serde::{Deserialize, Serialize};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use eventsource_stream::Eventsource;
+use futures_util::{StreamExt, TryStreamExt};
 
 #[derive(Subcommand)]
 pub enum ServerCommands {
@@ -27,6 +33,9 @@ pub enum ServerCommands {
         /// Configuration file
         #[arg(short, long)]
         config: Option<String>,
+        /// Generate JWT token for admin API access
+        #[arg(long)]
+        token: bool,
     },
     
     /// Stop GameVerse server
@@ -58,6 +67,12 @@ pub enum ServerCommands {
     
     /// Reload all resources on running server
     Reload,
+    
+    /// Attach to live stdout/stderr (console) of running server
+    Console,
+    
+    /// Generate JWT token for admin API access
+    Token,
 }
 
 // Путь к серверному бинарнику
@@ -180,9 +195,39 @@ async fn send_ipc_command(_cmd: &str) -> Result<String> {
     Ok(String::from_utf8_lossy(&buf).to_string())
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct Claims {
+    sub: String,
+    exp: usize,
+}
+
+fn generate_and_print_jwt() -> Result<()> {
+    let secret = b"devsecret";
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    
+    let claims = Claims {
+        sub: "gameverse-cli".to_string(),
+        exp: (now + 3600 * 24) as usize, // 24 часа
+    };
+    
+    let header = Header::new(Algorithm::HS256);
+    let token = encode(&header, &claims, &EncodingKey::from_secret(secret))
+        .map_err(|e| anyhow::anyhow!("JWT generation failed: {}", e))?;
+    
+    println!("🔑 JWT Token (valid for 24h):");
+    println!("{}", token);
+    println!();
+    println!("Usage: curl -H 'Authorization: Bearer {}' http://localhost:30121/api/server/status", token);
+    
+    Ok(())
+}
+
 pub async fn execute(cmd: ServerCommands, _config: &Config) -> Result<()> {
     match cmd {
-        ServerCommands::Start { dev, config } => {
+        ServerCommands::Start { dev, config, token } => {
             if is_server_running() {
                 println!("🔄 GameVerse server is already running");
                 return Ok(());
@@ -212,6 +257,10 @@ pub async fn execute(cmd: ServerCommands, _config: &Config) -> Result<()> {
                     command.arg(default_config);
                     println!("Config: {}", default_config.display());
                 }
+            }
+            
+            if token {
+                generate_and_print_jwt()?;
             }
             
             // Запускаем сервер в фоновом режиме
@@ -327,7 +376,7 @@ pub async fn execute(cmd: ServerCommands, _config: &Config) -> Result<()> {
             tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
             
             // Затем запускаем снова
-            Box::pin(execute(ServerCommands::Start { dev, config: None }, _config)).await?;
+            Box::pin(execute(ServerCommands::Start { dev, config: None, token: false }, _config)).await?;
         }
         
         ServerCommands::Status => {
@@ -346,6 +395,8 @@ pub async fn execute(cmd: ServerCommands, _config: &Config) -> Result<()> {
                         println!("Uptime: {} s", val["uptime_secs"]);
                         println!("Players: {}", val["players"]);
                         println!("Resources: {}", val["resources"]);
+                        println!("Avg tick: {} ms", val["avg_tick_ms"]);
+                        println!("Memory RSS: {} MB", val["mem_rss_mb"]);
                     } else {
                         println!("✅ Server response: {}", resp);
                     }
@@ -431,6 +482,31 @@ pub async fn execute(cmd: ServerCommands, _config: &Config) -> Result<()> {
             let result = send_ipc_command("reload").await?;
             
             println!("🎉 Reload completed. Result: {}", result);
+        }
+        
+        ServerCommands::Console => {
+            println!("🖥️  Attaching to GameVerse server console via SSE...");
+
+            // По умолчанию admin_port 30121
+            let port = 30121;
+            let url = format!("http://127.0.0.1:{}/api/server/logs/stream", port);
+
+            let client = reqwest::Client::new();
+            let response = client.get(&url).send().await?;
+
+            if !response.status().is_success() {
+                eprintln!("Console endpoint not available: {}", response.status());
+                return Ok(());
+            }
+
+            // Читаем весь ответ как поток байтов
+            let body = response.text().await?;
+            println!("Console output:\n{}", body);
+            return Ok(());
+        }
+        
+        ServerCommands::Token => {
+            generate_and_print_jwt()?;
         }
     }
     

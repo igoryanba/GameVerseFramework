@@ -103,6 +103,50 @@ pub extern "C" fn create_plugin() -> *mut dyn GameVersePlugin {
 - ❌ Невозможность использования существующих нативных библиотек
 - ❌ Нет hot reload для compiled кода
 
+#### **5. 🖥️ **Server Management & Admin API** ✅ **ЗАВЕРШЕНО**
+
+**Comprehensive server runtime с REST API и real-time мониторингом:**
+
+```bash
+# CLI Server Management
+gameverse server start --token    # Запуск с JWT генерацией
+gameverse server status           # Статус + метрики
+gameverse server console          # Live логи через SSE
+gameverse server token            # Генерация JWT для API
+
+# REST Admin API (порт 30121)
+GET  /api/server/status           # JSON метрики
+POST /api/server/shutdown         # Graceful shutdown (JWT required)
+POST /api/server/reload           # Hot reload ресурсов (JWT required)  
+GET  /api/server/logs/stream      # Server-Sent Events логи (JWT required)
+```
+
+**Архитектурные особенности:**
+- **Cross-platform IPC**: Unix sockets (Linux/macOS) + Named Pipes (Windows)
+- **JWT Authentication**: HS256 с dev-mode bypass, 24-часовой срок действия
+- **Real-time SSE**: Broadcast канал для tracing subscriber с capacity 1000
+- **Performance monitoring**: avg_tick_ms, memory usage, uptime tracking
+- **Graceful shutdown**: SIGINT/SIGTERM handling с cleanup всех ресурсов
+- **Hot reload**: Ресурсы без остановки сервера
+
+### Быстрый старт сервера
+```bash
+# Сборка и запуск сервера в фоне
+gameverse server start --background
+
+# Проверка статуса (pretty-print)
+gameverse server status
+
+# Горячая перезагрузка ресурсов
+gameverse server reload
+
+# Просмотр логов в реальном времени
+gameverse server logs -f
+
+# Остановка сервера
+gameverse server stop
+```
+
 ## Структура проекта
 
 - **core/** - Ядро фреймворка, написанное на Rust

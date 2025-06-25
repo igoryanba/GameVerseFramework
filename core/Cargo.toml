@@ -23,7 +23,9 @@ path = "../examples/dynamic_plugin_demo.rs"
 # Async runtime
 tokio = { version = "1.35", features = ["full"] }
 tokio-util = "0.7"
-tokio-stream = "0.1.14"
+tokio-stream = { version = "0.1.14", features = ["sync"] }
+futures-core = "0.3"
+futures-util = "0.3"
 
 # Error handling
 anyhow = "1.0"
@@ -31,7 +33,7 @@ thiserror = "1.0"
 
 # Logging
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "registry"] }
 tracing-appender = "0.2"
 
 # Serialization
@@ -52,6 +54,7 @@ uuid = { version = "1.6", features = ["v4", "serde"] }
 once_cell = "1.19"
 rand = "0.8"
 chrono = { version = "0.4.24", features = ["serde"] }
+sysinfo = "0.30"
 semver = "1.0.17"
 notify = "6.1.1"
 sha2 = "0.10"
@@ -75,10 +78,11 @@ sqlx = { version = "0.6.3", features = ["runtime-tokio-rustls", "postgres", "uui
 redis = { version = "0.23.0", features = ["tokio-comp"] }
 
 # Web server
-axum = "0.6.18"
+axum = { version = "0.7", features = ["json", "macros"] }
 tower = "0.4.13"
 tower-http = { version = "0.4.0", features = ["trace", "cors"] }
 hyper = "0.14.26"
+jsonwebtoken = "9"
 
 # Windows-specific dependencies
 [target.'cfg(windows)'.dependencies]

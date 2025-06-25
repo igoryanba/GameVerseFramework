@@ -260,98 +260,6 @@ mod plugin_tests {
 
 ### 🛠️ CLI Tools Development Standards (v0.2.0) ✅ **ЗАВЕРШЕНО**
 
-#### Template System Standards
-- **TOML Configuration**: Все шаблоны используют TOML для metadata с секциями [template], [languages], [variables]
-- **Multi-language Support**: Каждый шаблон поддерживает Rust/TypeScript/Lua с соответствующими конфигурациями
-- **Handlebars Integration**: Используем Handlebars для template processing с custom helpers (uppercase, snake_case, etc.)
-- **Validation Required**: Все шаблоны проходят автоматическую валидацию перед использованием
-
-#### Plugin Command Standards
-```rust
-// Стандартная структура команд v0.2.0
-pub enum PluginCommands {
-    New { /* create new plugin from template */ },
-    Build { /* build with cross-compilation */ },
-    Test { /* unit, integration, performance tests */ },
-    Deploy { /* deploy to servers with environments */ },
-    Package { /* create distribution packages */ },
-    Validate { /* validate plugin configuration */ },
-    Watch { /* hot reload development mode */ },
-}
-
-// Template management commands
-pub enum TemplatesCommands {
-    List { /* list available templates */ },
-    Info { /* show template details */ },
-    Update { /* update template repository */ },
-    Validate { /* validate custom templates */ },
-    Create { /* create template from project */ },
-}
-```
-
-#### Template Repository Standards
-- **Official Templates**: basic, economy с полной документацией и примерами
-- **Category System**: классификация по игровым механикам (gameplay, economy, roleplay, admin)
-- **Version Management**: semver для template compatibility и dependency resolution
-- **Documentation**: README.md + examples + структурированная документация для каждого шаблона
-- **Cross-platform**: поддержка Windows/Linux/macOS для всех шаблонов
-
-#### Configuration Standards
-```toml
-# Стандартная структура gameverse.toml
-[plugin]
-name = "plugin-name"
-version = "1.0.0"
-description = "Plugin description"
-author = "Author Name"
-
-[dependencies]
-core = ">=0.2.0"
-
-[build]
-type = "dynamic"  # or "script"
-entry_point = "src/lib.rs"
-
-[languages.rust]
-min_version = "1.70"
-features = ["database", "networking"]
-
-[languages.typescript]  
-min_version = "5.0"
-frameworks = ["react"]
-```
-
-#### Testing Standards for CLI Tools
-- **Command Testing**: Все CLI команды должны иметь unit tests
-- **Template Testing**: Автоматическое тестирование генерации шаблонов
-- **Integration Testing**: End-to-end тестирование workflow создания плагинов
-- **Cross-platform Testing**: Валидация на Windows/Linux/macOS
-
-#### Error Handling Standards
-```rust
-// Стандартная обработка ошибок CLI
-pub enum CliError {
-    TemplateNotFound(String),
-    InvalidConfiguration(String),
-    BuildFailed(String),
-    DeploymentFailed(String),
-}
-
-// User-friendly error messages
-impl Display for CliError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            CliError::TemplateNotFound(name) => {
-                write!(f, "Template '{}' not found. Run 'gameverse templates list' to see available templates.", name)
-            }
-            // ... другие варианты с helpful suggestions
-        }
-    }
-}
-```
-
-### 🛠️ CLI Tools Development Standards (v0.2.0) ✅ **ЗАВЕРШЕНО**
-
 ### ⚙️ Native Generator Development Standards (v0.1.0 - В ПРОЦЕССЕ)
 
 #### Текущий прогресс
@@ -1095,3 +1003,51 @@ GameVerse Framework стремится не только предложить т
 - **Автоматизированные Тесты:** Создание тестовых сценариев для проверки корректности вызова и работы ключевых нативных функций в обеих играх.
 - **Интеграционные Тесты:** Тестирование взаимодействия модулей фреймворка, использующих нативные функции.
 - **Обратная Связь от Сообщества:** Механизмы для сбора информации о проблемах с нативными функциями от разработчиков. 
+
+### 🛠️ Server Runtime & IPC Standards (v0.1.0) ✅ **ЗАВЕРШЕНО**
+
+#### Общие принципы
+- **Единая точка входа**: `ServerRuntime` в `core/src/server` управляет жизненным циклом сервера.
+- **IPC-слой по умолчанию**: Unix-socket `/tmp/gameverse_server.sock` (Windows — именованный канал `\\.\pipe\gameverse_server`).
+- **Команды**: `shutdown`, `reload`, `reload_resources`, `status`.
+- **JSON-ответы**: для `status` возвращается объект `{ status, uptime_secs, players_online, resources_loaded, avg_tick_ms }`.
+- **Graceful Shutdown**: перехват `SIGINT/SIGTERM`, завершение активных задач, закрытие сокета, сохранение состояния.
+- **Hot Reload**: резервное удаление ресурсов, повторная инициализация без остановки процесса.
+- **Стандарты логирования**: все IPC-события логируются на уровне `INFO`, ошибки — `ERROR`.
+- **REST Admin API**: Axum-сервер на порту 30121 с JWT-аутентификацией и SSE-логами.
+- **Real-time SSE**: Server-Sent Events через `/api/server/logs/stream` с broadcast каналом tracing subscriber.
+
+#### Требования к реализации
+1. **PID-файл** — `~/.gameverse/server.pid`, создаётся при запуске, удаляется при корректном завершении.
+2. **Код возврата** для CLI:
+   | Команда | Success | Failure |
+   |---------|---------|---------|
+   | start   | 0       | 101     |
+   | stop    | 0       | 102     |
+   | reload  | 0       | 103     |
+   | status  | 0       | 104     |
+3. **Безопасность** — сокет/pipe создаётся с правами `0600` для предотвращения несанкционированного доступа.
+4. **Расширяемость** — новые команды добавляются через `enum ServerCommand` + обработчик в `ServerRuntime::handle_command`.
+
+---
+
+### 🛠️ CLI Tools Development Standards (v0.3.0) – Server Management Update
+
+#### Новые подкоманды `gameverse server`
+- `start [--background]` — сборка (если требуется) и запуск `gameverse_server` в фоне.
+- `stop` — отправка `shutdown` через IPC.
+- `restart` — последовательный `stop` → `start`.
+- `status` — вывод ответа IPC в JSON или prettified таблицу (`--json` флаг).
+- `reload` — hot-reload ресурсов без остановки сервера.
+- `logs [-f]` — поток логов сервера (tail), `-f` для follow.
+
+#### Поведение CLI
+1. Перед выполнением команды проверяется наличие живого PID из `server.pid`.
+2. Все IPC-запросы имеют тайм-аут 3 секунды; при превышении выводится понятная ошибка.
+3. `status` по умолчанию форматирует JSON в колонках, `--raw` выводит оригинальный JSON.
+4. Опция `--which` автоматически ищет бинарь `gameverse_server` рядом с CLI, либо пересобирает `core/bin/server.rs`.
+
+#### Тестирование
+- Unit-тесты на формирование IPC-команд и обработку тайм-аутов.
+- Интеграционные тесты: запуск test-сервера, проверка `start/stop/status` на Unix (CI) и Windows (GH Actions).
+- Mock-слой для сокета, чтобы тесты не требовали реального процесса. 
