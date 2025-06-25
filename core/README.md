@@ -1,21 +1,25 @@
-# Ядро GameVerse Framework
+# GameVerse Framework **Core**
 
-## Описание
-Ядро фреймворка содержит основные компоненты, написанные на Rust и C++. Отвечает за базовую функциональность, взаимодействие с игровыми API и координацию микросервисов.
+## Overview
+The core module contains fundamental components written in **Rust** and **C++**. It is responsible for baseline functionality, interaction with native game APIs, and coordination of the micro-services that make up the GameVerse ecosystem.
 
-## Структура
-- **server/** - Серверная часть ядра
-- **client/** - Клиентская часть ядра
-- **common/** - Общий код, используемый на сервере и клиенте
+**English | [Русский](README_ru.md)**
 
-## Технологии
-- Rust (основной язык)
-- C++20 (для низкоуровневых компонентов)
-- Tokio (асинхронный рантайм)
-- QUIC (сетевой протокол)
+---
 
-## Прогресс разработки
-- [ ] Инициализация проекта Rust
-- [ ] Настройка логирования
-- [ ] Базовая архитектура ядра
-- [ ] Интеграция с микросервисами 
+## Directory structure
+- **server/** – server-side runtime
+- **client/** – client-side runtime
+- **common/** – shared code used by both server and client
+
+## Key technologies
+- **Rust** – primary language for speed and safety
+- **C++20** – for performance-critical low-level parts
+- **Tokio** – asynchronous runtime
+- **QUIC / HTTP-3** – modern network stack
+
+## Development progress
+- [ ] Rust project scaffolding & workspace
+- [ ] Structured logging with `tracing`
+- [ ] Core architecture skeleton (messaging, runtime layers)
+- [ ] Micro-service integration hooks 
