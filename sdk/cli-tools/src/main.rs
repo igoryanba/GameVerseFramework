@@ -54,7 +54,7 @@ CLI GameVerse Framework предоставляет полный набор ин�
 
 Полный список команд: `gameverse --help`
 
-dev: https://x.com/genecental  |  GitHub: https://github.com/igoryanba  |  Telegram: @igoryan34
+dev: https://x.com/genecental  |  GitHub: https://github.com/igoryanba  |  Telegram: https://t.me/igoryan34
 "#
 )]
 pub struct Cli {
@@ -201,5 +201,5 @@ fn print_logo() {
     }
 
     println!("{}", "Type `gameverse --help` to explore commands".bright_white());
-    println!("{}", "dev: https://x.com/genecental  |  GitHub: https://github.com/igoryanba  |  Telegram: @igoryan34".bright_white());
+    println!("{}", "dev: https://x.com/genecental  |  GitHub: https://github.com/igoryanba  |  Telegram: https://t.me/igoryan34".bright_white());
 }
