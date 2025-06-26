@@ -73,8 +73,11 @@ done
 # Begin
 # ----------------------------------------------------------------------------
 print_logo
+
 echo "🎮 GameVerse Framework - Quick Start Setup"
 echo "============================================="
+# Developer info (bright white)
+echo -e "\033[1;37mdev: https://x.com/genecental  |  GitHub: https://github.com/igoryanba  |  Telegram: https://t.me/igoryan34\033[0m"
 
 # Clean up if requested
 if [[ "$CLEAN" == true ]]; then
