@@ -19,10 +19,13 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ### Шаг 2: Клонирование и настройка
 
 ```bash
-git clone https://github.com/gameverse/framework.git gameverse
-cd gameverse
+# Клонируем публичный репозиторий GameVerse Framework
+git clone https://github.com/igoryanba/GameVerseFramework.git
+cd GameVerseFramework
+
+# Запускаем скрипт быстрой установки
 chmod +x scripts/quick-start.sh
-./scripts/quick-start.sh
+./scripts/quick-start.sh --with-basic-gamemode
 ```
 
 ### Шаг 3: Запуск сервера
@@ -37,7 +40,7 @@ cd server-data
 ## 📁 Структура проекта
 
 ```
-gameverse/
+GameVerseFramework/
 ├── server-data/           # Ваш сервер
 │   ├── resources/         # Ресурсы
 │   ├── config/           # Конфигурация
