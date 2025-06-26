@@ -124,8 +124,14 @@ impl ServerRuntime {
         let subscriber = tracing_subscriber::registry()
             .with(tracing_subscriber::fmt::layer())
             .with(LogBroadcastLayer);
-        tracing::subscriber::set_global_default(subscriber)
-            .map_err(|e| anyhow::anyhow!("Failed to set tracing subscriber: {}", e))?;
+        if let Err(e) = tracing::subscriber::set_global_default(subscriber) {
+            // Если уже установлен, игнорируем ошибку
+            if e.to_string().contains("already been set") {
+                warn!("Tracing subscriber already set, skipping: {}", e);
+            } else {
+                return Err(anyhow::anyhow!("Failed to set tracing subscriber: {}", e));
+            }
+        }
         
         info!("Starting GameVerse server '{}'...", self.config.server.name);
         
@@ -170,10 +176,14 @@ impl ServerRuntime {
     
     /// Инициализирует все компоненты сервера
     async fn initialize_components(&mut self) -> Result<()> {
-        // Инициализируем игровой движок
-        debug!("Initializing game engine...");
-        self.engine.initialize().await
-            .context("Failed to initialize game engine")?;
+        // Инициализируем игровой движок (можно пропустить в dev-режиме)
+        if self.dev_mode {
+            debug!("[DEV] Skipping game engine initialization");
+        } else {
+            debug!("Initializing game engine...");
+            self.engine.initialize().await
+                .context("Failed to initialize game engine")?;
+        }
         
         // Инициализируем менеджер ресурсов
         debug!("Initializing resource manager...");
