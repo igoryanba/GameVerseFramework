@@ -6,6 +6,7 @@
 use clap::{Parser, Subcommand};
 use anyhow::Result;
 use tracing::info;
+use colored::*;
 
 mod commands;
 mod templates;
@@ -100,6 +101,9 @@ pub enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Печатаем ASCII-логотип
+    print_logo();
+
     let cli = Cli::parse();
     
     // Initialize logging
@@ -159,4 +163,27 @@ fn init_logging(verbose: bool) -> Result<()> {
         .init();
     
     Ok(())
+}
+
+fn print_logo() {
+    // Простое ASCII с цветами (Green + Cyan gradient)
+    let logo = r#"
+   ██████╗  █████╗ ███╗   ███╗███████╗██╗   ██╗███████╗██████╗ ███████╗
+  ██╔════╝ ██╔══██╗████╗ ████║██╔════╝██║   ██║██╔════╝██╔══██╗██╔════╝
+  ██║  ███╗███████║██╔████╔██║█████╗  ██║   ██║█████╗  ██████╔╝███████╗
+  ██║   ██║██╔══██║██║╚██╔╝██║██╔══╝  ╚██╗ ██╔╝██╔══╝  ██╔══██╗╚════██║
+  ╚██████╔╝██║  ██║██║ ╚═╝ ██║███████╗ ╚████╔╝ ███████╗██║  ██║███████║
+   ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝  ╚═══╝  ╚══════╝╚═╝  ╚═╝╚══════╝
+    "#;
+
+    for (i, line) in logo.lines().enumerate() {
+        let colored_line = if i % 2 == 0 {
+            line.green().bold()
+        } else {
+            line.cyan().bold()
+        };
+        println!("{}", colored_line);
+    }
+
+    println!("{}", "Type `gameverse --help` to explore commands".bright_white());
 }
