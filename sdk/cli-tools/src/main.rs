@@ -40,6 +40,21 @@ Examples:
   gameverse plugin build --release --target all
   gameverse plugin deploy --server localhost:8080
   gameverse server start --dev
+
+---
+Русский:
+CLI GameVerse Framework предоставляет полный набор инструментов для разработки,
+сборки, тестирования и деплоя плагинов. По сравнению с FiveM вы получаете
+горячую перезагрузку, статическую типизацию и кросс-платформенность.
+
+Примеры команд:
+  gameverse plugin new my-economy --template economy --language rust
+  gameverse plugin build --release --target all
+  gameverse server start --dev
+
+Полный список команд: `gameverse --help`
+
+dev: https://x.com/genecental  |  GitHub: https://github.com/igoryanba  |  Telegram: @igoryan34
 "#
 )]
 pub struct Cli {
@@ -186,4 +201,5 @@ fn print_logo() {
     }
 
     println!("{}", "Type `gameverse --help` to explore commands".bright_white());
+    println!("{}", "dev: https://x.com/genecental  |  GitHub: https://github.com/igoryanba  |  Telegram: @igoryan34".bright_white());
 }
