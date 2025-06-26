@@ -78,7 +78,7 @@ export function getPlayerName(playerId: number): string;
 }
 
 /// Простое отображение NativeType -> TypeScript тип
-fn map_native_type_to_ts(ty: &crate::native_types::NativeType) -> String {
+pub fn map_native_type_to_ts(ty: &crate::native_types::NativeType) -> String {
     use crate::native_types::NativeType;
     match ty {
         NativeType::Void => "void".to_string(),

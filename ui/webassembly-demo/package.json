@@ -1,0 +1,49 @@
+{
+  "name": "gameverse-webassembly-ui-demo",
+  "version": "0.1.0",
+  "description": "GameVerse Framework WebAssembly UI Proof of Concept - демонстрация превосходства над FiveM CEF",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:memory": "node scripts/memory-benchmark.js",
+    "bench": "node scripts/performance-comparison.js",
+    "wasm:build": "wasm-pack build --target web --out-dir pkg",
+    "demo": "npm run wasm:build && npm run dev"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "@emotion/react": "^11.11.1",
+    "@emotion/styled": "^11.11.0",
+    "@mui/material": "^5.14.20",
+    "@mui/icons-material": "^5.14.19",
+    "recharts": "^2.8.0",
+    "framer-motion": "^10.16.16"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@vitejs/plugin-react": "^4.2.1",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.8",
+    "vitest": "^1.0.4",
+    "wasm-pack": "^0.12.1",
+    "@rollup/plugin-wasm": "^6.2.2",
+    "vite-plugin-wasm": "^3.2.2",
+    "vite-plugin-top-level-await": "^1.3.1"
+  },
+  "author": "GameVerse Framework Team",
+  "license": "MIT",
+  "keywords": [
+    "gameverse",
+    "webassembly",
+    "fivem-alternative",
+    "ui-framework",
+    "performance",
+    "gaming"
+  ]
+} 

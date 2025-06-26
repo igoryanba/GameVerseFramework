@@ -69,4 +69,14 @@ mod tests {
         // В реальной ситуации это должно быть Ok, но в тесте мы ожидаем ошибку из-за логирования
         assert!(result.is_err() || result.is_ok());
     }
+
+    #[test]
+    fn test_parse_command() {
+        use crate::server::runtime::parse_command;
+        assert_eq!(parse_command("shutdown"), Some(ServerCommand::Shutdown));
+        assert_eq!(parse_command("status"), Some(ServerCommand::RequestStatus));
+        assert_eq!(parse_command("reload_resources"), Some(ServerCommand::ReloadResources));
+        assert_eq!(parse_command("restart"), Some(ServerCommand::Restart));
+        assert_eq!(parse_command("unknown"), None);
+    }
 } 

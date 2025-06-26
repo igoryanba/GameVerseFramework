@@ -500,7 +500,8 @@ impl NativeType {
         // Handle known types
         match type_str {
             "bool" => NativeType::Bool,
-            "int" | "long" | "short" | "BOOL" => NativeType::Int,
+            "int" | "long" | "short" => NativeType::Int,
+            "BOOL" => NativeType::Bool,
             "float" | "double" => NativeType::Float,
             "Vector3" => NativeType::Vector3,
             "Entity" => NativeType::Entity,
@@ -524,7 +525,8 @@ impl NativeType {
             "FUNC_CALLBACK" | "callback" => NativeType::FunctionCallback(None),
             // Обработка неизвестных типов (они могут быть typedef'ами)
             _ => {
-                if type_str.contains("callback") || type_str.contains("FUNC") {
+                let lower = type_str.to_ascii_lowercase();
+                if lower.contains("callback") || lower.contains("func") {
                     NativeType::FunctionCallback(Some(type_str.to_string()))
                 } else {
                     // Opaque используется для типов, которые мы не можем точно определить

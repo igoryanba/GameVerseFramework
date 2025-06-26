@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::runtime;
     use std::path::Path;
     
     #[test]

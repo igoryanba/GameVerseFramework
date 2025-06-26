@@ -1134,3 +1134,17 @@ Migration Potential:
 - [ ] Документация по новым возможностям 
 
 ## Parsers: `fivem_parser.rs` (GTA V), `rdr2_parser.rs` (полный импорт Markdown из RDR2NativesDB, автосинхронизация скриптом `fetch_rdr2_natives.sh`). 
+
+### IPC & Runtime
+- **Unix:** `tokio::net::UnixListener`
+- **Windows:** `tokio::net::windows::named_pipe`
+- **Metrics:** `sysinfo` crate для RSS памяти, CPU, uptime.
+- **Serialization:** `serde_json` для ответов IPC.
+
+### Новые зависимости (Февраль 2025)
+| Crate | Версия | Назначение |
+|-------|--------|------------|
+| sysinfo | 0.30 | Системные метрики (RSS, CPU) |
+| tokio | 1.35 (full) | NamedPipe/UnixListener improvements |
+| clap | 4.x | CLI `console` subcommand будущие фичи |
+| axum | 0.7 | REST Admin API |

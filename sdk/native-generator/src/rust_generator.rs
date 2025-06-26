@@ -495,66 +495,77 @@ use tracing::{debug, warn};
 {{/each}}
 "#;
 
-const RUST_FUNCTION_TEMPLATE: &str = r#"/// {{#if description}}{{{description}}}{{else}}{{name}} native function{{/if}}
-{{#if deprecated}}#[deprecated]{{/if}}
-{{log param}}
-{{log param.param_type}}
-pub {{#if rust_mark_safe_wrapper_unsafe}}unsafe {{/if}}fn {{snake_case name}}_safe(
-    {{#each parameters as |param|}}
-        {{log param}}
-        {{log param.param_type}}
-        {{#if (eq param.name ../return_array_length_out_param)}}
+const RUST_FUNCTION_TEMPLATE: &str = r#"/// {{#if function_data.description}}{{{function_data.description}}}{{else}}{{function_data.name}} native function{{/if}}
+{{#if function_data.deprecated}}#[deprecated]{{/if}}
+pub {{#if function_data.rust_mark_safe_wrapper_unsafe}}unsafe {{/if}}fn {{snake_case function_data.name}}_safe(
+    {{#each function_data.parameters as |param|}}
+        {{#if (eq param.name ../function_data.return_array_length_out_param)}}
             {{#if param.rust_new_name}}{{param.rust_new_name}}{{else}}{{param.name}}{{/if}}: &mut {{get_pointed_type_raw_rust_str param.param_type}}
         {{else}}
-            {{#if param.rust_new_name}}{{param.rust_new_name}}{{else}}{{param.name}}{{/if}}: {{! rust_type param is_return_type_flag=false func_context=../ }}
+            {{#if param.rust_new_name}}{{param.rust_new_name}}{{else}}{{param.name}}{{/if}}: {{rust_type param.param_type}}
         {{/if}}
         {{#unless @last}}, {{/unless}}
     {{/each}}
-) -> NativeResult<{{#if return_type}}{{! rust_type this is_return_type_flag=true func_context=this }}{{else}}Void{{/if}}> {
-    {{#if rust_prologue_code}}
+) -> NativeResult<{{#if function_data.return_type}}{{rust_type function_data.return_type}}{{else}}Void{{/if}}> {
+    {{#if function_data.rust_prologue_code}}
     // -------- Prologue Start --------
-    {{{rust_prologue_code}}}
+    {{{function_data.rust_prologue_code}}}
     // -------- Prologue End ----------
+    {{/if}}
+    {{#if pre_call_statements_joined}}
+    {{{pre_call_statements_joined}}}
     {{/if}}
     unsafe {
         #[cfg(target_pointer_width = "32")]
-        let hash = {{hash}}u32;
+        let hash = {{function_data.hash}}u32;
         #[cfg(target_pointer_width = "64")]
-        let hash = {{hash}}u64;
+        let hash = {{function_data.hash}}u64;
         
         let result = invoke_raw!(
             hash,
-            {{#each parameters as |param|}}
-                {{#if param.rust_new_name}}{{param.rust_new_name}}{{else}}{{param.name}}{{/if}}{{#unless @last}}, {{/unless}}
+            {{#each function_data.parameters as |param|}}
+                {{#if (eq param.name ../function_data.return_array_length_out_param)}}
+                    {{#if ../length_temp_var_name}}&mut {{../length_temp_var_name}}{{else}}{{#if param.rust_new_name}}{{param.rust_new_name}}{{else}}{{param.name}}{{/if}}{{/if}}
+                {{else}}
+                    {{#if param.rust_new_name}}{{param.rust_new_name}}{{else}}{{param.name}}{{/if}}
+                {{/if}}{{#unless @last}}, {{/unless}}
             {{/each}}
         )?;
 
-        {{#if rust_return_type_override}}
-        let result: {{rust_return_type_override}} = result.try_into()?;
+        {{#if function_data.rust_return_type_override}}
+        let result: {{function_data.rust_return_type_override}} = result.try_into()?;
+        {{/if}}
+
+        {{#if function_data.return_array_length_out_param}}
+        {{#if length_temp_var_name}}
+        let len = {{length_temp_var_name}} as usize;
+        let slice = std::slice::from_raw_parts(result as *const {{array_inner_rust_type}}, len);
+        let result = slice.iter().cloned().collect::<Vec<_>>();
+        {{/if}}
         {{/if}}
 
         // -------- Epilogue Start --------
-        {{{rust_epilogue_code}}}
+        {{{function_data.rust_epilogue_code}}}
         // -------- Epilogue End ----------
     }
     Ok(result)
 }
 
-{{#if (ne name "TEST_FUNCTION_FOR_RUST_OVERRIDES")}} // Пример фильтрации, если нужно
-pub {{#if rust_mark_safe_wrapper_unsafe}}unsafe {{/if}}fn {{snake_case name}}_raw(
-    {{#each parameters as |param|}}
-        {{#if param.rust_new_name}}{{param.rust_new_name}}{{else}}{{param.name}}{{/if}}: {{! raw_rust_type param.param_type }}{{#unless @last}}, {{/unless}}
+{{#if (ne function_data.name "TEST_FUNCTION_FOR_RUST_OVERRIDES")}} // Пример фильтрации, если нужно
+pub {{#if function_data.rust_mark_safe_wrapper_unsafe}}unsafe {{/if}}fn {{snake_case function_data.name}}_raw(
+    {{#each function_data.parameters as |param|}}
+        {{#if param.rust_new_name}}{{param.rust_new_name}}{{else}}{{param.name}}{{/if}}: {{raw_rust_type param.param_type}}{{#unless @last}}, {{/unless}}
     {{/each}}
-) -> {{! raw_rust_type return_type }} {
+) -> {{raw_rust_type function_data.return_type}} {
     unsafe {
         #[cfg(target_pointer_width = "32")]
-        let hash = {{hash}}u32;
+        let hash = {{function_data.hash}}u32;
         #[cfg(target_pointer_width = "64")]
-        let hash = {{hash}}u64;
+        let hash = {{function_data.hash}}u64;
 
         invoke_raw_typed!(
             hash,
-            {{#each parameters as |param|}}
+            {{#each function_data.parameters as |param|}}
                 {{#if param.rust_new_name}}{{param.rust_new_name}}{{else}}{{param.name}}{{/if}}{{#unless @last}}, {{/unless}}
             {{/each}}
         )
@@ -606,167 +617,70 @@ fn snake_case_helper(
 fn rust_type_helper(
     h: &Helper,
     _: &Handlebars,
-    ctx: &HbContext, // Используем ctx для логирования
+    _ctx: &HbContext,
     _rc: &mut RenderContext,
     out: &mut dyn Output,
 ) -> HelperResult {
-    // Первый параметр - это либо NativeParameter (для параметров функции),
-    // либо NativeFunction (для возвращаемого значения, если is_return_type_flag = true).
-    let main_data_json = h.param(0).ok_or_else(|| RenderError::new("rust_type_helper: Main data (NativeParameter/NativeFunction) not found"))?.value().clone();
-
-    let is_return_type_flag = h.param(1)
-        .and_then(|p| p.value().as_bool())
-        .unwrap_or(false);
-
-    let func_context_param_value = h.param(2).ok_or_else(|| RenderError::new("rust_type_helper: func_context (NativeFunction) parameter not found"))?.value();
-    debug!("[RUST_TYPE_HELPER_DEBUG] func_context_param_value (raw before clone): {:?}", func_context_param_value);
-    debug!("[RUST_TYPE_HELPER_DEBUG] entire HBS context from helper: {:?}", ctx.data());
-
-    let func_context_json = func_context_param_value.clone();
-    debug!("[RUST_TYPE_HELPER_DEBUG] func_context_json (cloned): {:?}", func_context_json);
-
-    let func_context: NativeFunction = match serde_json::from_value(func_context_json.clone()) { // Клонируем еще раз для лога в случае ошибки
-        Ok(fc) => fc,
+    // Первый параметр - это NativeType JSON object
+    let type_param = h.param(0).ok_or_else(|| RenderError::new("rust_type_helper: type parameter not found"))?.value();
+    
+    let native_type: NativeType = match serde_json::from_value(type_param.clone()) {
+        Ok(nt) => nt,
         Err(e) => {
-            error!("[RUST_TYPE_HELPER_ERROR] Failed to deserialize func_context. Error: {}. JSON value was: {:?}", e, func_context_json);
+            error!("[RUST_TYPE_HELPER_ERROR] Failed to deserialize NativeType. Error: {}. JSON value was: {:?}", e, type_param);
             return Err(RenderError::new(format!(
-                "Failed to deserialize func_context in rust_type_helper: {}. Input JSON: {:?}",
+                "Failed to deserialize NativeType in rust_type_helper: {}. Input JSON: {:?}",
                 e,
-                func_context_json
+                type_param
             )));
         }
     };
 
-    let original_type: NativeType;
-    let type_override_str: Option<String>;
-
-    if is_return_type_flag {
-        // main_data_json это NativeFunction
-        let native_function: NativeFunction = match serde_json::from_value(main_data_json.clone()) { // Клонируем для лога
-            Ok(nf) => nf,
-            Err(e) => {
-                error!("[RUST_TYPE_HELPER_ERROR] Failed to deserialize NativeFunction for return type. Error: {}. JSON value was: {:?}", e, main_data_json);
-                return Err(RenderError::new(format!(
-                    "Failed to deserialize NativeFunction for return type in rust_type_helper: {}. Input JSON: {:?}",
-                    e,
-                    main_data_json
-                )));
-            }
-        };
-        original_type = native_function.return_type.clone();
-        type_override_str = native_function.rust_return_type_override.clone(); 
-    } else {
-        // main_data_json это NativeParameter
-        let native_param: NativeParameter = match serde_json::from_value(main_data_json.clone()) { // Клонируем для лога
-            Ok(np) => np,
-            Err(e) => {
-                error!("[RUST_TYPE_HELPER_ERROR] Failed to deserialize NativeParameter. Error: {}. JSON value was: {:?}", e, main_data_json);
-                return Err(RenderError::new(format!(
-                    "Failed to deserialize NativeParameter in rust_type_helper: {}. Input JSON: {:?}",
-                    e,
-                    main_data_json
-                )));
-            }
-        };
-        original_type = native_param.param_type.clone();
-        type_override_str = native_param.rust_type_override.clone();
-    }
-
-    let rust_type_str = determine_rust_type(original_type, type_override_str.as_ref(), Some(&func_context), is_return_type_flag);
+    let rust_type_str = simple_determine_rust_type(native_type);
     out.write(&rust_type_str)?;
     Ok(())
 }
 
-// Standalone logic for determining Rust type string, callable recursively.
-// Параметр is_return_type теперь напрямую используется из флага.
-fn determine_rust_type(original_native_type: NativeType, type_override_str: Option<&String>, func_context: Option<&NativeFunction>, is_return_type_flag: bool) -> String {
-    let mut effective_native_type = original_native_type.clone(); // Клонируем, чтобы можно было изменить
-
-    if let Some(override_str) = type_override_str {
-        if !override_str.trim().is_empty() {
-            // Пытаемся распарсить override_str. 
-            // Важно: NativeType::from_fivem_type может быть не идеален для всех Rust-специфичных переопределений.
-            // Возможно, понадобится более гибкий парсер или явное указание формата.
-            // Пока что используем существующий, предполагая, что он достаточно гибок или форматы совместимы.
-            match NativeType::from_fivem_type(override_str) { // TODO: Убедиться, что from_fivem_type подходит
-                parsed_type if !matches!(parsed_type, NativeType::Any(_)) || override_str.eq_ignore_ascii_case("any") => {
-                    debug!("Applied type override: '{}' -> {:?}", override_str, parsed_type);
-                    effective_native_type = parsed_type;
-                }
-                _ => {
-                    warn!("Failed to parse rust_type_override '{}' into a valid NativeType or it resolved to Any unexpectedly. Using original type {:?}.", override_str, original_native_type);
-                    // Остаемся с original_native_type (которое уже в effective_native_type)
-                }
-            }
-        }
-    }
-
-    // Дальнейшая логика использует effective_native_type
-    match effective_native_type {
-        NativeType::String => "String".to_string(),
+fn simple_determine_rust_type(native_type: NativeType) -> String {
+    match native_type {
+        NativeType::Void => "()".to_string(),
+        NativeType::Bool => "bool".to_string(),
         NativeType::Int => "i32".to_string(),
         NativeType::Float => "f32".to_string(),
-        NativeType::Bool => "bool".to_string(),
-        NativeType::Void => "()".to_string(),
+        NativeType::String => "String".to_string(),
+        NativeType::Char => "u8".to_string(),
         NativeType::Player => "Player".to_string(),
-        NativeType::Ped => "Ped".to_string(),
-        NativeType::Vehicle => "Vehicle".to_string(),
         NativeType::Entity => "Entity".to_string(),
+        NativeType::Vehicle => "Vehicle".to_string(),
+        NativeType::Ped => "Ped".to_string(),
         NativeType::Object => "Object".to_string(),
-        NativeType::Blip => "Blip".to_string(),
-        NativeType::Cam => "Cam".to_string(),
-        NativeType::Hash => "Hash".to_string(),
+        NativeType::Hash => "u32".to_string(),
         NativeType::Vector3 => "Vector3".to_string(),
-        NativeType::Any(_) => "Any".to_string(),
-        NativeType::Pointer(inner) => match *inner {
-            NativeType::Vector3 => "&mut Vector3".to_string(),
-            NativeType::Any(_) => "*mut std::ffi::c_void".to_string(),
-            NativeType::Char => "*mut std::os::raw::c_char".to_string(),
-            it => format!("*mut {}", determine_rust_type(it, None, None, false)),
-        },
-        NativeType::Array { element_type: ref inner_array_type, size_info } => {
-            // Для Char внутри массива всегда u8
-            let inner_rust_type = match **inner_array_type {
-                NativeType::Char => "u8".to_string(),
-                _ => determine_rust_type(*inner_array_type.clone(), None, None, false),
-            };
+        NativeType::Blip => "Blip".to_string(),
+        NativeType::Pickup => "Pickup".to_string(),
+        NativeType::Cam => "Cam".to_string(),
+        NativeType::FireId => "FireId".to_string(),
+        NativeType::Interior => "Interior".to_string(),
+        NativeType::ItemSet => "ItemSet".to_string(),
+        NativeType::Horse => "Horse".to_string(),
+        NativeType::HorseEntity => "HorseEntity".to_string(),
+        NativeType::Camp => "Camp".to_string(),
+        NativeType::Prompt => "Prompt".to_string(),
+        NativeType::Volume => "Volume".to_string(),
+        NativeType::Array { element_type, size_info } => {
+            let element_rust_type = simple_determine_rust_type(*element_type);
             match size_info {
-                Some(crate::native_types::ArraySizeInfo::Known(n)) => {
-                    format!("[{}; {}]", inner_rust_type, n)
+                Some(crate::native_types::ArraySizeInfo::Known(size)) => {
+                    format!("[{}; {}]", element_rust_type, size)
                 },
-                Some(crate::native_types::ArraySizeInfo::NullTerminated)
-                | Some(crate::native_types::ArraySizeInfo::Infer)
-                | Some(crate::native_types::ArraySizeInfo::Dynamic { .. })
-                | Some(crate::native_types::ArraySizeInfo::SizeParamIndex(_))
-                | None => {
-                    // Особый случай: char[] null-terminated → String
-                    if matches!(**inner_array_type, NativeType::Char) {
-                        return "String".to_string();
-                    }
-                    // Для возврата Vec<T> только если это не фиксированный Known(N)
-                    if is_return_type_flag {
-                        if let Some(func) = func_context {
-                            if func.return_array_length_out_param.is_some() {
-                                return format!("Vec<{}>", inner_rust_type);
-                            }
-                        }
-                        let raw_inner_ffi_type = determine_raw_rust_ffi_type(*inner_array_type.clone());
-                        if raw_inner_ffi_type.starts_with("*mut") || raw_inner_ffi_type.starts_with("*const") {
-                            return raw_inner_ffi_type;
-                        } else {
-                            return format!("*mut {}", raw_inner_ffi_type);
-                        }
-                    }
-                    format!("Vec<{}>", inner_rust_type)
-                }
+                _ => format!("Vec<{}>", element_rust_type)
             }
         },
-        NativeType::Char => "char".to_string(),
-        NativeType::FunctionCallback(_) => "FunctionCallback".to_string(),
-        NativeType::Opaque(opt_name) => opt_name.unwrap_or_else(|| "Opaque".to_string()),
-        NativeType::Pickup => "std::os::raw::c_int".to_string(),
-        NativeType::Horse | NativeType::HorseEntity | NativeType::Camp | NativeType::Prompt | NativeType::Volume => "std::os::raw::c_int".to_string(),
-        _ => "std::os::raw::c_int".to_string(),
+        NativeType::Pointer(inner) => format!("&mut {}", simple_determine_rust_type(*inner)),
+        NativeType::Reference(inner) => format!("&{}", simple_determine_rust_type(*inner)),
+        NativeType::FunctionCallback(_) => "unsafe extern \"C\" fn()".to_string(),
+        NativeType::Any(_) => "serde_json::Value".to_string(),
+        NativeType::Opaque(name) => name.unwrap_or_else(|| "OpaqueType".to_string()),
     }
 }
 
@@ -948,7 +862,7 @@ fn ffi_call_param_helper(
                 println!("[DEBUG ffi_call_param_helper] Использую временную переменную для out-параметра длины: {}", temp_var_name_for_length);
                 // Это out-параметр для длины. Формируем указатель на временную переменную.
                 let temp_var_actual_type = match current_param.param_type {
-                    NativeType::Pointer(ref inner_ptr_type) => determine_rust_type(*inner_ptr_type.clone(), None, None, false),
+                    NativeType::Pointer(ref inner_ptr_type) => simple_determine_rust_type(*inner_ptr_type.clone()),
                     _ => "i32".to_string(), // По умолчанию, если не указатель (должно быть уточнено)
                 };
                 out.write(&format!("&mut {} as *mut {}", temp_var_name_for_length, temp_var_actual_type))?;
@@ -1065,7 +979,7 @@ fn safe_return_wrap_helper(
     let mut array_inner_rust_type = "()".to_string();
 
     if let NativeType::Array { element_type: ref inner_array_type, .. } = native_function.return_type {
-        array_inner_rust_type = determine_rust_type(*inner_array_type.clone(), None, None, true);
+        array_inner_rust_type = simple_determine_rust_type(*inner_array_type.clone());
         if let Some(ref len_param_name) = native_function.return_array_length_out_param {
             // ВРЕМЕННАЯ ОТЛАДКА
             println!("[DEBUG safe_return_wrap_helper] len_param_name = {:?}", len_param_name);
@@ -1095,7 +1009,7 @@ fn safe_return_wrap_helper(
         template_data_for_render.insert("length_param_snake_name".to_string(), json!(len_param_snake_name));
         let temp_var_name = format!("__{}_len_val", len_param_snake_name);
         let temp_var_type = match len_param_original_native_type {
-            NativeType::Pointer(inner_ptr_type) => determine_rust_type(*inner_ptr_type.clone(), None, None, false),
+            NativeType::Pointer(inner_ptr_type) => simple_determine_rust_type(*inner_ptr_type.clone()),
             _ => "i32".to_string(), 
         };
         pre_call_statements_for_template.push(format!("let mut {}: {} = Default::default();", temp_var_name, temp_var_type));

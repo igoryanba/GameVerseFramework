@@ -1,0 +1,32 @@
+# GameVerse Framework root .gitignore
+
+# Rust build output
+/target
+**/target/
+
+# Node modules
+node_modules/
+**/node_modules/
+
+# IDE / OS files
+.DS_Store
+.idea/
+.vscode/
+
+# Caches & generated artefacts
+.cache/
+**/.cache/
+/generated/
+**/generated/
+
+# Logs
+*.log
+logs/
+
+# Binary releases
+/bin/
+
+# Misc
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log* 

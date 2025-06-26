@@ -418,3 +418,8 @@ GameVerse QA Pipeline:
 - Тесты устойчивы к форматированию, покрывают все типы массивов, строки, edge-cases.
 - Any/Callback/Opaque: базовая поддержка реализована, продвинутая — в процессе доработки.
 - В планах: TypeScript-генератор, улучшение парсера и тестов, расширенная поддержка Any/Callback/Opaque.
+
+- **core/src/server/** – `runtime.rs`, `runtime_tests.rs`
+- **core/bin/server.rs** – точка входа для бинаря `gameverse_server`
+- **sdk/cli-tools/src/commands/server.rs** – подкоманды `server` (v0.3.0)
+- **core/src/server/runtime.rs** – точка входа, IPC, Admin API Axum

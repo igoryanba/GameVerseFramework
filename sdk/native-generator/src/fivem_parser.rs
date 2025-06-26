@@ -603,6 +603,19 @@ impl FiveMDocParser {
 
     // Новая функция для парсинга одной нативной функции из содержимого .md файла
     fn parse_native_from_markdown_content(&self, md_content: &str, default_category: &str) -> Result<Option<NativeFunction>> {
+        // --- Sanitization step --------------------------------------------------------------
+        // Некоторые Markdown-файлы FiveM содержат YAML-директивы вида
+        // `%YAML_directive "returns"`, которые вызывают предупреждения у YAML-парсера
+        // сторонних библиотек. Эти директивы нам не нужны – удаляем их до дальнейшего
+        // разбора, чтобы избежать лишнего шума в логах.
+        let cleaned_md: String = md_content
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("%YAML_directive"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        // ------------------------------------------------------------------------------------
+ 
         let front_matter_re = Regex::new(r"(?s)---\s*ns:\s*(\w+)\s*---").unwrap();
         let name_re = Regex::new(r"(?m)^##\s*([\w_]+)\s*$").unwrap();
         // Обновленный signature_re: пропускаем cs_type перед типом возврата
@@ -619,11 +632,11 @@ impl FiveMDocParser {
         )).unwrap();
         let description_re = Regex::new(r"(?s)```[^`]*```\s+(.*?)(?:\s+(?:##|---|\*\*))|(?s)```[^`]*```\s+(.*?)\z").unwrap();
 
-        let category = front_matter_re.captures(md_content)
+        let category = front_matter_re.captures(&cleaned_md)
             .and_then(|cap| cap.get(1).map(|m| m.as_str().to_uppercase()))
             .unwrap_or_else(|| default_category.to_uppercase());
 
-        let name_from_h2 = match name_re.captures(md_content) {
+        let name_from_h2 = match name_re.captures(&cleaned_md) {
             Some(cap) => cap.get(1).map_or("", |m| m.as_str()).to_string(),
             None => {
                 debug!("No H2 ## name found in markdown for category {}", category);
@@ -632,9 +645,9 @@ impl FiveMDocParser {
         };
 
         // Отладка
-        // debug!("MD_CONTENT for '{}': |||{}|||", name_from_h2, md_content);
-        println!("MD_CONTENT for '{}': |||{}|||", name_from_h2, md_content);
-        let sig_caps_option = signature_re.captures(md_content);
+        // debug!("MD_CONTENT for '{}': |||{}|||", name_from_h2, cleaned_md);
+        println!("MD_CONTENT for '{}': |||{}|||", name_from_h2, cleaned_md);
+        let sig_caps_option = signature_re.captures(&cleaned_md);
         // debug!("SIG_CAPS_OPTION for '{}': {:?}", name_from_h2, sig_caps_option.is_some());
         println!("SIG_CAPS_OPTION for '{}': {:?}", name_from_h2, sig_caps_option.is_some());
 
@@ -740,7 +753,7 @@ impl FiveMDocParser {
 
         let parameters = parse_parameters_from_md_signature(&params_str, &final_name)?;
         
-        let description = description_re.captures(md_content)
+        let description = description_re.captures(&cleaned_md)
             .and_then(|cap| cap.get(1).or_else(|| cap.get(2)).map(|m| m.as_str().trim().to_string()))
             .filter(|s| !s.is_empty());
 

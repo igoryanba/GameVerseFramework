@@ -1,0 +1,213 @@
+/* GameVerse Framework - Global Styles */
+
+/* CSS Custom Properties for theming */
+:root {
+  --gv-primary: #00ff88;
+  --gv-primary-dark: #00cc6a;
+  --gv-secondary: #ff6b00;
+  --gv-background: #1a1a2e;
+  --gv-surface: #16213e;
+  --gv-text-primary: #ffffff;
+  --gv-text-secondary: #cccccc;
+  --gv-shadow: rgba(0, 255, 136, 0.2);
+  --gv-border: rgba(255, 255, 255, 0.1);
+  
+  /* Performance optimizations */
+  --gv-transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --gv-border-radius: 8px;
+  --gv-spacing: 8px;
+}
+
+/* Reset and base styles */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+  /* Enable GPU acceleration */
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--gv-background);
+  color: var(--gv-text-primary);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  height: 100%;
+  overflow-x: hidden;
+}
+
+/* Performance optimizations */
+.performance-optimized {
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* Animations with hardware acceleration */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+/* Utility classes */
+.fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+.slide-in {
+  animation: slideIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.pulse {
+  animation: pulse 2s infinite;
+}
+
+/* Gaming-style glow effects */
+.glow {
+  box-shadow: 0 0 20px var(--gv-shadow);
+  transition: box-shadow var(--gv-transition);
+}
+
+.glow:hover {
+  box-shadow: 0 0 30px var(--gv-shadow), 0 0 40px var(--gv-shadow);
+}
+
+/* Performance monitoring indicators */
+.performance-indicator {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  background: rgba(0, 0, 0, 0.8);
+  color: var(--gv-primary);
+  padding: 8px 12px;
+  border-radius: var(--gv-border-radius);
+  font-size: 12px;
+  font-family: 'Courier New', monospace;
+  z-index: 10000;
+  border: 1px solid var(--gv-border);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--gv-background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--gv-primary);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--gv-primary-dark);
+}
+
+/* Focus states for accessibility */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--gv-primary);
+  outline-offset: 2px;
+}
+
+/* Selection styling */
+::selection {
+  background: var(--gv-primary);
+  color: var(--gv-background);
+}
+
+/* Loading states */
+.loading {
+  position: relative;
+  overflow: hidden;
+}
+
+.loading::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.1),
+    transparent
+  );
+  animation: loading-shimmer 1.5s infinite;
+}
+
+@keyframes loading-shimmer {
+  0% {
+    left: -100%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+/* Responsive design helpers */
+@media (max-width: 768px) {
+  :root {
+    --gv-spacing: 6px;
+  }
+  
+  .performance-indicator {
+    display: none; /* Hide on mobile for cleaner UI */
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  :root {
+    --gv-border: rgba(255, 255, 255, 0.3);
+    --gv-shadow: rgba(0, 255, 136, 0.5);
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+} 

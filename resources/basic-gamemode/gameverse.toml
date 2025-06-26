@@ -1,0 +1,30 @@
+[resource]
+name = "basic-gamemode"
+version = "1.0.0"
+author = "GameVerse Team"
+description = "Basic gamemode with spawn, chat, and admin functionality"
+website = "https://gameverse.dev"
+license = "MIT"
+tags = ["core", "gamemode", "spawn"]
+
+[scripts]
+server = ["server/main.ts", "server/spawn.ts", "server/admin.ts"]
+client = ["client/spawn.ts", "client/ui.tsx", "client/chat.ts"]
+shared = ["shared/config.ts", "shared/events.ts"]
+
+[[dependencies]]
+name = "gameverse-core"
+version = ">=0.1.0"
+required = true
+
+[config]
+# Spawn locations
+default_spawn = { x = 686.245, y = 577.950, z = 130.461 }
+max_players = 32
+enable_chat = true
+enable_admin = true
+
+[ui]
+framework = "react"
+entry_point = "client/ui.tsx"
+build_command = "npm run build" 

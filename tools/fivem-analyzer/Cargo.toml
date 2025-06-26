@@ -1,0 +1,78 @@
+[package]
+name = "fivem-analyzer"
+version = "0.1.0"
+edition = "2021"
+description = "Advanced FiveM resource analysis and migration tool for GameVerse Framework"
+authors = ["GameVerse Team"]
+
+[dependencies]
+# Core Rust dependencies
+tokio = { version = "1.35", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+toml = "0.8"
+anyhow = "1.0"
+thiserror = "1.0"
+clap = { version = "4.4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# File system and path handling
+walkdir = "2.4"
+glob = "0.3"
+regex = "1.10"
+ignore = "0.4"
+
+# Lua parsing (for fxmanifest.lua analysis)
+rlua = "0.19"
+mlua = { version = "0.9", features = ["lua54", "vendored"] }
+
+# SQL and database analysis
+sqlparser = "0.43"
+mysql_common = "0.32"
+
+# Performance benchmarking
+criterion = { version = "0.5", optional = true }
+sysinfo = "0.30"
+
+# HTTP client for downloading QBCore resources
+reqwest = { version = "0.11", features = ["json", "stream"] }
+url = "2.5"
+
+# Git integration for repository analysis
+git2 = "0.18"
+
+# Markdown and documentation parsing
+markdown = "1.0"
+pulldown-cmark = "0.9"
+
+# Date and time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+[dev-dependencies]
+tempfile = "3.8"
+assert_fs = "1.0"
+
+[features]
+default = []
+benchmarks = ["criterion"]
+full-analysis = []
+
+[[bin]]
+name = "fivem-analyzer"
+path = "src/main.rs"
+
+[[bin]]
+name = "qbcore-migration"
+path = "src/bin/qbcore_migration.rs"
+
+[[bin]]
+name = "resource-benchmark"
+path = "src/bin/resource_benchmark.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort" 
