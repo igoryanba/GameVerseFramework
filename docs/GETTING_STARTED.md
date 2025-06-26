@@ -6,15 +6,24 @@
 
 ### Шаг 1: Установка зависимостей
 
-```bash
-# Установка Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+GameVerse требует **Git, Rust (cargo), Node.js**.
 
-# Установка Node.js (для TypeScript ресурсов)
-# macOS: brew install node
-# Ubuntu: curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-# Windows: https://nodejs.org/
+| Платформа | Команда | Пояснение |
+|-----------|---------|-----------|
+| **macOS** (Homebrew) | `brew install git node`<br/>`curl https://sh.rustup.rs -sSf | sh -s -- -y` | Rust будет установлен через `rustup`; перезапустите терминал или `source $HOME/.cargo/env` |
+| **Ubuntu / Debian** | `sudo apt update && sudo apt install -y git curl build-essential`<br/>`curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash - && sudo apt install -y nodejs`<br/>`curl https://sh.rustup.rs -sSf | sh -s -- -y` | Пакет `build-essential` нужен для компиляции Rust-кода |
+| **Arch / Manjaro** | `sudo pacman -S git nodejs npm rustup`<br/>`rustup default stable` | После установки выполните `rustup default stable` |
+| **Windows 10/11** | `winget install --id Git.Git -e`<br/>`winget install --id OpenJS.NodeJS.LTS -e`<br/>Скачайте rustup-installer: https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe | Консоль — PowerShell. При установке Rust выберите «default toolchain: stable» |
+
+Проверьте, что всё установлено:
+
+```bash
+git --version
+rustc --version && cargo --version
+node --version && npm --version
 ```
+
+Скрипт `scripts/quick-start.sh` также проверит эти зависимости и остановится, если чего-то не хватает.
 
 ### Шаг 2: Клонирование и настройка
 

@@ -11,15 +11,19 @@ echo "============================================="
 # Check prerequisites
 echo "📋 Checking prerequisites..."
 
-if ! command -v cargo &> /dev/null; then
-    echo "❌ Rust/Cargo not found. Install from: https://rustup.rs/"
+# Helper to verify that a command exists
+need_cmd() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo -e "\033[0;31m❌ '$1' not found. См. docs/GETTING_STARTED.md → Установка зависимостей.\033[0m"
     exit 1
-fi
+  fi
+}
 
-if ! command -v node &> /dev/null; then
-    echo "❌ Node.js not found. Install from: https://nodejs.org/"
-    exit 1
-fi
+# Required tools
+need_cmd git
+need_cmd rustc
+need_cmd cargo
+need_cmd node
 
 echo "✅ Prerequisites check passed"
 
