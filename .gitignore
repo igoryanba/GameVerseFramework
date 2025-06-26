@@ -29,4 +29,12 @@ logs/
 # Misc
 npm-debug.log*
 yarn-debug.log*
-yarn-error.log* 
+yarn-error.log*
+
+# Native generator artifacts
+sdk/native-generator/**/.cache/
+sdk/native-generator/**/debug_*/
+sdk/native-generator/**/fixed_output/
+sdk/native-generator/**/final_test/
+sdk/native-generator/**/production_*/
+sdk/native-generator/**/test_coverage/ 
