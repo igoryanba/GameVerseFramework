@@ -742,7 +742,14 @@ Write-Host "Use 'nssm start $serviceName' to start and 'nssm stop $serviceName' 
                 tokio::fs::write(&nssm_path, script).await?;
             }
 
-            println!("✅ GameVerse server skeleton created at {}", target.display());
+            println!("✅ GameVerse server skeleton created at {}", folder);
+            println!("📋 Next steps:");
+            println!("   1. cd {}", folder);
+            println!("   2. cargo build -p gameverse-core --bin gameverse_server --release");
+            println!("   3. For auto-start:");
+            println!("      Linux:   sudo cp systemd/gameverse.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now gameverse");
+            println!("      Windows: .\\install_nssm.ps1 (run as Administrator)");
+            println!("      Docker:  docker-compose up -d");
         }
     }
     

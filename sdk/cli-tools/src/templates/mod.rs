@@ -419,7 +419,7 @@ impl TemplateManager {
                         languages: template_file.languages.keys().cloned().collect(),
                         features: vec![], // Convert from HashMap to Vec if needed
                         variables: HashMap::new(), // Convert VariableConfig to TemplateVariable if needed
-                        dependencies: template_file.dependencies,
+                        dependencies: template_file.dependencies.clone(),
                     };
                     
                     // Convert features from HashMap<String, bool> to Vec<String>
@@ -710,4 +710,30 @@ fn camelcase_helper(
         .collect::<String>();
     out.write(&camel_case)?;
     Ok(())
-} 
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{Config, TemplateConfig};
+    use std::path::PathBuf;
+
+    fn local_template_manager() -> TemplateManager {
+        let mut cfg = Config::default();
+        cfg.templates = TemplateConfig {
+            repository: "local".to_string(),
+            local_dir: Some(PathBuf::from("template-repository")),
+            cache_duration: 0,
+        };
+        TemplateManager::new(&cfg.templates)
+    }
+
+    #[tokio::test]
+    async fn list_contains_basic_templates() {
+        let tm = local_template_manager();
+        let templates = tm.list_templates().await.expect("list templates");
+        let names: Vec<String> = templates.into_iter().map(|t| t.name).collect();
+        assert!(names.contains(&"server-basic".to_string()));
+        assert!(names.contains(&"client-basic".to_string()));
+    }
+}

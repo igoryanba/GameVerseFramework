@@ -1,0 +1,12 @@
+[plugin]
+name = "{{plugin_name}}"
+version = "0.1.0"
+description = "{{plugin_description}}"
+
+author = "GameVerse Developer"
+
+[build]
+typescript = { entry = "src/index.ts", out_dir = "dist" }
+
+[entrypoints]
+client = { module = "dist/index.js" } 

@@ -7,4 +7,5 @@ pub mod templates;
 pub mod init;
 pub mod version;
 pub mod completions;
-pub mod sdk; 
+pub mod sdk;
+pub mod migrate; 

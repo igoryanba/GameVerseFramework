@@ -1,0 +1,33 @@
+[template]
+name = "server-basic"
+description = "Базовый серверный плагин (Rust) с демонстрацией EventBridge/FiveMCompat"
+author = "GameVerse Team"
+version = "0.1.0"
+gameverse_version = ">=0.2.0"
+category = "server"
+tags = ["server", "rust", "fcl", "example"]
+
+[languages]
+rust = { min_version = "1.70", features = ["ffi", "dynamic-loading"] }
+
+[variables]
+[variables.plugin_name]
+description = "Название плагина (kebab-case)"
+type = "string"
+default = "hello-server"
+validation = "^[a-z][a-z0-9-]*$"
+
+[variables.plugin_name_camel]
+description = "CamelCase имя для структуры Rust"
+type = "string"
+default = "HelloServer"
+transform = "camelcase"
+
+[structure]
+rust = [
+  "gameverse.toml",
+  "Cargo.toml",
+  "src/lib.rs",
+  "README.md",
+  ".gitignore"
+] 

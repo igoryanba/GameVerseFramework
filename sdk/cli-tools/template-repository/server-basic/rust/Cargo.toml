@@ -1,0 +1,16 @@
+[package]
+name = "{{plugin_name}}"
+version = "{{plugin_version}}"
+edition = "2021"
+description = "GameVerse server plugin example"
+authors = ["{{plugin_author}}"]
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+anyhow = "1"
+tracing = "0.1"
+async-trait = "0.1"
+gameverse-core = { path = "../../../core", version = "*" } 

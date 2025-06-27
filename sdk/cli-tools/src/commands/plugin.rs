@@ -175,7 +175,7 @@ async fn create_plugin(
     } else if no_interactive {
         config.plugin.default_template.clone()
     } else {
-        let templates = vec!["basic", "economy", "roleplay", "admin", "custom"];
+        let templates = vec!["basic", "server-basic", "client-basic", "economy", "roleplay", "admin", "custom"];
         let selection = Select::new()
             .with_prompt("Select plugin template")
             .items(&templates)

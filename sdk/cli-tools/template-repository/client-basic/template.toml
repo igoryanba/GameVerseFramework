@@ -1,0 +1,32 @@
+[template]
+name = "client-basic"
+description = "Базовый клиентский плагин (TypeScript) демонстрирующий подписку на события"
+author = "GameVerse Team"
+version = "0.1.0"
+gameverse_version = ">=0.2.0"
+category = "client"
+tags = ["client", "typescript", "fcl", "example"]
+
+[languages]
+typescript = { min_version = "5.0", frameworks = ["node"] }
+
+[variables]
+[variables.plugin_name]
+description = "Название плагина (kebab-case)"
+type = "string"
+default = "hello-client"
+validation = "^[a-z][a-z0-9-]*$"
+
+[variables.plugin_description]
+description = "Описание плагина"
+type = "string"
+default = "Демо клиентского плагина"
+
+[structure]
+typescript = [
+  "gameverse.toml",
+  "package.json",
+  "src/index.ts",
+  "README.md",
+  ".gitignore"
+] 

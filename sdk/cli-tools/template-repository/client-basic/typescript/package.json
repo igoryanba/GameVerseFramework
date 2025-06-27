@@ -1,0 +1,19 @@
+{
+  "name": "{{plugin_name}}",
+  "version": "0.1.0",
+  "description": "{{plugin_description}}",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "lint": "eslint src --ext .ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "latest",
+    "eslint": "^8.0.0"
+  },
+  "dependencies": {
+    "gameverse-sdk": "*"
+  }
+} 

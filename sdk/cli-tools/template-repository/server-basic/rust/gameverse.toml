@@ -1,0 +1,11 @@
+[plugin]
+name = "{{plugin_name}}"
+version = "{{plugin_version}}"
+author = "{{plugin_author}}"
+description = "{{plugin_description}}"
+
+[build]
+rust = { library = "target/release/lib{{plugin_name}}.so" }
+
+[entrypoints]
+server = { create = "create_plugin", destroy = "destroy_plugin" } 

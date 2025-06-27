@@ -19,6 +19,7 @@ use commands::{
     marketplace::MarketplaceCommands,
     templates::TemplatesCommands,
     sdk::SdkCommands,
+    migrate::MigrateCommands,
 };
 
 /// GameVerse Framework CLI - Plugin Development Tools
@@ -112,6 +113,10 @@ pub enum Commands {
         /// Shell type (bash, zsh, fish, powershell)
         shell: String,
     },
+    
+    /// Resource migration commands
+    #[command(subcommand)]
+    Migrate(MigrateCommands),
 }
 
 #[tokio::main]
@@ -154,6 +159,9 @@ async fn main() -> Result<()> {
         }
         Commands::Completions { shell } => {
             commands::completions::execute(shell).await?;
+        }
+        Commands::Migrate(cmd) => {
+            commands::migrate::execute(cmd, &config).await?;
         }
     }
     
