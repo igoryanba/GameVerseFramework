@@ -23,6 +23,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use eventsource_stream::Eventsource;
 use futures_util::{StreamExt, TryStreamExt};
 
+use gameverse_core::config as core_config;
+
 #[derive(Subcommand)]
 pub enum ServerCommands {
     /// Start GameVerse server
@@ -73,6 +75,49 @@ pub enum ServerCommands {
     
     /// Generate JWT token for admin API access
     Token,
+    
+    /// Validate server configuration file
+    ValidateConfig {
+        /// Path to config file (optional)
+        #[arg(short, long)]
+        config: Option<String>,
+    },
+    
+    /// Resource management subcommands
+    Resource {
+        #[command(subcommand)]
+        action: ResourceAction,
+    },
+    
+    /// Initialize a new GameVerse server folder
+    Init {
+        /// Target directory (will be created if not exists)
+        folder: String,
+    },
+}
+
+/// Subcommands for resource manipulation
+#[derive(Subcommand)]
+pub enum ResourceAction {
+    /// List all resources loaded on the server
+    List,
+    /// Start a resource by name
+    Start {
+        /// Resource name
+        name: String,
+    },
+    /// Stop a resource by name
+    Stop {
+        /// Resource name
+        name: String,
+    },
+    /// Reload (hot) a resource by name
+    Reload {
+        /// Resource name
+        name: String,
+    },
+    /// Watch filesystem and auto-reload on changes
+    Watch,
 }
 
 // Путь к серверному бинарнику
@@ -508,7 +553,221 @@ pub async fn execute(cmd: ServerCommands, _config: &Config) -> Result<()> {
         ServerCommands::Token => {
             generate_and_print_jwt()?;
         }
+        
+        ServerCommands::ValidateConfig { config } => {
+            // Реализация команды ValidateConfig
+            println!("🔄 Validating server configuration file...");
+            
+            // Проверяем наличие конфигурационного файла
+            let config_path: Option<&str> = config.as_deref();
+            match tokio::fs::read_to_string(config_path.unwrap_or("server-config.toml")).await {
+                Ok(_) => {
+                    match core_config::load_config(config_path) {
+                        Ok(cfg) => {
+                            println!("✅ Configuration is valid (server name: '{}', port: {})", cfg.server.name, cfg.server.port);
+                        }
+                        Err(e) => {
+                            println!("❌ Configuration invalid: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("❌ Failed to read config file: {}", e);
+                }
+            }
+        }
+        
+        ServerCommands::Resource { action } => {
+            // Реализация команды Resource
+            match action {
+                ResourceAction::List => {
+                    println!("🔄 Listing all resources loaded on the server...");
+                    
+                    // Вызываем send_ipc_command для получения списка ресурсов
+                    let result = send_ipc_command("resource list").await?;
+                    
+                    println!("🎉 Resources: {}", result);
+                }
+                ResourceAction::Start { name } => {
+                    println!("🚀 Starting resource: {}", name);
+                    
+                    // Вызываем send_ipc_command для запуска ресурса
+                    let result = send_ipc_command(&format!("resource start {}", name)).await?;
+                    
+                    println!("🎉 Resource started. Result: {}", result);
+                }
+                ResourceAction::Stop { name } => {
+                    println!("🛑 Stopping resource: {}", name);
+                    
+                    // Вызываем send_ipc_command для остановки ресурса
+                    let result = send_ipc_command(&format!("resource stop {}", name)).await?;
+                    
+                    println!("🎉 Resource stopped. Result: {}", result);
+                }
+                ResourceAction::Reload { name } => {
+                    println!("🔄 Reloading resource: {}", name);
+                    
+                    // Вызываем send_ipc_command для перезагрузки ресурса
+                    let result = send_ipc_command(&format!("resource reload {}", name)).await?;
+                    
+                    println!("🎉 Resource reloaded. Result: {}", result);
+                }
+                ResourceAction::Watch => {
+                    println!("🔄 Watching resources directory for changes (Ctrl+C to stop)...");
+                    use notify::{RecommendedWatcher, Watcher, EventKind, RecursiveMode};
+                    use tokio::sync::mpsc as tokio_mpsc;
+                    use std::sync::mpsc as std_mpsc;
+
+                    // Канал между notify (sync) и async контекстом
+                    let (tx, rx) = std_mpsc::channel();
+                    let mut watcher: RecommendedWatcher = RecommendedWatcher::new(tx, notify::Config::default())?;
+                    watcher.watch(Path::new("resources"), RecursiveMode::Recursive)?;
+
+                    // Переносим события в async контекст
+                    let (async_tx, mut async_rx) = tokio_mpsc::channel::<notify::Event>(100);
+
+                    std::thread::spawn(move || {
+                        while let Ok(event_result) = rx.recv() {
+                            if let Ok(event) = event_result {
+                                let _ = async_tx.blocking_send(event);
+                            }
+                        }
+                    });
+
+                    while let Some(event) = async_rx.recv().await {
+                        if matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_)) {
+                            // Пытаемся угадать имя ресурса из пути
+                            if let Some(path) = event.paths.get(0) {
+                                if let Some(res_dir) = path.ancestors().find(|p| p.parent() == Some(Path::new("resources"))) {
+                                    if let Some(name_os) = res_dir.file_name() {
+                                        if let Some(name) = name_os.to_str() {
+                                            let _ = send_ipc_command(&format!("resource reload {}", name)).await;
+                                            println!("♻️  Hot-reloaded resource '{}'", name);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        ServerCommands::Init { folder } => {
+            use std::path::Path;
+            use tokio::io::AsyncWriteExt;
+
+            let target = Path::new(&folder);
+            tokio::fs::create_dir_all(target.join("config")).await?;
+            tokio::fs::create_dir_all(target.join("resources")).await?;
+
+            // server-config.toml stub
+            let cfg_path = target.join("config/server-config.toml");
+            if !cfg_path.exists() {
+                let sample_cfg = r#"[server]
+name = "MyGameVerseServer"
+admin_port = 30121
+jwt_secret = "CHANGE_ME"
+resources_dir = "./resources"
+"#;
+                tokio::fs::write(&cfg_path, sample_cfg).await?;
+            }
+
+            // docker-compose.yml stub
+            let compose_path = target.join("docker-compose.yml");
+            if !compose_path.exists() {
+                let content = r#"version: '3.8'
+services:
+  gameverse_server:
+    image: ghcr.io/gameverse/server:latest
+    volumes:
+      - ./resources:/opt/gameverse/resources:ro
+      - ./config:/opt/gameverse/config:ro
+    environment:
+      - GAMEVERSE_CONFIG=/opt/gameverse/config/server-config.toml
+    ports:
+      - "30121:30121" # admin API
+    restart: unless-stopped
+"#;
+                tokio::fs::write(&compose_path, content).await?;
+            }
+
+            // systemd unit
+            let systemd_dir = target.join("systemd");
+            tokio::fs::create_dir_all(&systemd_dir).await?;
+            let unit_path = systemd_dir.join("gameverse.service");
+            if !unit_path.exists() {
+                let unit = format!(r#"[Unit]
+Description=GameVerse Server
+After=network.target
+
+[Service]
+Type=simple
+User=gameverse
+WorkingDirectory={wd}
+ExecStart={wd}/gameverse_server {wd}/config/server-config.toml
+Restart=on-failure
+Environment=RUST_LOG=info
+
+[Install]
+WantedBy=multi-user.target
+"#, wd = target.display());
+                tokio::fs::write(&unit_path, unit).await?;
+            }
+
+            // NSSM install script (PowerShell)
+            let nssm_path = target.join("install_nssm.ps1");
+            if !nssm_path.exists() {
+                let script = r#"param(
+    [string]$NssmExe = "C:\\nssm\\win64\\nssm.exe"
+)
+
+if (-Not (Test-Path $NssmExe)) {
+    Write-Error "❌ NSSM not found at $NssmExe"
+    exit 1
+}
+
+$serviceName = "GameVerseServer"
+$exePath      = "$PSScriptRoot\\gameverse_server.exe"
+$configPath   = "$PSScriptRoot\\config\\server-config.toml"
+
+Write-Host "🚀 Installing service $serviceName via NSSM..."
+& $NssmExe install $serviceName $exePath $configPath
+& $NssmExe set $serviceName DisplayName "GameVerse Server"
+& $NssmExe set $serviceName Start SERVICE_AUTO_START
+
+Write-Host "✅ Service $serviceName installed successfully."
+Write-Host "Use 'nssm start $serviceName' to start and 'nssm stop $serviceName' to stop."
+"#;
+                tokio::fs::write(&nssm_path, script).await?;
+            }
+
+            println!("✅ GameVerse server skeleton created at {}", target.display());
+        }
     }
     
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+    use crate::config::Config;
+
+    #[tokio::test]
+    async fn init_creates_required_files() {
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("srv");
+        let cfg = Config::default();
+        // Execute Init command
+        execute(ServerCommands::Init { folder: target.to_string_lossy().to_string() }, &cfg)
+            .await
+            .expect("Init should succeed");
+
+        assert!(target.join("config/server-config.toml").exists());
+        assert!(target.join("docker-compose.yml").exists());
+        assert!(target.join("systemd/gameverse.service").exists());
+        assert!(target.join("install_nssm.ps1").exists());
+    }
 } 

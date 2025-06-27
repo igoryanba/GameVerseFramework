@@ -25,26 +25,75 @@ node --version && npm --version
 
 Скрипт `scripts/quick-start.sh` также проверит эти зависимости и остановится, если чего-то не хватает.
 
-### Шаг 2: Клонирование и настройка
+### Шаг 2: Создание скелета сервера (новое)
 
 ```bash
-# Клонируем публичный репозиторий GameVerse Framework
-git clone https://github.com/igoryanba/GameVerseFramework.git
-cd GameVerseFramework
-
-# Запускаем скрипт быстрой установки
-chmod +x scripts/quick-start.sh
-./scripts/quick-start.sh --with-basic-gamemode
+# C помощью CLI создаём структуру папок
+cargo run -p gameverse -- server init MyServer
+cd MyServer
 ```
 
-### Шаг 3: Запуск сервера
+В результате будут созданы:
+* `config/server-config.toml` – минимальный рабочий конфиг
+* `resources/` – директория для ресурсов
+* `docker-compose.yml` – быстрый запуск в контейнере
+* `systemd/gameverse.service` – unit-файл для Linux-серверов
+* `install_nssm.ps1` – скрипт установки сервиса через NSSM на Windows
+
+> Перед публикацией сервера отредактируйте `config/server-config.toml` под свои нужды.
+
+### Шаг 3: Сборка бинаря
 
 ```bash
-cd server-data
-./start-server.sh
+cargo build -p gameverse-core --bin gameverse_server --release
 ```
 
-**🎉 Готово!** Ваш сервер запущен на `localhost:30120`
+Готовый файл появится по пути `target/release/gameverse_server`.
+
+### Шаг 4: Запуск сервера (dev-режим)
+
+```bash
+./target/release/gameverse_server config/server-config.toml --dev
+```
+
+Проверьте статус:
+
+```bash
+curl http://127.0.0.1:30121/api/server/status | jq
+```
+
+### ⏩ Автозапуск через systemd (Linux)
+
+```bash
+sudo cp systemd/gameverse.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now gameverse
+```
+
+### ⏩ Автозапуск через NSSM (Windows)
+
+```powershell
+# Запустите в PowerShell из каталога сервера
+.
+\install_nssm.ps1 -NssmExe "C:\Tools\nssm\nssm.exe"
+```
+
+Далее:
+
+```powershell
+nssm start GameVerseServer  # запуск
+nssm stop  GameVerseServer  # остановка
+```
+
+### Шаг 5: Добавление ресурсов
+
+Поместите ресурсы в папку `resources/` и используйте:
+
+```bash
+cargo run -p gameverse -- server reload
+```
+
+Сервер автоматически подхватит изменения без рестарта.
 
 ## 📁 Структура проекта
 

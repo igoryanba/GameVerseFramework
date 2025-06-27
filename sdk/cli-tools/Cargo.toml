@@ -34,6 +34,8 @@ dirs = "5.0.1"
 jsonwebtoken = "9"
 eventsource-stream = "0.2"
 futures-util = "0.3"
+gameverse-core = { path = "../../core" }
+notify = "6"
 
 [build-dependencies]
 clap = { version = "4.3.0", features = ["derive"] }
@@ -42,3 +44,6 @@ clap_complete = "4.3.0"
 [[bin]]
 name = "gameverse"
 path = "src/main.rs"
+
+[dev-dependencies]
+tempfile = "3.9"
