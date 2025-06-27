@@ -1,0 +1,46 @@
+# Конфигурация GameVerse Framework
+
+# Конфигурация сервера
+[server]
+name = "GameVerse Development Server"
+max_players = 32
+port = 30120
+bind_address = "0.0.0.0"
+password = ""  # Пустая строка = без пароля
+idle_timeout = 300
+resources_path = "resources"
+
+# Конфигурация сети
+[network]
+use_compression = true
+buffer_size = 8192
+max_packet_size = 16384
+sync_interval_ms = 50
+admin_port = 30121
+sync_radius = 500.0
+max_entities_per_client = 1000
+
+# Конфигурация логирования
+[logging]
+level = "debug"  # trace, debug, info, warn, error
+log_dir = "logs"
+max_file_size = 52428800  # 50MB в байтах
+json_format = false
+enable_tracing = false
+jaeger_endpoint = ""
+
+# Конфигурация базы данных
+[database]
+postgres_url = "postgres://gameverse:password@localhost/gameverse"
+redis_url = "redis://localhost:6379/0"
+max_connections = 10
+connection_timeout = 30
+sync_interval = 5
+
+# Конфигурация скриптовых движков
+[scripting]
+enable_lua = true
+enable_typescript = true
+enable_wasm = false
+lua_stack_size = 2048
+script_timeout_ms = 5000 

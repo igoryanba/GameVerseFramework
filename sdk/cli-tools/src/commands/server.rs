@@ -555,24 +555,17 @@ pub async fn execute(cmd: ServerCommands, _config: &Config) -> Result<()> {
         }
         
         ServerCommands::ValidateConfig { config } => {
-            // Реализация команды ValidateConfig
-            println!("🔄 Validating server configuration file...");
-            
-            // Проверяем наличие конфигурационного файла
-            let config_path: Option<&str> = config.as_deref();
-            match tokio::fs::read_to_string(config_path.unwrap_or("server-config.toml")).await {
-                Ok(_) => {
-                    match core_config::load_config(config_path) {
-                        Ok(cfg) => {
-                            println!("✅ Configuration is valid (server name: '{}', port: {})", cfg.server.name, cfg.server.port);
-                        }
-                        Err(e) => {
-                            println!("❌ Configuration invalid: {}", e);
-                        }
-                    }
+            println!("🔍 Validating server configuration...");
+
+            let load_result = core_config::load_config(config.as_deref());
+            match load_result {
+                Ok(cfg) => {
+                    println!("✅ Configuration is valid (server name: '{}', port: {})", cfg.server.name, cfg.server.port);
                 }
                 Err(e) => {
-                    println!("❌ Failed to read config file: {}", e);
+                    eprintln!("❌ Configuration invalid: {}", e);
+                    // Завершаем процесс с кодом 1
+                    anyhow::bail!("configuration validation failed");
                 }
             }
         }

@@ -423,3 +423,27 @@ GameVerse QA Pipeline:
 - **core/bin/server.rs** – точка входа для бинаря `gameverse_server`
 - **sdk/cli-tools/src/commands/server.rs** – подкоманды `server` (v0.3.0)
 - **core/src/server/runtime.rs** – точка входа, IPC, Admin API Axum
+
+### Структура после `gameverse server init MyServer`
+
+```
+MyServer/
+├── config/
+│   └── server-config.toml          # Полная конфигурация сервера
+├── resources/                      # Директория для ресурсов/плагинов
+├── docker-compose.yml              # Контейнерное развёртывание
+├── systemd/
+│   └── gameverse.service          # systemd unit файл для Linux
+├── install_nssm.ps1               # PowerShell скрипт для Windows NSSM
+└── logs/                           # Логи сервера (создаётся автоматически)
+```
+
+### New in v0.2
+
+`deployment/` – production-grade infrastructure stack
+```
+deployment/
+  docker/      # Dockerfile + compose stack
+  kubernetes/  # Helm chart (gameverse-helm)
+  terraform/   # Multi-cloud IaC (aws/, gcp/, azure/)
+```

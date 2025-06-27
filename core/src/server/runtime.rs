@@ -11,6 +11,8 @@ use tracing::{info, error, warn, debug};
 use std::time::{Instant};
 use serde_json;
 use sysinfo::{System, RefreshKind, ProcessRefreshKind, Pid};
+use once_cell::sync::Lazy;
+use prometheus::{Encoder, TextEncoder, IntGauge, Gauge, register_int_gauge, register_gauge};
 
 use crate::config::{self, Config};
 use crate::engine::GameEngine;
@@ -29,6 +31,14 @@ pub enum ServerCommand {
     ReloadResources,
     /// Запросить статус сервера
     RequestStatus,
+    /// Список ресурсов (ответ в IPC)
+    ListResources,
+    /// Запустить конкретный ресурс
+    StartResource(String),
+    /// Остановить конкретный ресурс
+    StopResource(String),
+    /// Перезагрузить (hot-reload) конкретный ресурс
+    ReloadResource(String),
 }
 
 /// Статус сервера
@@ -73,6 +83,16 @@ pub struct ServerRuntime {
     start_time: Instant,
     /// Счётчик тиков основного цикла
     tick_counter: Arc<AtomicU64>,
+}
+
+#[derive(Clone)]
+struct ApiState {
+    running: Arc<AtomicBool>,
+    resource_manager: ResourceManager,
+    network_manager: NetworkManager,
+    start_time: Instant,
+    tick_counter: Arc<AtomicU64>,
+    cmd_tx: mpsc::Sender<ServerCommand>,
 }
 
 impl ServerRuntime {
@@ -264,6 +284,28 @@ impl ServerRuntime {
                 info!("Server status: {:?}", self.status);
                 // TODO: Отправить подробный статус через канал ответа
             }
+            ServerCommand::ListResources => {
+                let list = self.resource_manager.list_resources();
+                info!("Resources loaded: {}", list.len());
+                for res in list {
+                    info!("  - {} ({:?})", res.name, res.state);
+                }
+            }
+            ServerCommand::StartResource(name) => {
+                if let Err(e) = self.resource_manager.start_resource(&name).await {
+                    error!("Failed to start resource {}: {}", name, e);
+                }
+            }
+            ServerCommand::StopResource(name) => {
+                if let Err(e) = self.resource_manager.stop_resource(&name).await {
+                    error!("Failed to stop resource {}: {}", name, e);
+                }
+            }
+            ServerCommand::ReloadResource(name) => {
+                if let Err(e) = self.resource_manager.reload_resource(&name).await {
+                    error!("Failed to reload resource {}: {}", name, e);
+                }
+            }
         }
         
         Ok(())
@@ -346,10 +388,15 @@ impl ServerRuntime {
                             }
                             let msg = String::from_utf8_lossy(&buf);
                             let cmd_str = msg.trim().to_lowercase();
-                            let cmd_opt = match cmd_str.as_str() {
-                                "shutdown" => Some(ServerCommand::Shutdown),
-                                "reload" | "reload_resources" => Some(ServerCommand::ReloadResources),
-                                "status" => Some(ServerCommand::RequestStatus),
+                            let tokens: Vec<&str> = cmd_str.split_whitespace().collect();
+                            let cmd_opt: Option<ServerCommand> = match tokens.as_slice() {
+                                ["shutdown"] => Some(ServerCommand::Shutdown),
+                                ["reload"] | ["reload_resources"] => Some(ServerCommand::ReloadResources),
+                                ["status"] => Some(ServerCommand::RequestStatus),
+                                ["resource", "list"] => Some(ServerCommand::ListResources),
+                                ["resource", "start", name] => Some(ServerCommand::StartResource((*name).to_string())),
+                                ["resource", "stop", name] => Some(ServerCommand::StopResource((*name).to_string())),
+                                ["resource", "reload", name] => Some(ServerCommand::ReloadResource((*name).to_string())),
                                 _ => None,
                             };
                             if let Some(ref c) = cmd_opt {
@@ -370,6 +417,16 @@ impl ServerRuntime {
                                         "avg_tick_ms": avg_tick_ms
                                     });
                                     status_json.to_string()
+                                }
+                                Some(ServerCommand::ListResources) => {
+                                    let list = resource_manager.list_resources();
+                                    let arr: Vec<serde_json::Value> = list.iter().map(|r| {
+                                        serde_json::json!({
+                                            "name": r.name,
+                                            "state": format!("{:?}", r.state)
+                                        })
+                                    }).collect();
+                                    serde_json::json!({ "resources": arr }).to_string()
                                 }
                                 Some(_) => "ok".to_string(),
                                 None => "unknown".to_string(),
@@ -426,10 +483,15 @@ impl ServerRuntime {
                             }
                             let msg = String::from_utf8_lossy(&buf);
                             let cmd_str = msg.trim().to_lowercase();
-                            let cmd_opt = match cmd_str.as_str() {
-                                "shutdown" => Some(ServerCommand::Shutdown),
-                                "reload" | "reload_resources" => Some(ServerCommand::ReloadResources),
-                                "status" => Some(ServerCommand::RequestStatus),
+                            let tokens: Vec<&str> = cmd_str.split_whitespace().collect();
+                            let cmd_opt: Option<ServerCommand> = match tokens.as_slice() {
+                                ["shutdown"] => Some(ServerCommand::Shutdown),
+                                ["reload"] | ["reload_resources"] => Some(ServerCommand::ReloadResources),
+                                ["status"] => Some(ServerCommand::RequestStatus),
+                                ["resource", "list"] => Some(ServerCommand::ListResources),
+                                ["resource", "start", name] => Some(ServerCommand::StartResource((*name).to_string())),
+                                ["resource", "stop", name] => Some(ServerCommand::StopResource((*name).to_string())),
+                                ["resource", "reload", name] => Some(ServerCommand::ReloadResource((*name).to_string())),
                                 _ => None,
                             };
 
@@ -451,6 +513,16 @@ impl ServerRuntime {
                                         "avg_tick_ms": avg_tick_ms
                                     });
                                     status_json.to_string()
+                                }
+                                Some(ServerCommand::ListResources) => {
+                                    let list = resource_manager.list_resources();
+                                    let arr: Vec<serde_json::Value> = list.iter().map(|r| {
+                                        serde_json::json!({
+                                            "name": r.name,
+                                            "state": format!("{:?}", r.state)
+                                        })
+                                    }).collect();
+                                    serde_json::json!({ "resources": arr }).to_string()
                                 }
                                 Some(_) => "ok".to_string(),
                                 None => "unknown".to_string(),
@@ -481,16 +553,7 @@ impl ServerRuntime {
         use std::net::SocketAddr;
         use serde_json::json;
         use axum::{middleware, http::StatusCode};
-
-        #[derive(Clone)]
-        struct ApiState {
-            running: Arc<AtomicBool>,
-            resource_manager: ResourceManager,
-            network_manager: NetworkManager,
-            start_time: Instant,
-            tick_counter: Arc<AtomicU64>,
-            cmd_tx: mpsc::Sender<ServerCommand>,
-        }
+        use axum::extract::Path as AxumPath;
 
         let state = ApiState {
             running: self.running.clone(),
@@ -525,25 +588,92 @@ impl ServerRuntime {
             Json(json!({"result":"ok"}))
         }
 
-        // JWT middleware (упрощенный)
+        // Extended metrics endpoint
+        async fn metrics_handler(State(_st): State<ApiState>) -> Json<serde_json::Value> {
+            use sysinfo::{SystemExt, ProcessExt};
+
+            let mut sys = sysinfo::System::new();
+            sys.refresh_processes_specifics(sysinfo::ProcessRefreshKind::new());
+            let rss_mb = sysinfo::get_current_pid()
+                .ok()
+                .and_then(|pid| sys.process(pid))
+                .map(|p| p.memory() / 1024)
+                .unwrap_or(0);
+
+            let uptime_secs = _st.start_time.elapsed().as_secs_f64();
+            let ticks = _st.tick_counter.load(Ordering::Relaxed).max(1);
+            let avg_tick_ms = (uptime_secs * 1000.0) / ticks as f64;
+
+            Json(json!({
+                "uptime_secs": uptime_secs as u64,
+                "avg_tick_ms": avg_tick_ms,
+                "rss_mb": rss_mb
+            }))
+        }
+
+        // Prometheus exposition format
+        async fn prometheus_metrics_handler(State(_st): State<ApiState>) -> (StatusCode, ([(axum::http::header::HeaderName, axum::http::HeaderValue); 1], String)) {
+             // update gauges
+             let uptime = _st.start_time.elapsed().as_secs() as i64;
+             UPTIME_GAUGE.set(uptime);
+             PLAYERS_GAUGE.set(_st.network_manager.get_connection_stats().total() as i64);
+             let ticks = _st.tick_counter.load(Ordering::Relaxed).max(1);
+             let avg_tick_ms = ((_st.start_time.elapsed().as_secs_f64() * 1000.0) / ticks as f64);
+             TICK_GAUGE.set(avg_tick_ms);
+
+             let mut buffer = Vec::with_capacity(1024);
+             let encoder = TextEncoder::new();
+             let mf = prometheus::gather();
+             encoder.encode(&mf, &mut buffer).unwrap();
+             let body = String::from_utf8(buffer).unwrap();
+
+             let headers = [(
+                 axum::http::header::CONTENT_TYPE,
+                 axum::http::HeaderValue::from_static("text/plain; version=0.0.4"),
+             )];
+             (StatusCode::OK, (headers, body))
+        }
+
+        // List resources
+        async fn resources_list_handler(State(_st): State<ApiState>) -> Json<serde_json::Value> {
+            let list: Vec<serde_json::Value> = _st.resource_manager.list_resources()
+                .iter()
+                .map(|r| serde_json::json!({"name": r.name, "state": format!("{:?}", r.state)}))
+                .collect();
+            Json(json!({"resources": list}))
+        }
+
+        // Reload single resource
+        async fn resource_reload_handler(AxumPath(name): AxumPath<String>, State(st): State<ApiState>) -> Json<serde_json::Value> {
+            let _ = st.cmd_tx.send(ServerCommand::ReloadResource(name.clone())).await;
+            Json(json!({"result":"ok", "resource": name}))
+        }
+
+        // Update JWT middleware with signature validation
         async fn require_jwt(
             req: axum::http::Request<axum::body::Body>,
             next: middleware::Next,
         ) -> Result<axum::response::Response, StatusCode> {
-            // В dev mode пропускаем проверку
-            if cfg!(debug_assertions) { 
-                return Ok(next.run(req).await); 
+            if cfg!(debug_assertions) {
+                return Ok(next.run(req).await);
             }
-            
-            // В production проверяем Bearer токен
-            if let Some(auth_header) = req.headers().get("authorization") {
-                if let Ok(auth_str) = auth_header.to_str() {
-                    if auth_str.starts_with("Bearer ") {
-                        return Ok(next.run(req).await);
+            let secret = std::env::var("ADMIN_JWT_SECRET").unwrap_or_else(|_| "changeme".into());
+            let token_opt = req.headers().get("authorization").and_then(|v| v.to_str().ok()).and_then(|s| {
+                if s.starts_with("Bearer ") { Some(&s[7..]) } else { None }
+            });
+            if let Some(token) = token_opt {
+                #[derive(Debug, serde::Deserialize)]
+                struct Claims { exp: Option<u64> }
+                let mut validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
+                validation.validate_exp = false; // we check manually
+                if let Ok(token_data) = jsonwebtoken::decode::<Claims>(token, &jsonwebtoken::DecodingKey::from_secret(secret.as_bytes()), &validation) {
+                    if let Some(exp_ts) = token_data.claims.exp {
+                        let now = chrono::Utc::now().timestamp() as u64;
+                        if exp_ts < now { return Err(StatusCode::UNAUTHORIZED); }
                     }
+                    return Ok(next.run(req).await);
                 }
             }
-            
             Err(StatusCode::UNAUTHORIZED)
         }
 
@@ -551,10 +681,16 @@ impl ServerRuntime {
             .route("/api/server/shutdown", post(shutdown_handler))
             .route("/api/server/reload", post(reload_handler))
             .route("/api/server/logs/stream", get(logs_stream))
+            .route("/api/resources", get(resources_list_handler))
+            .route("/api/resources/:name/reload", post(resource_reload_handler))
             .layer(middleware::from_fn(require_jwt));
 
         let router = Router::new()
             .route("/api/server/status", get(status_handler))
+            .route("/api/server/metrics", get(metrics_handler))
+            .route("/api/health", get(health_handler))
+            .route("/api/server/metrics/stream", get(metrics_stream_handler))
+            .route("/metrics", get(prometheus_metrics_handler))
             .merge(protected)
             .with_state(state);
 
@@ -576,6 +712,16 @@ impl ServerRuntime {
             "restart" => Some(ServerCommand::Restart),
             "reload" | "reload_resources" => Some(ServerCommand::ReloadResources),
             "status" => Some(ServerCommand::RequestStatus),
+            cmd if cmd.starts_with("resource list") => Some(ServerCommand::ListResources),
+            cmd if cmd.starts_with("resource start ") => {
+                Some(ServerCommand::StartResource(cmd[15..].to_string()))
+            }
+            cmd if cmd.starts_with("resource stop ") => {
+                Some(ServerCommand::StopResource(cmd[14..].to_string()))
+            }
+            cmd if cmd.starts_with("resource reload ") => {
+                Some(ServerCommand::ReloadResource(cmd[16..].to_string()))
+            }
             _ => None,
         }
     }
@@ -666,4 +812,44 @@ async fn logs_stream() -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     };
     
     Sse::new(stream).keep_alive(axum::response::sse::KeepAlive::default())
-} 
+}
+
+async fn health_handler() -> (axum::http::StatusCode, &'static str) {
+    (axum::http::StatusCode::OK, "ok")
+}
+
+// SSE metrics stream
+async fn metrics_stream_handler(axum::extract::State(_st): axum::extract::State<ApiState>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    use tokio_stream::wrappers::IntervalStream;
+    use tokio::time::{interval, Duration};
+
+    // Interval every second
+    let stream = IntervalStream::new(interval(Duration::from_secs(1))).map(move |_| {
+        let uptime_secs = _st.start_time.elapsed().as_secs();
+        let ticks = _st.tick_counter.load(Ordering::Relaxed).max(1);
+        let avg_tick_ms = (uptime_secs * 1000) / ticks;
+        let players = _st.network_manager.get_connection_stats().total();
+
+        let payload = serde_json::json!({
+            "uptime_secs": uptime_secs,
+            "players": players,
+            "avg_tick_ms": avg_tick_ms
+        }).to_string();
+
+        Ok(Event::default().data(payload))
+    });
+    Sse::new(stream)
+}
+
+// Prometheus metrics
+static UPTIME_GAUGE: Lazy<IntGauge> = Lazy::new(|| {
+    register_int_gauge!("server_uptime_seconds", "Server uptime in seconds").unwrap()
+});
+
+static PLAYERS_GAUGE: Lazy<IntGauge> = Lazy::new(|| {
+    register_int_gauge!("players_connected_total", "Total connected players").unwrap()
+});
+
+static TICK_GAUGE: Lazy<Gauge> = Lazy::new(|| {
+    register_gauge!("avg_tick_ms", "Average tick duration (ms)").unwrap()
+}); 

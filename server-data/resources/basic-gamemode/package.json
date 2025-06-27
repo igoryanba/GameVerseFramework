@@ -1,0 +1,25 @@
+{
+  "name": "basic-gamemode",
+  "version": "1.0.0",
+  "description": "Basic GameVerse gamemode resource",
+  "main": "server/main.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/server/main.js"
+  },
+  "dependencies": {
+    "@gameverse/types": "file:../../sdk/gameverse-types"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
+  },
+  "keywords": [
+    "gameverse",
+    "gamemode",
+    "fivem"
+  ],
+  "author": "GameVerse Team",
+  "license": "MIT"
+} 

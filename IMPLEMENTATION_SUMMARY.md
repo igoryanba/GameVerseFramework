@@ -318,4 +318,17 @@ This foundation enables the development of a next-generation game modding platfo
   - `POST /api/server/reload` – hot reload ресурсов
 - **State Sharing**: через внутренний `ApiState` (Arc) разделяется `ResourceManager`, `NetworkManager`, `tick_counter`.
 - **Security**: приложение поднимается на `0.0.0.0:${admin_port}`, планируется JWT + CORS.
-- **Roadmap**: расширить до полноценной панели админа (статистика, настройка ресурсов, игроки). 
+- **Roadmap**: расширить до полноценной панели админа (статистика, настройка ресурсов, игроки).
+
+## �� Server Bootstrap v0.2 (Feb–Mar 2025)
+
+> Current status — **In development** (ETA March 2025)
+
+Key deliverables:
+- **Docker infrastructure**: multi-stage image (<50 MB), full docker-compose stack with Postgres, Redis, monitoring.
+- **Kubernetes Helm charts**: Deployment, Service, Ingress, HPA, PDB, ServiceMonitor, TLS-ready.
+- **Terraform modules**: AWS (production), GCP (GKE Autopilot), Azure (AKS) with managed Postgres & Redis.
+- **Monitoring stack**: Prometheus, Grafana, Jaeger. `/metrics` endpoint in Prometheus format; ServiceMonitor scrapes automatically.
+- **Admin API enhancements**: `/health`, `/metrics`, SSE streams (`/api/server/metrics/stream`, `/api/server/logs/stream`), JWT-secured management routes.
+
+See detailed usage in `deployment/README.md`.  This milestone brings GameVerse to production-grade deployability across major clouds. 

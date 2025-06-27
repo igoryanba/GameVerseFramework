@@ -56,21 +56,45 @@
 | Script performance   | 1× (V8)        | **10-50× (WASM)**| Up to 50×   |
 | Hot-reload time      | 30-60 s        | **< 0.2 s**     | **150×**    |
 
-## Quick Start
+## 🚀 Быстрый старт
+
+### Установка и настройка
 
 ```bash
-# 1. Build & launch the server in the background
-cargo build --package gameverse_server --release
-gameverse server start --background
+# Клонирование репозитория
+git clone https://github.com/gameverse/GameVerseFramework.git
+cd GameVerseFramework
 
-# 2. Check server status
-gameverse server status
+# Сборка CLI инструментов
+cargo build -p gameverse --release
 
-# 3. Stream live logs
-gameverse server logs -f
+# Создание нового сервера (one-liner setup!)
+cargo run -p gameverse -- server init MyGameServer
+cd MyGameServer
+
+# Сборка серверного бинаря
+cargo build -p gameverse-core --bin gameverse_server --release
+
+# Запуск в dev-режиме
+../target/release/gameverse_server config/server-config.toml --dev
 ```
 
-> Detailed installation and development guides live in the `docs/` directory.
+### Автозапуск сервера
+
+**Linux (systemd) - One-liner:**
+```bash
+sudo cp systemd/gameverse.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now gameverse
+```
+
+**Windows (NSSM) - One-liner:**
+```powershell
+.\install_nssm.ps1  # Запуск от имени администратора
+```
+
+**Docker - One-liner:**
+```bash
+docker-compose up -d
+```
 
 ## 📚 Документация / Documentation
 
@@ -247,3 +271,9 @@ examples/           # Living code samples
 
 ---
 *For a deep-dive into architecture, tech stack, project structure and progress see `DEVELOPMENT_RULES.md`, `TECHNICAL_STACK.md`, `STRUCTURE.md` and `PROGRESS.md`.*
+
+### Milestones
+
+- ✅ Server Bootstrap v0.1 (CLI `server init`, systemd/NSSM) — **DONE**
+- 🐳 **Server Bootstrap v0.2 (Docker + Kubernetes + Terraform)** — *in progress*
+  - [Deployment guide](deployment/README.md)

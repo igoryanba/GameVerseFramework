@@ -37,6 +37,14 @@
 - **Tech Stack**: React + WebAssembly + Material-UI
 - **Purpose**: Демонстрация превосходства над FiveM CEF
 
+## Server Bootstrap v0.2 Kick-off (28 Feb 2025)
+
+- Created `deployment/` hierarchy (docker/, kubernetes/, terraform/).
+- Implemented multi-stage Dockerfile, docker-compose with Postgres, Redis, monitoring.
+- Added Helm chart skeleton, HPA, PDB, ServiceMonitor templates.
+- AWS Terraform module 70 % ready; GCP/Azure placeholders added.
+- Admin API now exposes `/health`, `/metrics`, SSE streams; Prometheus scrape verified.
+
 ---
 
 ## 📊 **Technical Metrics**

@@ -508,3 +508,10 @@ marshal_with = "marshal_char_buffer"
 - **SDK Generation**: Rust и TypeScript SDK генерируются в `generated/rdr2/`.
 - **Автоматическая Загрузка Доков**: скрипт `scripts/fetch_rdr2_natives.sh` клонирует и обновляет Markdown-базу.
 - **Документация**: все стандарты и гайды обновлены под мульти-игровую архитектуру.
+
+* Performance Demonstration v0.1 (готова, отчёты nightly в Releases)
+
+### Этапы
+
+- ✅ Server Bootstrap v0.1 — CLI `server init`, автозапуск systemd/NSSM, unit-тесты.
+- 🐳 **Server Bootstrap v0.2** — Docker образ, Helm charts, Terraform для AWS/GCP/Azure, Prometheus/Grafana мониторинг *(ETA март 2025).*  Подробности: `deployment/README.md`.

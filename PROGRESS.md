@@ -1,5 +1,31 @@
 # Прогресс разработки GameVerse Framework
 
++## ✅ Недавние достижения (Январь 2025)
++
++### 🚀 Server Bootstrap v0.1 - ЗАВЕРШЕНО
++- **CLI Init Command**: `gameverse server init` генерирует полную структуру сервера
++- **Автозапуск Linux**: systemd unit файлы с автоматической установкой  
++- **Автозапуск Windows**: PowerShell скрипт для NSSM service installation
++- **Docker Support**: docker-compose.yml для контейнерного развёртывания
++- **Unit Testing**: Comprehensive тесты для всех компонентов bootstrap
++- **Documentation**: Полное руководство по автозапуску сервера
++
++### 🐳 Server Bootstrap v0.2 - В ПРОЦЕССЕ (Февраль 2025)
++- **Docker Infrastructure**: Multi-stage Dockerfile с Alpine Linux (< 50MB)
++- **Kubernetes Helm Charts**: Auto-scaling, High Availability, Security
++- **Terraform Modules**: AWS/GCP/Azure infrastructure as code
++- **Monitoring Stack**: Prometheus + Grafana + Jaeger tracing
++- **Production Ready**: Enterprise-grade deployment инфраструктура
++- **CI/CD Integration**: GitHub Actions + GitLab CI templates
++- **Security**: Non-root containers, TLS termination, rate limiting
++
++### 🎯 CLI Server Management v0.3.0 - ЗАВЕРШЕНО
++- **IPC Layer**: Unix socket / Windows Named Pipe для управления сервером
++- **Server Commands**: start/stop/restart/status/reload/logs через CLI
++- **Admin REST API**: Axum-based API с JWT аутентификацией на порту 30121
++- **Real-time Logs**: Server-Sent Events для live мониторинга
++- **Performance Metrics**: avg_tick_ms, memory usage, player count
+
 ## 🎯 **СТРАТЕГИЯ КОНКУРЕНТНОГО ПРЕВОСХОДСТВА НАД FIVEM** ✨ **ДЕТАЛЬНЫЙ АНАЛИЗ**
 
 ### **🔍 ПОЛНЫЙ АНАЛИЗ ECOSYSTEMS FIVEM (Январь 2025) - ДОПОЛНЕНО ФЕВРАЛЬ 2025**
@@ -150,6 +176,11 @@ Ped GET_PLAYER_PED(Player playerId);
 - [x] **🛠️ CLI Tools v0.1.0 - Современные инструменты разработчика** ✨ (Декабрь 2024)
 - [x] **✅ CLI Tools v0.2.0 - Template repository + расширенные команды (включая основу для мульти-игровой поддержки)** ✅ **ЗАВЕРШЕНО (Январь 2025)**
 - [x] **✅ ЗАВЕРШЕНО: Система шаблонов и расширенных команд для CLI v0.2.0** ✅ **PRODUCTION READY**
+- [x] **✅ CLI Tools v0.2.0 - Template repository + расширенные команды (включая основу для мульти-игровой поддержки)** ✅ **ЗАВЕРШЕНО (Январь 2025)**
+- [x] **✅ ЗАВЕРШЕНО: Система шаблонов и расширенных команд для CLI v0.2.0** ✅ **PRODUCTION READY**
+- [x] **✅ ResourceManager Hot-Reload MVP (start/stop/reload_resource) + расширенный поиск server-config.toml** ✅ **ЗАВЕРШЕНО (Март 2025)**
+- [x] **✅ CLI `server validate-config` (использует ядро `core::config::load_config`)** ✅ **ЗАВЕРШЕНО (Март 2025)**
+- [x] **✅ CLI Resource Subcommands (list/start/stop/reload/watch) + REST Admin API `/api/resources` & auto-hot-reload** ✅ **ЗАВЕРШЕНО (Март 2025)**
 - [ ] **🔄 АКТИВНО: Performance Demonstration & FiveM Compatibility Layer MVP** (Приоритет 1)
 - [ ] **🔄 АКТИВНО: Расширение `native-generator` для RDR2** (Часть Приоритета 1)
 - [ ] Интеграция сетевого стека (Часть долгосрочных улучшений)
@@ -1972,3 +2003,31 @@ FiveM Development:          GameVerse Development:
   - ✅ **SSE логи** через `/api/server/logs/stream` (реальный tracing + broadcast канал)
   - ✅ **CLI JWT генератор** (`gameverse server token`, `--token` флаг)
   - ✅ **Cross-platform тесты** (Unix + Windows NamedPipe, условная компиляция)
+
+### 🆕 Февраль 2025 — FCL v0.2 и шаблоны плагинов
+
+**Сделано:**
+1. FCL v0.2
+   • Интеграция с `EventSystem` (RegisterNetEvent/TriggerServerEvent через шину).
+   • Поддержка строковых аргументов, Vector3 и массивов JSON → NativeValue.
+   • Базовый список топ-нативов вынесен в `TOP_NATIVE_NAMES`.
+2. CLI-транспилер `fxmanifest.lua → gameverse.toml` (команда `gameverse migrate fivem-resource`).
+3. Скрипт `benchmarks/hot_reload_benchmark.sh` — автоматическое сравнение hot-reload GV vs FiveM.
+
+**Планы на ближайшие 7 дней:**
+1. Расширить `TOP_NATIVE_NAMES` до 200+ через автогенерацию из `native-generator`.
+2. Добавить шаблоны:
+   • `server-basic` (Rust) — пример плагина с логикой игрока.
+   • `client-basic` (TypeScript) — пример подписки на событие `chatMessage`.
+   Команда: `gameverse plugin new <name> --template server-basic`.
+3. Интегрировать шаблоны в CLI (`template-repository`).
+4. Подготовить юнит-тесты round-trip событий (compat → EventSystem → handler).
+5. Performance Demo:
+   • Добавить FPS-stub на основе `GameEngine`.
+   • Зафиксировать ≥5× превосходство и добавить графики в `docs/performance/`.
+
+**Февраль 2025 — Шаблоны server-basic / client-basic**
+
+✅ Созданы новые шаблоны плагинов и интегрированы в CLI:
+
+• `server-basic` (Rust)

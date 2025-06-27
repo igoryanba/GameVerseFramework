@@ -1,0 +1,65 @@
+[plugin]
+default_template = "basic"
+default_language = "rust"
+auto_reload = true
+default_license = "MIT"
+
+[server]
+default_host = "localhost"
+default_port = 8080
+admin_api_port = 30121
+binary_path = "./target/release/gameverse_server"
+use_tls = false
+timeout = 30
+
+[marketplace]
+url = "https://marketplace.gameverse.dev"
+auto_update_check = true
+
+[build]
+default_targets = [
+    "windows",
+    "linux",
+    "macos",
+]
+optimization = "release"
+parallel = true
+
+[build.cross_compile]
+
+[docker]
+registry = "docker.io/gameverse"
+base_image = "alpine:3.19"
+multi_stage = true
+security_scan = true
+health_check_endpoint = "/api/health"
+non_root_user = "gameverse"
+
+[kubernetes]
+namespace = "gameverse"
+helm_chart_version = "0.1.0"
+auto_scaling = true
+min_replicas = 2
+max_replicas = 10
+resource_requests_cpu = "100m"
+resource_requests_memory = "128Mi"
+resource_limits_cpu = "500m"
+resource_limits_memory = "512Mi"
+
+[monitoring]
+prometheus_enabled = true
+grafana_enabled = true
+jaeger_enabled = true
+metrics_port = 9090
+log_level = "info"
+health_check_interval = 30
+
+[terraform]
+aws_instance_type = "t3.medium"
+gcp_machine_type = "e2-medium"
+azure_vm_size = "Standard_B2s"
+state_backend = "s3"
+
+[templates]
+repository = "https://github.com/gameverse/plugin-templates"
+cache_duration = 24

@@ -1,0 +1,130 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "GameVerse Server Dashboard",
+    "tags": ["gameverse", "gaming", "server"],
+    "style": "dark",
+    "timezone": "browser",
+    "refresh": "30s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Server Status",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "up{job=\"gameverse-server\"}",
+            "legendFormat": "Server Status"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              {"options": {"0": {"text": "DOWN", "color": "red"}}, "type": "value"},
+              {"options": {"1": {"text": "UP", "color": "green"}}, "type": "value"}
+            ]
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Connected Players",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "gameverse_players_connected_total",
+            "legendFormat": "Players Online"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Server Performance",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(gameverse_request_duration_seconds_sum[5m]) / rate(gameverse_request_duration_seconds_count[5m])",
+            "legendFormat": "Avg Response Time"
+          },
+          {
+            "expr": "gameverse_avg_tick_ms",
+            "legendFormat": "Avg Tick Time (ms)"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
+        "yAxes": [
+          {"label": "Time (ms)", "min": 0},
+          {"label": "Count", "min": 0}
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Memory Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "gameverse_memory_rss_bytes / 1024 / 1024",
+            "legendFormat": "RSS Memory (MB)"
+          },
+          {
+            "expr": "gameverse_memory_heap_bytes / 1024 / 1024",
+            "legendFormat": "Heap Memory (MB)"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+        "yAxes": [
+          {"label": "Memory (MB)", "min": 0}
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Error Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(gameverse_errors_total[5m])",
+            "legendFormat": "Errors per second"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+        "yAxes": [
+          {"label": "Errors/sec", "min": 0}
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Database Connections",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "postgres_connections_active",
+            "legendFormat": "Active Connections"
+          },
+          {
+            "expr": "postgres_connections_idle",
+            "legendFormat": "Idle Connections"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24}
+      },
+      {
+        "id": 7,
+        "title": "Redis Operations",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(redis_commands_processed_total[5m])",
+            "legendFormat": "Commands/sec"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24}
+      }
+    ]
+  }
+} 

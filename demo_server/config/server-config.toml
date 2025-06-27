@@ -1,0 +1,5 @@
+[server]
+name = "MyGameVerseServer"
+admin_port = 30121
+jwt_secret = "CHANGE_ME"
+resources_dir = "./resources"

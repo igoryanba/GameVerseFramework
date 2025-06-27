@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GameVerse Admin Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #121212; color: #eee; }
+    header { padding: 16px; background: #1e1e1e; }
+    h1 { margin: 0; font-size: 20px; }
+    #metrics, #logs { padding: 16px; }
+    .gauge { margin: 8px 0; }
+    #logs pre { background: #000; padding: 8px; height: 300px; overflow-y: scroll; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    // SSE metrics
+    const metricsSource = new EventSource('/api/server/metrics/stream');
+    metricsSource.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        document.getElementById('uptime').textContent = `Uptime: ${data.uptime_secs}s`;
+        document.getElementById('players').textContent = `Players: ${data.players}`;
+        document.getElementById('tick').textContent = `Avg Tick: ${data.avg_tick_ms.toFixed(2)} ms`;
+      } catch (err) { console.error(err); }
+    };
+
+    // SSE logs
+    const logSource = new EventSource('/api/server/logs/stream');
+    logSource.onmessage = (e) => {
+      const pre = document.getElementById('logOutput');
+      pre.textContent += e.data + '\n';
+      pre.scrollTop = pre.scrollHeight;
+    };
+  </script>
+</body>
+</html> 

@@ -56,4 +56,13 @@ We ♥ contributions!  Read the [CONTRIBUTING guide](.github/CONTRIBUTING.md) an
 
 ## 📝 License
 
-GameVerse Framework is released under the MIT License. 
+GameVerse Framework is released under the MIT License.
+
+## Roadmap Highlights
+
+* Performance Demonstration v0.1 (nightly automated benchmark reports)
+
+### Roadmap Milestones
+
+- ✅ Server Bootstrap v0.1 — ready for production (CLI `gameverse server init`).
+- 🐳 Server Bootstrap v0.2 — Docker-first deployment, Helm charts, Terraform modules, Prometheus/Grafana monitoring *(ETA March 2025).*  See `deployment/README.md` for details. 

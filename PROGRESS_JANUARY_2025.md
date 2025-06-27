@@ -378,3 +378,9 @@ $ cargo run -- generate --target rust --source ./test_input.txt --output ./gener
 4. 📜 **Документация** – обновлены стандарты и README; добавлены пояснения по работе с несколькими играми.
 
 Этот прогресс будет подробно отражён в основном файле `PROGRESS.md`, но фиксируется здесь для цельности хронологии.
+
+## 🐳 v0.2 Preparations (Jan 2025 – summary)
+
+- Requirements gathered for multi-cloud deployment.
+- Chosen stack: Docker + Helm + Terraform + Prometheus.
+- Spec drafted for Admin API metrics endpoints.

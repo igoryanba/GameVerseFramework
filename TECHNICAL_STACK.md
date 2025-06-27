@@ -1148,3 +1148,27 @@ Migration Potential:
 | tokio | 1.35 (full) | NamedPipe/UnixListener improvements |
 | clap | 4.x | CLI `console` subcommand будущие фичи |
 | axum | 0.7 | REST Admin API |
+
+## 🛠️ Deployment & DevOps
+
+### Автозапуск и управление сервисами
+- **Linux**: systemd (>= 240) с автоматической генерацией unit файлов
+- **Windows**: NSSM 2.24+ для установки Windows служб
+- **Docker**: Multi-stage builds с Alpine Linux base
+- **Kubernetes**: Helm charts для production deployment
+
+### Инфраструктура
+- **Container Registry**: GitHub Container Registry (ghcr.io)
+- **CI/CD**: GitHub Actions с multi-platform builds
+- **Monitoring**: Prometheus + Grafana integration ready
+- **Logging**: Structured logging с JSON output support
+
+### Deployment Stack (introduced in v0.2)
+
+| Layer | Tech |
+|-------|------|
+| Containers | Docker (multi-stage, Alpine) |
+| Orchestration | Kubernetes (Helm charts) |
+| IaC | Terraform (AWS/GCP/Azure) |
+| Monitoring | Prometheus + Grafana + Jaeger |
+| CI/CD | GitHub Actions / GitLab CI (docker build & helm upgrade) |

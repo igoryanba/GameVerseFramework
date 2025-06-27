@@ -1,0 +1,33 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "gameverse.fullname" . }}-postinstall
+  labels:
+    {{- include "gameverse.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        {{- include "gameverse.selectorLabels" . | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate-db
+          image: {{ .Values.gameverse.image.registry }}/{{ .Values.gameverse.image.repository }}:{{ .Values.gameverse.image.tag | default .Chart.AppVersion }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gameverse.fullname" . }}-secrets
+                  key: database-url
+          command: ["/gameverse_server"]
+          args: ["migrate", "--yes"]
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 6 }}
+      {{- end }} 

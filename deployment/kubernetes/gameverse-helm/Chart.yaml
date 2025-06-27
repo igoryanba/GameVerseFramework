@@ -1,0 +1,40 @@
+apiVersion: v2
+name: gameverse
+description: A Helm chart for GameVerse Framework Server
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/gameverse/GameVerseFramework
+sources:
+  - https://github.com/gameverse/GameVerseFramework
+maintainers:
+  - name: GameVerse Team
+    email: team@gameverse.dev
+keywords:
+  - gaming
+  - fivem
+  - gta
+  - server
+  - rust
+
+dependencies:
+  - name: postgresql
+    version: "12.1.9"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  - name: redis
+    version: "17.4.3"
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled
+  - name: prometheus
+    version: "15.18.0"
+    repository: https://prometheus-community.github.io/helm-charts
+    condition: monitoring.prometheus.enabled
+  - name: grafana
+    version: "6.45.0"
+    repository: https://grafana.github.io/helm-charts
+    condition: monitoring.grafana.enabled
+
+annotations:
+  category: Gaming
+  licenses: MIT

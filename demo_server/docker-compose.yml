@@ -1,0 +1,12 @@
+version: '3.8'
+services:
+  gameverse_server:
+    image: ghcr.io/gameverse/server:latest
+    volumes:
+      - ./resources:/opt/gameverse/resources:ro
+      - ./config:/opt/gameverse/config:ro
+    environment:
+      - GAMEVERSE_CONFIG=/opt/gameverse/config/server-config.toml
+    ports:
+      - "30121:30121" # admin API
+    restart: unless-stopped

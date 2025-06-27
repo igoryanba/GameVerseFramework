@@ -75,26 +75,58 @@ mkdir -p webassembly-demo/{react-wasm,memory-benchmark,comparison-tool}
 - [ ] **Performance Benchmarking**: Load time, responsiveness, memory
 - [ ] **Public Demo**: Deployable showcase для community
 
+#### **Day 1-3: Server Bootstrap v0.2 - Docker Foundation** 🐳 **COMPLETED**
+
+**Задачи:**
+- [x] **Multi-stage Dockerfile**: Создать оптимизированный Dockerfile с builder и runtime stages
+- [x] **Docker Compose**: Полный stack с PostgreSQL, Redis, мониторингом
+- [x] **Health Checks**: Реализовать `/api/health` endpoint и Docker HEALTHCHECK
+- [x] **Security Scanning**: Интеграция Trivy в CI/CD pipeline
+- [x] **Registry Setup**: Подготовка для публикации в Docker Hub
+
+```bash
+# Создание Docker инфраструктуры
+mkdir -p GameVerseFramework/deployment/{docker,kubernetes,terraform}
+cd GameVerseFramework/deployment/docker
+```
+
+#### **Day 4-5: Kubernetes Helm Charts** ⚓ **HIGH PRIORITY**
+
+**Задачи:**
+- [ ] **Helm Chart Structure**: templates/, values.yaml, Chart.yaml
+- [ ] **Deployment Manifests**: Deployment, Service, Ingress, ConfigMap
+- [ ] **Auto-scaling**: HorizontalPodAutoscaler configuration
+- [ ] **Security Context**: Non-root execution, read-only filesystem
+- [ ] **RBAC**: Minimal required permissions
+
+#### **Day 6-7: Terraform Modules** 🏗️ **INFRASTRUCTURE**
+
+**Задачи:**
+- [ ] **AWS Module**: EC2, RDS, Load Balancer, Security Groups
+- [ ] **GCP Module**: Compute Engine, Cloud SQL, Load Balancer
+- [ ] **Azure Module**: Virtual Machines, Azure Database, Application Gateway
+- [ ] **Variable Validation**: Input validation для всех параметров
+- [ ] **Output Standardization**: Consistent outputs across providers
+
 ### **📅 WEEK 2 (8-14 дней)**
 
-#### **Advanced Native Integration & Initial TypeScript** ⚡
-- [ ] **Завершение NativeType::Array и NativeType::Any**: Стабильная работа с массивами и `Any` в Rust.
-- [ ] **TypeScript Definition Generator (MVP)**: Начало генерации TypeScript-дефиниций для нативных функций.
-- [ ] **Player & Vehicle Categories (Rust)**: Обеспечить полное и корректное покрытие категорий PLAYER и VEHICLE с учетом всех улучшений.
-- [ ] **IntelliSense Integration (Rust)**: Существенное улучшение поддержки в VS Code для Rust.
-- [ ] **Error Handling**: Дальнейшее улучшение системы ошибок в генераторе и сгенерированном коде.
+#### **Day 8-10: Monitoring Stack Integration** 📊 **OBSERVABILITY**
 
-#### **QBCore Converter MVP** 🔄
-- [ ] **Basic QBCore Resource**: Successful conversion qb-banking
-- [ ] **Lua → TypeScript**: Basic transpiler functionality
-- [ ] **Configuration Migration**: fxmanifest.lua → gameverse.toml
-- [ ] **Database Schema**: MySQL → PostgreSQL migration
+**Задачи:**
+- [ ] **Prometheus Metrics**: Custom game-specific metrics в Rust коде
+- [ ] **Grafana Dashboards**: Pre-built dashboards для server health
+- [ ] **Jaeger Tracing**: Distributed tracing integration
+- [ ] **Alerting Rules**: Critical alerts для downtime и performance
+- [ ] **Log Aggregation**: ELK/Loki stack integration
 
-#### **Performance Demonstration** 📈
-- [ ] **Automated Benchmarks**: GameVerse vs FiveM comparison
-- [ ] **Video Creation**: Technical superiority demonstration
-- [ ] **Documentation**: Migration guides и best practices
-- [ ] **Community Outreach**: Targeting key FiveM developers
+#### **Day 11-14: Service Mesh Preparation** 🕸️ **ADVANCED**
+
+**Задачи:**
+- [ ] **Istio Compatibility**: Service annotations и network policies
+- [ ] **mTLS Configuration**: Certificate management готовность
+- [ ] **Traffic Policies**: Rate limiting, circuit breakers
+- [ ] **Observability Enhancement**: Automatic metrics collection
+- [ ] **Security Policies**: Network policies enforcement
 
 ### **📅 WEEK 3-4 (15-28 дней)**
 
@@ -403,4 +435,4 @@ graph LR
    - ✅ **Cross-platform тесты** (Unix socket + Windows NamedPipe)
    - ✅ **Real-time мониторинг** через `/api/server/logs/stream`
    - ✅ **Production-ready архитектура** с graceful degradation
-- [x] **Server Bootstrap v0.1 (CLI `server init` + systemd/NSSM)** ✅ – автоматическая генерация структуры сервера, unit-файлов и PowerShell-скрипта.
+- [x] **Server Bootstrap v0.1 (CLI `server init` + systemd/NSSM)** ✅ **ЗАВЕРШЕНО** – автоматическая генерация структуры сервера, unit-файлов и PowerShell-скрипта.

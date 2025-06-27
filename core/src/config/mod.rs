@@ -202,8 +202,11 @@ pub fn load_config(config_path: Option<&str>) -> Result<Config, ConfigError> {
     } else {
         // Ищем файл конфигурации в стандартных местах
         let paths = vec![
+            Path::new("server-config.toml"),
+            Path::new("config/server-config.toml"),
             Path::new("config/gameverse.toml"),
             Path::new("gameverse.toml"),
+            Path::new("/etc/gameverse/server-config.toml"),
             Path::new("/etc/gameverse/config.toml"),
         ];
 

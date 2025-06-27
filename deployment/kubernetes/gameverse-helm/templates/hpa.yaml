@@ -1,0 +1,28 @@
+{{- if .Values.gameverse.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "gameverse.fullname" . }}
+  labels:
+    {{- include "gameverse.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "gameverse.fullname" . }}
+  minReplicas: {{ .Values.gameverse.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.gameverse.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.gameverse.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.gameverse.autoscaling.targetMemoryUtilizationPercentage }}
+{{- end }} 

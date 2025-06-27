@@ -29,6 +29,7 @@ pub mod utils;
 pub mod benchmarks;
 pub mod anticheat;
 pub mod wasm_ui;
+pub mod fcl;
 
 /// Информация о версии фреймворка
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

@@ -986,3 +986,39 @@ Solution: Revenue generation + investor funding + grants
 | Месяц 2-4 | **Server Management MVP (Runtime + IPC + CLI v0.3.0)** | Команда ядра, Команда SDK | ✅ ЗАВЕРШЕНО (Feb 2025) |
 
 | Q2 2025 | **Admin Web-API для управления сервером (Axum REST)** | Команда ядра, Команда UI | 📝 ПЛАНИРУЕТСЯ |
+
+## ✅ Completed Milestones
+
+### 🚀 Server Bootstrap v0.1 (January 2025) ✅
+- [x] CLI команда `gameverse server init` для генерации структуры сервера
+- [x] Автоматическое создание systemd unit файлов для Linux
+- [x] PowerShell скрипт для установки Windows службы через NSSM
+- [x] Docker Compose конфигурация для контейнерного развёртывания
+- [x] Полный конфиг server-config.toml с валидацией
+- [x] Unit тесты для всех компонентов bootstrap
+- [x] Документация по автозапуску сервера
+
+### 🎯 Performance Demo & FCL v0.3 (March 2025) ✅
+
++## 🔮 Planned Milestones
++
++### 🐳 Server Bootstrap v0.2 (Q2 2025) 🚧
++- [ ] **Docker Images**: Официальные образы на GitHub Container Registry
++- [ ] **Helm Charts**: Kubernetes развёртывание для production
++- [ ] **Terraform Modules**: Infrastructure as Code для cloud deployment  
++- [ ] **Monitoring Stack**: Prometheus + Grafana интеграция
++- [ ] **Backup & Recovery**: Автоматическое резервное копирование данных
++- [ ] **Load Balancing**: Multi-instance deployment с балансировкой нагрузки
++- [ ] **Auto-scaling**: Horizontal Pod Autoscaler для Kubernetes
++- [ ] **Health Checks**: Advanced health monitoring и alerting
++
++### 🎯 Native Functions Complete Coverage (Q2 2025) 🚧
+
+## Milestone – Server Bootstrap v0.2 (ETA Mar 2025)
+
+Goals:
+1. Publish official Docker images (Docker Hub ghcr.io).
+2. Provide Helm chart with HPA, PDB, ServiceMonitor, TLS.
+3. Ship Terraform modules for AWS (production) + reference GCP/Azure.
+4. Expose Prometheus metrics and SSE endpoints for observability.
+5. Achieve zero-to-prod deployment in <10 minutes.

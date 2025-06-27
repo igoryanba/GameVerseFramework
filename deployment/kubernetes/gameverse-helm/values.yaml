@@ -1,0 +1,301 @@
+# GameVerse Framework Helm Chart Values
+
+# Global settings
+global:
+  imageRegistry: "docker.io"
+  imagePullSecrets: []
+  storageClass: ""
+
+# GameVerse Server Configuration
+gameverse:
+  # Image configuration
+  image:
+    registry: docker.io
+    repository: gameverse/server
+    tag: "latest"
+    pullPolicy: IfNotPresent
+    pullSecrets: []
+
+  # Replica configuration
+  replicaCount: 2
+  
+  # Update strategy
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+
+  # Resource configuration
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Auto-scaling configuration
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    gamePort: 8080
+    adminPort: 30121
+    metricsPort: 9090
+    annotations: {}
+
+  # Ingress configuration
+  ingress:
+    enabled: true
+    className: "nginx"
+    annotations:
+      nginx.ingress.kubernetes.io/rewrite-target: /
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    hosts:
+      - host: gameverse.local
+        paths:
+          - path: /
+            pathType: Prefix
+            service:
+              name: gameverse
+              port: 8080
+          - path: /admin
+            pathType: Prefix
+            service:
+              name: gameverse
+              port: 30121
+    tls:
+      - secretName: gameverse-tls
+        hosts:
+          - gameverse.local
+
+  # Environment variables
+  env:
+    - name: RUST_LOG
+      value: "info"
+    - name: SERVER_HOST
+      value: "0.0.0.0"
+    - name: SERVER_PORT
+      value: "8080"
+    - name: ADMIN_API_PORT
+      value: "30121"
+
+  # Security context
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1001
+    runAsGroup: 1001
+    fsGroup: 1001
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+
+  # Pod security context
+  podSecurityContext:
+    fsGroup: 1001
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+
+  # Probes configuration
+  livenessProbe:
+    httpGet:
+      path: /api/health
+      port: 30121
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+  readinessProbe:
+    httpGet:
+      path: /api/health
+      port: 30121
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+  startupProbe:
+    httpGet:
+      path: /api/health
+      port: 30121
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 30
+
+  # Volume mounts
+  volumeMounts:
+    - name: config
+      mountPath: /app/config
+      readOnly: true
+    - name: logs
+      mountPath: /app/logs
+    - name: resources
+      mountPath: /app/resources
+    - name: tmp
+      mountPath: /tmp
+
+  # Volumes
+  volumes:
+    - name: config
+      configMap:
+        name: gameverse-config
+    - name: logs
+      emptyDir: {}
+    - name: resources
+      persistentVolumeClaim:
+        claimName: gameverse-resources
+    - name: tmp
+      emptyDir: {}
+
+  # Persistent Volume Claims
+  persistence:
+    enabled: true
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 10Gi
+    annotations: {}
+
+  # Node selector
+  nodeSelector: {}
+
+  # Tolerations
+  tolerations: []
+
+  # Affinity
+  affinity: {}
+
+  # Pod annotations
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+    prometheus.io/path: "/metrics"
+
+  # Pod labels
+  podLabels: {}
+
+# PostgreSQL Configuration
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: "gameverse_password"
+    username: "gameverse"
+    password: "gameverse_password"
+    database: "gameverse"
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+# Redis Configuration
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    password: "gameverse_redis_password"
+  master:
+    persistence:
+      enabled: true
+      size: 5Gi
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 300m
+        memory: 256Mi
+
+# Monitoring Configuration
+monitoring:
+  # Prometheus
+  prometheus:
+    enabled: true
+    server:
+      retention: "30d"
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+      persistentVolume:
+        enabled: true
+        size: 20Gi
+
+  # Grafana
+  grafana:
+    enabled: true
+    adminPassword: "admin"
+    persistence:
+      enabled: true
+      size: 5Gi
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 300m
+        memory: 256Mi
+    dashboardProviders:
+      dashboardproviders.yaml:
+        apiVersion: 1
+        providers:
+        - name: 'default'
+          orgId: 1
+          folder: ''
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/default
+    dashboards:
+      default:
+        gameverse-dashboard:
+          gnetId: 1860
+          revision: 27
+          datasource: Prometheus
+
+# Service Monitor for Prometheus Operator
+serviceMonitor:
+  enabled: true
+  namespace: ""
+  interval: 30s
+  scrapeTimeout: 10s
+  labels: {}
+  annotations: {}
+
+# Network Policies
+networkPolicy:
+  enabled: false
+  ingress: []
+  egress: []
+
+# Pod Disruption Budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+  maxUnavailable: ""
+
+migrations:
+  enabled: true
+  command: ["/gameverse_server", "migrate", "--yes"] 
