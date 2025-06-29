@@ -18,6 +18,7 @@
 - **Inventory service** – PostgreSQL + Redis, REST & gRPC APIs
 - **Chat service** – event-driven, Telegram bot integration
 - **Logging service** – Elastic/Kibana pipeline, gRPC ingestion
+- **Player Data service**
 
 ### In Development
 - Authentication service (95 %)
@@ -277,3 +278,20 @@ examples/           # Living code samples
 - ✅ Server Bootstrap v0.1 (CLI `server init`, systemd/NSSM) — **DONE**
 - 🐳 **Server Bootstrap v0.2 (Docker + Kubernetes + Terraform)** — *in progress*
   - [Deployment guide](deployment/README.md)
+
+### API Reference (добавлено)
+
+#### Player Data REST API
+- `GET    /api/v1/players/:id`           — Получить игрока по ID
+- `POST   /api/v1/players`               — Создать нового игрока
+- `PUT    /api/v1/players/:id`           — Обновить профиль игрока
+- `PATCH  /api/v1/players/:id/currency`  — Обновить валюту
+- `POST   /api/v1/players/:id/experience`— Добавить опыт
+- `GET    /api/v1/public/leaderboards`   — Получить лидерборды
+- `GET    /api/v1/public/players/search` — Поиск игроков
+
+## Roadmap Highlights
+
+* Performance Demonstration v0.1 (nightly automated benchmark reports)
+* ✅ Player Data Microservice & migrations — **ЗАВЕРШЕНО**
+* ⏳ Security audit & vulnerability scanning — **NEXT**
