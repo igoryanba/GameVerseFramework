@@ -1106,6 +1106,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "gameverse-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "gameverse-protocol",
+ "gameverse-server",
+ "gameverse-transport",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "gameverse-compat-fivem"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "gameverse-core"
 version = "0.1.0"
 dependencies = [
@@ -1120,6 +1145,7 @@ dependencies = [
  "flatbuffers",
  "futures-core",
  "futures-util",
+ "gameverse-compat-fivem",
  "hyper 0.14.32",
  "jsonwebtoken",
  "lazy_static",
@@ -1155,6 +1181,49 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "windows",
+]
+
+[[package]]
+name = "gameverse-protocol"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "gameverse-runtime"
+version = "0.1.0"
+dependencies = [
+ "gameverse-protocol",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "gameverse-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "gameverse-protocol",
+ "gameverse-runtime",
+ "gameverse-transport",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "gameverse-transport"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "gameverse-protocol",
+ "quinn",
+ "rcgen",
+ "rustls 0.21.12",
+ "tokio",
 ]
 
 [[package]]
@@ -2620,6 +2689,18 @@ checksum = "1465873a3dfdaa8ae7cb14b4383657caab0b3e8a0aa9ae8e04b044854c8dfce2"
 dependencies = [
  "crossbeam-deque",
  "crossbeam-utils",
+]
+
+[[package]]
+name = "rcgen"
+version = "0.11.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52c4f3084aa3bc7dfbba4eff4fab2a54db4324965d8872ab933565e6fbd83bc6"
+dependencies = [
+ "pem",
+ "ring 0.16.20",
+ "time",
+ "yasna",
 ]
 
 [[package]]
@@ -4590,6 +4671,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56c1936c4cc7a1c9ab21a1ebb602eb942ba868cbd44a99cb7cdc5892335e1c85"
 dependencies = [
  "linked-hash-map",
+]
+
+[[package]]
+name = "yasna"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e17bb3549cc1321ae1296b9cdc2698e2b6cb1992adfa19a8c72e5b7a738f44cd"
+dependencies = [
+ "time",
 ]
 
 [[package]]

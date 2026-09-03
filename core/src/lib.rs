@@ -29,6 +29,8 @@ pub mod utils;
 pub mod benchmarks;
 pub mod anticheat;
 pub mod wasm_ui;
+/// Optional FiveM compatibility facade; not required by the platform runtime.
+#[cfg(feature = "fivem-compat")]
 pub mod fcl;
 
 /// Информация о версии фреймворка

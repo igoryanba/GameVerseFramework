@@ -13,4 +13,4 @@ crate-type = ["cdylib"]
 anyhow = "1"
 tracing = "0.1"
 async-trait = "0.1"
-gameverse-core = { path = "../../../core", version = "*" } 
+gameverse-core = { path = "../../../core", version = "*", features = ["fivem-compat"] }

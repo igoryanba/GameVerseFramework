@@ -1,6 +1,22 @@
 [workspace]
+resolver = "2"
 members = [
     "core",
     "sdk/cli-tools",
-    "benchmarks/perf_demo"
-] 
+    "benchmarks/perf_demo",
+    "crates/protocol",
+    "crates/runtime",
+    "crates/transport",
+    "crates/server",
+    "crates/client",
+    "crates/compat-fivem",
+]
+default-members = [
+    "crates/protocol", "crates/runtime", "crates/transport",
+    "crates/server", "crates/client", "crates/compat-fivem",
+]
+exclude = [
+    "services/authentication", "services/chat", "services/inventory",
+    "services/logging", "services/player-data", "sdk/native-generator",
+    "tools/fivem-analyzer", "sdk/test-plugins/test-basic-plugin",
+]

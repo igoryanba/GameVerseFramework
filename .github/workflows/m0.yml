@@ -1,0 +1,50 @@
+name: Independent Runtime M0
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  runtime:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.0
+          components: rustfmt, clippy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Check runtime formatting
+        run: cargo fmt -p gameverse-protocol -p gameverse-runtime -p gameverse-transport -p gameverse-server -p gameverse-client -p gameverse-compat-fivem -- --check
+      - name: Build independent packages
+        run: cargo build --locked
+      - name: Test independent packages
+        run: cargo test --locked
+      - name: Lint independent packages
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Check dependency boundary
+        run: node scripts/check-m0-boundary.mjs
+      - name: Separate process acceptance
+        run: node scripts/m0-smoke.mjs --seconds 10 --output m0-report
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: m0-${{ matrix.os }}
+          path: |
+            m0-report/*.json
+            m0-report/*.log
+  legacy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.0
+      - name: Install legacy native prerequisites
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev libssl-dev pkg-config
+      - name: Legacy core and FCL (failures remain visible)
+        run: cargo test --locked -p gameverse-core --features fivem-compat

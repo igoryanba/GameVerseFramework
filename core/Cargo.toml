@@ -20,6 +20,7 @@ name = "dynamic_plugin_demo"
 path = "../examples/dynamic_plugin_demo.rs"
 
 [dependencies]
+gameverse-compat-fivem = { path = "../crates/compat-fivem", optional = true }
 # Async runtime
 tokio = { version = "1.35", features = ["full"] }
 tokio-util = "0.7"
@@ -112,7 +113,9 @@ name = "memory_operations"
 harness = false
 
 [features]
-default = ["lua_scripting", "typescript_scripting", "plugin_system"]
+default = ["lua_scripting", "typescript_scripting", "plugin_system", "fivem-compat"]
+# Legacy default retained during M0 preparation. Independent builds omit this feature.
+fivem-compat = ["dep:gameverse-compat-fivem"]
 lua_scripting = []
 typescript_scripting = []
 wasm_scripting = []

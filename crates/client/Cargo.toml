@@ -1,0 +1,16 @@
+[package]
+name = "gameverse-client"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gameverse-protocol = { path = "../protocol" }
+gameverse-transport = { path = "../transport" }
+anyhow = "1"
+tokio = { version = "1", features = ["full"] }
+clap = { version = "4", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+gameverse-server = { path = "../server" }
+tempfile = "3"

@@ -1,0 +1,12 @@
+[package]
+name = "gameverse-transport"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gameverse-protocol = { path = "../protocol" }
+anyhow = "1"
+tokio = { version = "1", features = ["io-util", "time", "sync", "rt-multi-thread", "macros", "signal"] }
+quinn = "0.10.2"
+rustls = "0.21"
+rcgen = "0.11"
