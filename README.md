@@ -1,5 +1,12 @@
 # 🎮 GameVerse Framework
 
+## Independent Multiplayer Runtime M0
+
+The new headless server and standalone test clients build independently of the
+legacy core and FiveM compatibility. See [M0 build, protocol and validation](docs/M0_RUNTIME.md).
+`cargo build` / `cargo test` select the new runtime packages; legacy workspace
+checks remain separate and currently report existing core compilation failures.
+
 > Next-generation modding platform designed to outperform FiveM and bring GTA V & Red Dead Redemption 2 multiplayer to the WebAssembly era.
 
 [![Stars](https://img.shields.io/github/stars/igoryanba/GameVerseFramework)](https://github.com/igoryanba/GameVerseFramework/stargazers)  
