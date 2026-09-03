@@ -1,4 +1,5 @@
 //! Deterministic authoritative world, independent of transport and game adapters.
+pub mod presence;
 use gameverse_protocol::{
     valid_direction, Entity, EntityId, SessionId, Snapshot, Tick, MAX_PLAYERS,
 };

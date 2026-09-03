@@ -1,10 +1,14 @@
-//! Dedicated M0 server. All game state is owned here, never by clients.
-pub mod presence;
+//! M1 presence server: owns identity; validates and relays client poses.
+
 use anyhow::Result;
-use gameverse_protocol::{Message, SessionId, Snapshot, VERSION};
-use gameverse_runtime::{World, STEP_MS};
+use gameverse_protocol::{
+    presence::{Message, Snapshot, VERSION},
+    SessionId,
+};
+use gameverse_runtime::{presence::World, STEP_MS};
 use gameverse_transport::{
-    quinn, read_message, write_message, HANDSHAKE_TIMEOUT, IDLE_TIMEOUT, INPUT_CAPACITY,
+    presence::{read_message, write_message},
+    quinn, HANDSHAKE_TIMEOUT, IDLE_TIMEOUT, INPUT_CAPACITY,
 };
 use std::{
     collections::BTreeMap,
@@ -118,7 +122,8 @@ async fn session(connecting: quinn::Connecting, state: Arc<Mutex<State>>) -> Res
             loop {
                 let message = timeout(IDLE_TIMEOUT, read_message(&mut recv)).await??;
                 match message {
-                    Message::Input { .. } => {
+                    Message::Heartbeat => {}
+                    Message::PlayerState { .. } => {
                         let depth = INPUT_CAPACITY - input_tx.capacity() + 1;
                         input_tx
                             .try_send(message)
@@ -186,8 +191,8 @@ pub async fn run(
                     // Budget each session independently; command traffic cannot postpone ticks.
                     for _ in 0..INPUT_CAPACITY {
                         match peer.input.try_recv() {
-                            Ok(Message::Input { sequence, direction }) => {
-                                if world.input(*id, sequence, direction).is_err() {
+                            Ok(Message::PlayerState { sequence, state: pose }) => {
+                                if world.input(*id, sequence, pose).is_err() {
                                     peer.connection.close(1_u32.into(), b"invalid input");
                                     break;
                                 }

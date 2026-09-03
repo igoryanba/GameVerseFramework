@@ -1,4 +1,5 @@
 //! QUIC endpoints and bounded framing. Certificate trust is always explicit.
+pub mod presence;
 use anyhow::Result;
 use gameverse_protocol::{decode, encode, frame_length, Message};
 pub use quinn;

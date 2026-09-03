@@ -1,4 +1,6 @@
 //! Standalone client session and replaceable game adapter; no game-process access.
+pub mod ipc;
+pub mod presence;
 use anyhow::Result;
 use gameverse_protocol::{EntityId, Message, SessionId, Snapshot, VERSION};
 use gameverse_transport::{

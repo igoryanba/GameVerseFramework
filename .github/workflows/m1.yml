@@ -1,0 +1,30 @@
+name: GTA Presence M1
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  adapter:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Compile independent Rust client and server
+        run: cargo build --locked -p gameverse-server -p gameverse-client
+      - name: Verify M1 network contract
+        run: cargo test --locked -p gameverse-client --test presence
+      - name: Compile GTA adapter and test C# framing
+        shell: pwsh
+        run: ./adapters/gta5/setup.ps1
+      - name: Separate-process net48 named-pipe and QUIC test
+        shell: pwsh
+        run: ./scripts/m1-smoke.ps1 -Seconds 30 -Output .m1/ci-report
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: m1-synthetic-evidence
+          path: .m1/ci-report/

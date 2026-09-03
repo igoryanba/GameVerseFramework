@@ -1,5 +1,6 @@
 [package]
 name = "gameverse-client"
+default-run = "gameverse-client"
 version = "0.1.0"
 edition = "2021"
 

@@ -29,6 +29,10 @@ logs/
 # Misc
 m0-report/
 .m0/
+.m1/
+adapters/gta5/**/bin/
+adapters/gta5/**/obj/
+adapters/gta5/vendor/
 admin-panel/dist/
 npm-debug.log*
 yarn-debug.log*
