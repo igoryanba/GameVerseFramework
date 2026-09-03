@@ -16,25 +16,6 @@
 </head>
 <body>
   <div id="root"></div>
-  <script>
-    // SSE metrics
-    const metricsSource = new EventSource('/api/server/metrics/stream');
-    metricsSource.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        document.getElementById('uptime').textContent = `Uptime: ${data.uptime_secs}s`;
-        document.getElementById('players').textContent = `Players: ${data.players}`;
-        document.getElementById('tick').textContent = `Avg Tick: ${data.avg_tick_ms.toFixed(2)} ms`;
-      } catch (err) { console.error(err); }
-    };
-
-    // SSE logs
-    const logSource = new EventSource('/api/server/logs/stream');
-    logSource.onmessage = (e) => {
-      const pre = document.getElementById('logOutput');
-      pre.textContent += e.data + '\n';
-      pre.scrollTop = pre.scrollHeight;
-    };
-  </script>
+  <script type="module" src="/src/main.tsx"></script>
 </body>
-</html> 
+</html>
