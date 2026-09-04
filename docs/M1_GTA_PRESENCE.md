@@ -81,10 +81,11 @@ gameverse-gta-bridge --cert .m1/game/cert.der --duration 2100
 gameverse-presence-bot --cert .m1/game/cert.der --duration 1800 --report .m1/game/bot.json
 ```
 
-For a repeatable test, use the acceptance runner. It launches
-`GTA5_Enhanced.exe` directly with the game directory as its working directory;
-it intentionally does not use `PlayGTAV.exe`. It starts the server, bridge and bot,
-captures logs, stops its child processes, and writes `acceptance.json`:
+For a repeatable test, use the acceptance runner. It launches `PlayGTAV.exe` with
+the game directory as its working directory and waits for `GTA5_Enhanced.exe`.
+Direct executable launch remains available with `-Launcher GTA5_Enhanced.exe` for
+diagnostics. The runner starts the server, bridge and bot, captures logs, stops its
+child processes, and writes `acceptance.json`:
 
 ```powershell
 ./scripts/m1-gta-acceptance.ps1 -GamePath '<GTA directory>' -Seconds 300
@@ -95,6 +96,8 @@ valid local ped exists. The bot waits for that real pose and anchors its circula
 path near it, avoiding an arbitrary remote world coordinate. Remain near the initial
 position to observe the remote ped; move/turn locally for the reverse-direction test.
 The runner stops the game when the test ends unless `-LeaveGameRunning` is passed.
+It warns when the Windows commit limit is below 16 GB because GTA Enhanced may
+otherwise fail while loading Story Mode with `DirectX Out of memory`.
 
 - **G1:** game log contains `GTA_ADAPTER_LOADED=true`, supported build, and
   `IPC_CONNECTED=true`; Rust logs `local_player_state_received` with actual XYZ.

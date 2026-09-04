@@ -4,6 +4,7 @@ param(
     [string]$TargetDir = $env:CARGO_TARGET_DIR,
     [string]$Output = '.m1/gta-acceptance',
     [int]$Port = 30121,
+    [ValidateSet('PlayGTAV.exe','GTA5_Enhanced.exe')][string]$Launcher = 'PlayGTAV.exe',
     [switch]$LeaveGameRunning
 )
 
@@ -16,7 +17,13 @@ $gameExe = Join-Path $GamePath 'GTA5_Enhanced.exe'
 if (-not (Test-Path -LiteralPath $gameExe -PathType Leaf)) { throw 'GTA5_Enhanced.exe not found' }
 $gameFile = Get-Item -LiteralPath $gameExe
 if ($gameFile.VersionInfo.FileVersion -ne '1.0.1158.13') { throw 'Only Enhanced 1.0.1158.13 is tested' }
+$launcherExe = Join-Path $GamePath $Launcher
+if (-not (Test-Path -LiteralPath $launcherExe -PathType Leaf)) { throw "Launcher not found: $Launcher" }
 if (Get-Process -Name GTA5_Enhanced -ErrorAction SilentlyContinue) { throw 'Close the existing GTA5_Enhanced process before the test' }
+$memory = Get-CimInstance Win32_OperatingSystem
+if ($memory.TotalVirtualMemorySize * 1KB -lt 16GB) {
+    Write-Warning 'Windows commit limit is below 16 GB. GTA Enhanced may fail with DirectX Out of memory.'
+}
 
 if (-not $TargetDir) { $TargetDir = Join-Path $repo 'target' }
 $binaries = @{
@@ -49,6 +56,7 @@ $adapterLog = Join-Path $GamePath 'GameVerse.GtaAdapter.log'
 $startedUtc = [DateTime]::UtcNow
 $children = [Collections.Generic.List[Diagnostics.Process]]::new()
 $game = $null
+$launcherProcess = $null
 $failure = $null
 
 function Start-LoggedProcess([string]$Name, [string]$FilePath, [string[]]$Arguments) {
@@ -80,8 +88,15 @@ try {
     Start-Sleep -Milliseconds 500
     $bot = Start-LoggedProcess 'bot' $binaries.bot @('--server',$address,'--cert',$cert,'--duration',$Seconds.ToString(),'--report',(Join-Path $Output 'bot.json'))
 
-    # Launch the actual game executable directly. PlayGTAV.exe is not used.
-    $game = Start-Process -FilePath $gameExe -WorkingDirectory $GamePath -PassThru
+    # This distribution starts reliably through PlayGTAV.exe. Direct executable
+    # launch remains available as an explicit diagnostic option.
+    $launcherProcess = Start-Process -FilePath $launcherExe -WorkingDirectory $GamePath -PassThru
+    $gameDeadline = [DateTime]::UtcNow.AddSeconds(60)
+    while (-not $game -and [DateTime]::UtcNow -lt $gameDeadline) {
+        Start-Sleep -Milliseconds 500
+        $game = Get-Process -Name GTA5_Enhanced -ErrorAction SilentlyContinue | Select-Object -First 1
+    }
+    if (-not $game) { throw "$Launcher did not start GTA5_Enhanced.exe within 60 seconds" }
     $timer = [Diagnostics.Stopwatch]::StartNew()
     while ($timer.Elapsed.TotalSeconds -lt $Seconds) {
         Start-Sleep -Seconds 1
@@ -110,6 +125,10 @@ finally {
         $game.Refresh()
         if (-not $LeaveGameRunning -and -not $game.HasExited) { Stop-Process -Id $game.Id; $game.WaitForExit() }
     }
+    if ($launcherProcess) {
+        $launcherProcess.Refresh()
+        if (-not $LeaveGameRunning -and -not $launcherProcess.HasExited) { Stop-Process -Id $launcherProcess.Id }
+    }
 }
 
 $adapterLines = Read-NewAdapterLog
@@ -121,7 +140,8 @@ $g1 = $loaded -and $ipc -and $botReport -and $botReport.received_remote_states -
 $g3 = $botReport -and $botReport.published -gt 0
 $report = [ordered]@{
     gta_executable = $gameExe
-    playgtav_used = $false
+    launcher = $Launcher
+    playgtav_used = $Launcher -eq 'PlayGTAV.exe'
     game_build = $gameFile.VersionInfo.FileVersion
     duration_seconds = $Seconds
     adapter_loaded = $loaded
