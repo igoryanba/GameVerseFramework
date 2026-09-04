@@ -14,7 +14,9 @@ GameVerse is an experimental independent multiplayer runtime for a locally insta
 - PostgreSQL schema for the RP vertical slice and a minimal Docker Compose deployment for the M2 server plus PostgreSQL.
 - Windows launcher with pinned-certificate and install-manifest checks, ordered UI/bridge/game startup, logs, and a redacted diagnostics archive.
 - Reproducible self-contained Windows alpha packaging with SHA256 inventory and separate symbols.
+- Detached ECDSA P-256/SHA-256 update manifests with strict path, URL, size, hash and signature validation.
 - Versioned M2 health, readiness, version and Prometheus metrics endpoints.
+- Full headless UI → bridge → QUIC → PostgreSQL → fake-adapter acceptance and a 32-client, 20 Hz, 60-second CI load smoke.
 
 The legacy `core`, old services, admin panel, Kubernetes/Terraform files, and historical performance claims are retained as research material. They are not part of the supported alpha runtime or its CI gate.
 

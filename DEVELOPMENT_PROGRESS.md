@@ -9,15 +9,18 @@ This file describes only functionality demonstrated by the active independent ru
 - A PostgreSQL-backed closed-alpha RP path covering invites, accounts, sessions, characters, wallets, inventory, a shop and courier work.
 - Static FiveM resource analysis plus an isolated Lua compatibility harness for GameVerse-owned MIT fixtures.
 - A Windows launcher and a separate WinForms/WebView2 UI connected to the M2 bridge through a bounded local protocol.
+- A PostgreSQL acceptance that drives the real UI protocol and fake adapter through the bridge and QUIC server from registration to reconnect.
+- A reproducible self-contained Windows package, detached ECDSA update-manifest verification, and a separate symbols archive.
+- A Docker Compose acceptance that verifies PostgreSQL migrations, seed content, readiness, version and Prometheus metrics.
+- A 32-client, 20 Hz, 60-second CI smoke with clean disconnects and no reported client errors.
 
 ## Required before closed alpha
 
-1. One end-to-end UI, bridge, QUIC server, PostgreSQL and fake-adapter acceptance test.
-2. A reproducible signed Windows client package with update and rollback verification.
-3. One real GTA client plus a bot for locomotion and combat presentation acceptance.
-4. Two real GTA clients sharing a vehicle with ownership migration.
-5. Protected health/admin endpoints, reproducible Linux deployment and backup restore.
-6. A 32-client, 20 Hz, 30-minute release soak without stale entities or unbounded growth.
+1. Atomic client update installation and rollback, using a protected release signing key.
+2. One real GTA client plus a bot for locomotion and combat presentation acceptance.
+3. Two real GTA clients sharing a vehicle with ownership migration.
+4. Protected admin endpoints and a tested PostgreSQL backup restore.
+5. A 32-client, 20 Hz, 30-minute release soak without stale entities or unbounded growth.
 
 ## Compatibility status
 
