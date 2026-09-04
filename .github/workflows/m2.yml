@@ -15,15 +15,15 @@ jobs:
         with:
           dotnet-version: 8.0.x
       - name: Test Presence v2 and compatibility API
-        run: cargo test --locked -p gameverse-protocol -p gameverse-runtime -p gameverse-transport -p gameverse-server -p gameverse-client -p gameverse-compat-fivem
+        run: cargo test --locked -p gameverse-protocol -p gameverse-runtime -p gameverse-transport -p gameverse-server -p gameverse-client -p gameverse-compat-fivem -p gameverse-rp
       - name: Check formatting
         run: |
-          cargo fmt -p gameverse-protocol -p gameverse-runtime -p gameverse-transport -p gameverse-server -p gameverse-client -p gameverse-compat-fivem -- --check
+          cargo fmt -p gameverse-protocol -p gameverse-runtime -p gameverse-transport -p gameverse-server -p gameverse-client -p gameverse-compat-fivem -p gameverse-rp -- --check
           cargo fmt --manifest-path tools/fivem-analyzer/Cargo.toml -- --check
       - name: Lint independent runtime
         shell: pwsh
         run: |
-          $output = cargo clippy --locked -p gameverse-protocol -p gameverse-runtime -p gameverse-transport -p gameverse-server -p gameverse-client -p gameverse-compat-fivem --all-targets -- -D warnings 2>&1 | Out-String
+          $output = cargo clippy --locked -p gameverse-protocol -p gameverse-runtime -p gameverse-transport -p gameverse-server -p gameverse-client -p gameverse-compat-fivem -p gameverse-rp --all-targets -- -D warnings 2>&1 | Out-String
           $code = $LASTEXITCODE
           $output
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "``````text`n$output`n``````"

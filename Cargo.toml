@@ -9,11 +9,13 @@ members = [
     "crates/compat-fivem",
     "crates/resource-manifest",
     "crates/resource-runtime",
+    "crates/gameverse-rp",
 ]
 default-members = [
     "crates/protocol", "crates/runtime", "crates/transport",
     "crates/server", "crates/client", "crates/compat-fivem",
     "crates/resource-manifest", "crates/resource-runtime",
+    "crates/gameverse-rp",
 ]
 exclude = [
     "core", "sdk/cli-tools", "benchmarks/perf_demo",
