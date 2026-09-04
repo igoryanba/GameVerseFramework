@@ -270,7 +270,12 @@ internal static class Launcher
             RedirectStandardError = true
         };
         if (Path.GetFileNameWithoutExtension(executable).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
-            info.ArgumentList.Add(System.Reflection.Assembly.GetExecutingAssembly().Location);
+        {
+            string managedEntry = Environment.GetCommandLineArgs()[0];
+            if (!Path.GetExtension(managedEntry).Equals(".dll", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Managed launcher entry path is unavailable");
+            info.ArgumentList.Add(Path.GetFullPath(managedEntry));
+        }
         info.ArgumentList.Add("__ready-child");
         info.ArgumentList.Add("self_test_ready");
         using Process child = Process.Start(info) ?? throw new InvalidOperationException("Self-test child did not start");
