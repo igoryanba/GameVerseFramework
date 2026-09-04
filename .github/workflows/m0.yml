@@ -23,7 +23,17 @@ jobs:
       - name: Build independent packages
         run: cargo build --locked -p gameverse-protocol -p gameverse-runtime -p gameverse-transport -p gameverse-server -p gameverse-client -p gameverse-compat-fivem
       - name: Test independent packages
-        run: cargo test --locked -p gameverse-protocol -p gameverse-runtime -p gameverse-transport -p gameverse-server -p gameverse-client -p gameverse-compat-fivem
+        shell: pwsh
+        run: |
+          $output = cargo test --locked -p gameverse-protocol -p gameverse-runtime -p gameverse-transport -p gameverse-server -p gameverse-client -p gameverse-compat-fivem 2>&1 | Out-String
+          $code = $LASTEXITCODE
+          $output
+          if ($code -ne 0) {
+            $tail = ($output -split "`r?`n" | Select-Object -Last 80) -join "`n"
+            $annotation = $tail.Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
+            Write-Output "::error title=M0 test diagnostics::$annotation"
+            exit $code
+          }
       - name: Lint independent packages
         run: cargo clippy --locked -p gameverse-protocol -p gameverse-runtime -p gameverse-transport -p gameverse-server -p gameverse-client -p gameverse-compat-fivem --all-targets -- -D warnings
       - name: Check dependency boundary
