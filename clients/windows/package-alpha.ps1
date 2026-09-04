@@ -40,6 +40,18 @@ Copy-Item -LiteralPath (Join-Path $root 'adapters\gta5\THIRD_PARTY.md') -Destina
 Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination (Join-Path $stage 'licenses') -ErrorAction SilentlyContinue
 Get-ChildItem -Path $launcherPublish,$uiPublish,$adapterOutput -Filter '*.pdb' -File -Recurse | Copy-Item -Destination $symbols -Force
 
+if ($SigningKeyPath) {
+    $privateKey = (Resolve-Path -LiteralPath $SigningKeyPath).Path
+    $stagePrefix = $stage.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+    if ($privateKey.StartsWith($stagePrefix, [StringComparison]::OrdinalIgnoreCase)) { throw 'Signing key must be stored outside the package' }
+    $signer = [Security.Cryptography.ECDsa]::Create()
+    try {
+        $signer.ImportFromPem([IO.File]::ReadAllText($privateKey))
+        if ($signer.KeySize -ne 256) { throw 'Signing key must use ECDSA P-256' }
+        [IO.File]::WriteAllText((Join-Path $stage 'update-public-key.pem'), $signer.ExportSubjectPublicKeyInfoPem())
+    } finally { $signer.Dispose() }
+}
+
 $example = [ordered]@{
     GameDirectory = 'C:\Games\Grand Theft Auto V Enhanced'
     UiPath = 'ui\GameVerse.UI.exe'
