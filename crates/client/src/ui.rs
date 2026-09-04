@@ -167,4 +167,56 @@ mod tests {
         .await
         .is_err());
     }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn windows_named_pipe_preserves_request_correlation() {
+        use tokio::net::windows::named_pipe::{ClientOptions, ServerOptions};
+        let pipe = format!(
+            r"\\.\pipe\gameverse-ui-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let server = ServerOptions::new()
+            .first_pipe_instance(true)
+            .reject_remote_clients(true)
+            .create(&pipe)
+            .unwrap();
+        let client = ClientOptions::new().open(&pipe).unwrap();
+        server.connect().await.unwrap();
+        let (mut server_rx, mut server_tx) = tokio::io::split(server);
+        let (mut client_rx, mut client_tx) = tokio::io::split(client);
+        let server_task = tokio::spawn(async move {
+            for _ in 0..2 {
+                let request: UiRequest = read(&mut server_rx).await.unwrap();
+                assert!(request.valid());
+                write(
+                    &mut server_tx,
+                    &UiResponse::success(&request.request_id, serde_json::json!({})),
+                )
+                .await
+                .unwrap();
+            }
+        });
+        for id in ["pipe-1", "pipe-2"] {
+            write(
+                &mut client_tx,
+                &UiRequest {
+                    schema_version: VERSION,
+                    request_id: id.into(),
+                    command: "ui.ready".into(),
+                    payload: serde_json::json!({}),
+                },
+            )
+            .await
+            .unwrap();
+            let response: UiResponse = read(&mut client_rx).await.unwrap();
+            assert_eq!(response.request_id, id);
+            assert!(response.valid());
+        }
+        server_task.await.unwrap();
+    }
 }

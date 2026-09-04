@@ -26,6 +26,14 @@ internal static class Launcher
     {
         string command = args.FirstOrDefault()?.ToLowerInvariant() ?? "verify";
         if (command == "init") return WriteExample();
+        if (command == "__ready-child")
+        {
+            Console.WriteLine(JsonSerializer.Serialize(new { @event = args.ElementAtOrDefault(1) ?? "self_test_ready" }));
+            Console.Out.Flush();
+            await Task.Delay(500);
+            return 0;
+        }
+        if (command == "self-test") return await SelfTestAsync();
         LauncherConfig config;
         try { config = Load(); }
         catch (Exception error)
@@ -33,14 +41,22 @@ internal static class Launcher
             Console.Error.WriteLine(JsonSerializer.Serialize(new { status = "configuration_error", error = error.Message }));
             return 2;
         }
-        return command switch
+        try
         {
-            "verify" => Verify(config),
-            "start" => await StartAsync(config),
-            "logs" => OpenLogs(config),
-            "diagnostics" => Diagnostics(config, args.ElementAtOrDefault(1)),
-            _ => Usage()
-        };
+            return command switch
+            {
+                "verify" => Verify(config),
+                "start" => await StartAsync(config),
+                "logs" => OpenLogs(config),
+                "diagnostics" => Diagnostics(config, args.ElementAtOrDefault(1)),
+                _ => Usage()
+            };
+        }
+        catch (Exception error)
+        {
+            Console.Error.WriteLine(JsonSerializer.Serialize(new { status = "failed", error = error.Message }));
+            return 4;
+        }
     }
 
     private static LauncherConfig Load()
@@ -220,6 +236,29 @@ internal static class Launcher
         }
     }
 
+    private static async Task<int> SelfTestAsync()
+    {
+        string executable = Environment.ProcessPath ?? throw new InvalidOperationException("Launcher executable path is unavailable");
+        ProcessStartInfo info = new()
+        {
+            FileName = executable,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        if (Path.GetFileNameWithoutExtension(executable).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+            info.ArgumentList.Add(System.Reflection.Assembly.GetExecutingAssembly().Location);
+        info.ArgumentList.Add("__ready-child");
+        info.ArgumentList.Add("self_test_ready");
+        using Process child = Process.Start(info) ?? throw new InvalidOperationException("Self-test child did not start");
+        await WaitForReadyEventAsync(child, "self_test_ready", TimeSpan.FromSeconds(3), "Self-test child");
+        await child.WaitForExitAsync();
+        bool passed = child.ExitCode == 0;
+        Console.WriteLine(JsonSerializer.Serialize(new { status = passed ? "passed" : "failed", readiness_event = passed, child_cleaned_up = child.HasExited }));
+        return passed ? 0 : 1;
+    }
+
     private static int OpenLogs(LauncherConfig config)
     {
         string logs = LogDirectory(config);
@@ -276,7 +315,7 @@ internal static class Launcher
     }
     private static int Usage()
     {
-        Console.Error.WriteLine("Usage: GameVerse.Launcher init|verify|start|logs|diagnostics [output.zip]");
+        Console.Error.WriteLine("Usage: GameVerse.Launcher init|verify|start|logs|diagnostics [output.zip]|self-test");
         return 1;
     }
 

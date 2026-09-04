@@ -41,5 +41,6 @@ jobs:
         shell: pwsh
         run: |
           dotnet build clients/windows/GameVerse.Launcher -c Release --nologo
+          & ./clients/windows/GameVerse.Launcher/bin/Release/net8.0-windows/GameVerse.Launcher.exe self-test
           dotnet build clients/windows/GameVerse.UI -c Release --nologo
           & ./clients/windows/GameVerse.UI/bin/Release/net8.0-windows/GameVerse.UI.exe --self-test
