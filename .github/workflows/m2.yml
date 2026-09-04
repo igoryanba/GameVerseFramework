@@ -24,9 +24,14 @@ jobs:
         shell: pwsh
         run: |
           $output = cargo clippy --locked -p gameverse-protocol -p gameverse-runtime -p gameverse-transport -p gameverse-compat-fivem --all-targets -- -D warnings 2>&1 | Out-String
+          $code = $LASTEXITCODE
           $output
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "``````text`n$output`n``````"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($code -ne 0) {
+            $annotation = $output.Substring([Math]::Max(0, $output.Length - 5000)).Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
+            Write-Output "::error title=Clippy diagnostics::$annotation"
+            exit $code
+          }
       - name: Test static resource analyzer
         run: cargo test --manifest-path tools/fivem-analyzer/Cargo.toml
       - name: Compile adapter and run protocol tests
