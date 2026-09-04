@@ -81,7 +81,7 @@ namespace GameVerse.GtaAdapter
                     var entity = Wire.Entity(message);
                     if (local == null || entity.id.Equals(local)) return;
                     if (remotes.TryGetValue(entity.id, out RemotePed ped)) ped.Update(entity);
-                    else if (remotes.Count < 1) remotes.Add(entity.id, new RemotePed(entity, (name, id) => { Log(name + " " + id); link.Report(name, id); }));
+                    else if (remotes.Count < 31) remotes.Add(entity.id, new RemotePed(entity, (name, id) => { Log(name + " " + id); link.Report(name, id); }));
                     break;
                 case "remote_entity_destroy":
                     var id = message["id"].ToObject<EntityId>();

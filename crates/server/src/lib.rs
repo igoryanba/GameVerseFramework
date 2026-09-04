@@ -1,5 +1,6 @@
 //! Dedicated M0 server. All game state is owned here, never by clients.
 pub mod presence;
+pub mod presence_m2;
 use anyhow::Result;
 use gameverse_protocol::{Message, SessionId, Snapshot, VERSION};
 use gameverse_runtime::{World, STEP_MS};

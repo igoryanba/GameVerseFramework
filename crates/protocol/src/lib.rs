@@ -1,5 +1,6 @@
 //! Bounded, game-independent M0 wire contract. Length prefix is u32 big endian.
 pub mod adapter;
+pub mod control_v2;
 pub mod presence;
 pub mod presence_v2;
 use serde::{Deserialize, Serialize};

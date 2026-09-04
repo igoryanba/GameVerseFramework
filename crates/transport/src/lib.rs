@@ -26,6 +26,28 @@ pub async fn write_message<W: AsyncWrite + Unpin>(writer: &mut W, message: &Mess
     Ok(())
 }
 
+pub async fn read_control<R: AsyncRead + Unpin>(
+    reader: &mut R,
+) -> Result<gameverse_protocol::control_v2::ControlMessage> {
+    let mut prefix = [0; 4];
+    reader.read_exact(&mut prefix).await?;
+    let length = gameverse_protocol::frame_length(prefix)?;
+    let mut body = vec![0; length];
+    reader.read_exact(&mut body).await?;
+    Ok(gameverse_protocol::control_v2::decode(&body)?)
+}
+
+pub async fn write_control<W: AsyncWrite + Unpin>(
+    writer: &mut W,
+    message: &gameverse_protocol::control_v2::ControlMessage,
+) -> Result<()> {
+    writer
+        .write_all(&gameverse_protocol::control_v2::encode(message)?)
+        .await?;
+    writer.flush().await?;
+    Ok(())
+}
+
 fn transport_config() -> Arc<quinn::TransportConfig> {
     let mut config = quinn::TransportConfig::default();
     config.max_idle_timeout(Some(IDLE_TIMEOUT.try_into().expect("valid idle timeout")));
@@ -76,7 +98,7 @@ pub fn client_endpoint(cert_path: &Path) -> Result<quinn::Endpoint> {
     roots.add(&rustls::Certificate(std::fs::read(cert_path)?))?;
     let mut config = quinn::ClientConfig::with_root_certificates(roots);
     config.transport_config(transport_config());
-    let mut endpoint = quinn::Endpoint::client("127.0.0.1:0".parse()?)?;
+    let mut endpoint = quinn::Endpoint::client("0.0.0.0:0".parse()?)?;
     endpoint.set_default_client_config(config);
     Ok(endpoint)
 }

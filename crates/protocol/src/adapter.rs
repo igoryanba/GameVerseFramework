@@ -83,7 +83,8 @@ pub enum Message {
 }
 impl Message {
     pub fn valid(&self) -> bool {
-        let id_valid = |id: &EntityId| id.slot < crate::MAX_PLAYERS as u32 && id.generation > 0;
+        let id_valid =
+            |id: &EntityId| id.slot < crate::presence_v2::MAX_PLAYERS as u32 && id.generation > 0;
         match self {
             Self::AdapterHello { backend, .. } => backend.len() <= 64,
             Self::GameInfo { edition, build } => edition.len() <= 32 && build.len() <= 64,

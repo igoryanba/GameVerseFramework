@@ -169,7 +169,7 @@ namespace GameVerse.AdapterProtocol
         public static RemoteEntity Entity(JObject message)
         {
             var entity = message["entity"]?.ToObject<RemoteEntity>();
-            if (entity?.id == null || entity.id.generation == 0 || entity.id.slot >= 2 || entity.state == null || !entity.state.IsValid()) throw new InvalidDataException("Invalid remote entity");
+            if (entity?.id == null || entity.id.generation == 0 || entity.id.slot >= 32 || entity.state == null || !entity.state.IsValid()) throw new InvalidDataException("Invalid remote entity");
             return entity;
         }
     }
