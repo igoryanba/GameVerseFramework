@@ -49,6 +49,11 @@ jobs:
             tail -n 100 rp-postgres-acceptance.log
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          diagnostics=$(tail -n 60 rp-postgres-acceptance.log)
+          diagnostics=${diagnostics//'%'/'%25'}
+          diagnostics=${diagnostics//$'\r'/'%0D'}
+          diagnostics=${diagnostics//$'\n'/'%0A'}
+          echo "::error title=RP acceptance diagnostics::$diagnostics"
       - name: Lint RP persistence
         run: cargo clippy --locked -p gameverse-rp --all-targets -- -D warnings
       - name: Check RP formatting
