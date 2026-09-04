@@ -1,6 +1,6 @@
 use anyhow::Result;
 use gameverse_resource_manifest::{
-    parse_fivem, resolve_and_validate, DataFile, ResourceManifest, SourceMetadata,
+    expand_patterns, parse_fivem, resolve_and_validate, DataFile, ResourceManifest, SourceMetadata,
 };
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -57,26 +57,27 @@ pub struct ResourceReport {
 }
 
 pub fn to_gameverse_toml(report: &ResourceReport) -> Result<String> {
-    Ok(gameverse_resource_manifest::to_gameverse_toml(
-        &ResourceManifest {
-            name: report.resource_name.clone(),
-            client_scripts: report.client_scripts.clone(),
-            server_scripts: report.server_scripts.clone(),
-            shared_scripts: report.shared_scripts.clone(),
-            dependencies: report.dependencies.clone(),
-            files: report.files.clone(),
-            exports: report.exports.clone(),
-            data_files: report.data_files.clone(),
-            ui_page: report.ui_page.clone(),
-            source: report.source.clone(),
-        },
-    )?)
+    gameverse_resource_manifest::to_gameverse_toml(&ResourceManifest {
+        name: report.resource_name.clone(),
+        client_scripts: report.client_scripts.clone(),
+        server_scripts: report.server_scripts.clone(),
+        shared_scripts: report.shared_scripts.clone(),
+        dependencies: report.dependencies.clone(),
+        files: report.files.clone(),
+        exports: report.exports.clone(),
+        data_files: report.data_files.clone(),
+        ui_page: report.ui_page.clone(),
+        source: report.source.clone(),
+    })
 }
 
 pub fn analyze(root: &Path) -> Result<ResourceReport> {
     let parsed = parse_fivem(root)?;
     let manifest = parsed.manifest;
     let resolved_files = resolve_and_validate(root, &manifest)?;
+    let shared_scripts = expand_patterns(&manifest.shared_scripts, &resolved_files)?;
+    let client_scripts = expand_patterns(&manifest.client_scripts, &resolved_files)?;
+    let server_scripts = expand_patterns(&manifest.server_scripts, &resolved_files)?;
     let mut contents = String::new();
     let mut sql_files = Vec::new();
     for entry in WalkDir::new(root).follow_links(false) {
@@ -213,9 +214,9 @@ pub fn analyze(root: &Path) -> Result<ResourceReport> {
         source: manifest.source,
         framework,
         dependencies: manifest.dependencies,
-        shared_scripts: manifest.shared_scripts,
-        client_scripts: manifest.client_scripts,
-        server_scripts: manifest.server_scripts,
+        shared_scripts,
+        client_scripts,
+        server_scripts,
         resolved_files,
         files: manifest.files,
         data_files: manifest.data_files,
@@ -228,6 +229,7 @@ pub fn analyze(root: &Path) -> Result<ResourceReport> {
         findings,
     })
 }
+
 fn finding(category: CompatibilityCategory, feature: &str, detail: &str) -> Finding {
     Finding {
         category,

@@ -160,6 +160,26 @@ pub fn resolve_and_validate(root: &Path, manifest: &ResourceManifest) -> Result<
     Ok(resolved.into_iter().collect())
 }
 
+/// Expands already-validated manifest patterns into deterministic normalized
+/// paths relative to the resource root.
+pub fn expand_patterns(patterns: &[String], resolved: &[PathBuf]) -> Result<Vec<String>> {
+    let mut output = BTreeSet::new();
+    for pattern in patterns {
+        if pattern.starts_with('@') {
+            output.insert(pattern.clone());
+            continue;
+        }
+        let matcher = Glob::new(&pattern.replace('\\', "/"))?.compile_matcher();
+        for path in resolved {
+            let normalized = path.to_string_lossy().replace('\\', "/");
+            if matcher.is_match(&normalized) {
+                output.insert(normalized);
+            }
+        }
+    }
+    Ok(output.into_iter().collect())
+}
+
 pub fn validate_dependency_graph(resources: &BTreeMap<String, ResourceManifest>) -> Result<()> {
     fn visit(
         name: &str,
