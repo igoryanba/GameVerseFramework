@@ -141,6 +141,7 @@ enum AdminError {
     Invalid(String),
     Database(anyhow::Error),
 }
+type AuditRow = (i64, String, Option<String>, Option<String>, String);
 impl From<sqlx::Error> for AdminError {
     fn from(value: sqlx::Error) -> Self {
         Self::Database(value.into())
@@ -161,7 +162,7 @@ async fn dispatch(
         );
     }
     if request.method == "GET" && request.path == "/v1/admin/audit" {
-        let rows: Vec<(i64, String, Option<String>, Option<String>, String)> = sqlx::query_as("SELECT id,action,target_type,target_id,created_at::text FROM audit_events ORDER BY id DESC LIMIT 100").fetch_all(pool).await?;
+        let rows: Vec<AuditRow> = sqlx::query_as("SELECT id,action,target_type,target_id,created_at::text FROM audit_events ORDER BY id DESC LIMIT 100").fetch_all(pool).await?;
         return Ok(
             json!({"events":rows.into_iter().map(|row| json!({"id":row.0,"action":row.1,"target_type":row.2,"target_id":row.3,"created_at":row.4})).collect::<Vec<_>>() }),
         );
