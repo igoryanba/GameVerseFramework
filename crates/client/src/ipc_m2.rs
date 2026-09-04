@@ -19,10 +19,13 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::{
-    net::windows::named_pipe::{NamedPipeServer, ServerOptions},
+    io::{AsyncRead, AsyncWrite, ReadHalf, WriteHalf},
     sync::mpsc,
     time::timeout,
 };
+
+#[cfg(windows)]
+use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
 
 const DEADLINE: Duration = Duration::from_secs(8);
 
@@ -33,6 +36,7 @@ impl Drop for ReaderGuard {
     }
 }
 
+#[cfg(windows)]
 pub async fn run(
     adapter_pipe: &str,
     ui_pipe: &str,
@@ -70,7 +74,7 @@ pub async fn run(
         ui_result??;
         let adapter = std::mem::replace(&mut adapter_listener, listener(adapter_pipe, false)?);
         let ui_stream = std::mem::replace(&mut ui_listener, listener(ui_pipe, false)?);
-        if let Err(error) = serve(adapter, ui_stream, server, cert, finish).await {
+        if let Err(error) = serve_streams(adapter, ui_stream, server, cert, finish).await {
             eprintln!(
                 "{}",
                 json!({"event":"m2_session_disconnected","error":error.to_string()})
@@ -79,10 +83,12 @@ pub async fn run(
     }
 }
 
+#[cfg(windows)]
 fn valid_pipe(pipe: &str) -> bool {
     pipe.starts_with(r"\\.\pipe\") && pipe.len() <= 240
 }
 
+#[cfg(windows)]
 fn listener(pipe: &str, first: bool) -> Result<NamedPipeServer> {
     let mut options = ServerOptions::new();
     options.reject_remote_clients(true);
@@ -92,13 +98,19 @@ fn listener(pipe: &str, first: bool) -> Result<NamedPipeServer> {
     Ok(options.create(pipe)?)
 }
 
-async fn serve(
-    adapter_stream: NamedPipeServer,
-    ui_stream: NamedPipeServer,
+/// Runs one interactive bridge session over arbitrary bounded local streams.
+/// Windows production uses named pipes; integration tests use in-memory streams.
+pub async fn serve_streams<A, U>(
+    adapter_stream: A,
+    ui_stream: U,
     server: SocketAddr,
     cert: &Path,
     finish: Instant,
-) -> Result<()> {
+) -> Result<()>
+where
+    A: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    U: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
     let (mut adapter_rx, mut adapter_tx) = tokio::io::split(adapter_stream);
     let (mut ui_rx, mut ui_tx) = tokio::io::split(ui_stream);
 
@@ -180,7 +192,8 @@ async fn serve(
                 loop {
                     match timeout(Duration::from_secs(30), ipc::read(&mut adapter_rx)).await?? {
                         Message::AdapterStatus { event, .. } if event == "session_ready" => break,
-                        Message::AdapterError { code, message } => {
+                        Message::AdapterError { code, message }
+                        | Message::BootstrapFailure { code, message } => {
                             anyhow::bail!("adapter {code}: {message}")
                         }
                         Message::AdapterHeartbeat { game_ready: true }
@@ -189,6 +202,13 @@ async fn serve(
                     }
                 }
                 let client = pending.spawn_ready(&request.request_id).await?;
+                ipc::write(
+                    &mut adapter_tx,
+                    &Message::SessionActive {
+                        session: client.session,
+                    },
+                )
+                .await?;
                 ui::write(
                     &mut ui_tx,
                     &UiResponse::success(
@@ -350,10 +370,10 @@ async fn handle_bootstrap(
 
 async fn serve_active(
     mut client: Client,
-    mut adapter_rx: tokio::io::ReadHalf<NamedPipeServer>,
-    mut adapter_tx: tokio::io::WriteHalf<NamedPipeServer>,
-    mut ui_rx: tokio::io::ReadHalf<NamedPipeServer>,
-    mut ui_tx: tokio::io::WriteHalf<NamedPipeServer>,
+    mut adapter_rx: ReadHalf<impl AsyncRead + AsyncWrite + Unpin + Send + 'static>,
+    mut adapter_tx: WriteHalf<impl AsyncRead + AsyncWrite + Unpin + Send + 'static>,
+    mut ui_rx: ReadHalf<impl AsyncRead + AsyncWrite + Unpin + Send + 'static>,
+    mut ui_tx: WriteHalf<impl AsyncRead + AsyncWrite + Unpin + Send + 'static>,
     finish: Instant,
 ) -> Result<()> {
     let (adapter_sender, mut adapter_incoming) = mpsc::channel(128);
@@ -394,7 +414,7 @@ async fn serve_active(
                     client.publish(from_legacy(sequence,state))?;
                 }
                 Message::AdapterHeartbeat{game_ready:false}=>anyhow::bail!("game unavailable"),
-                Message::AdapterHeartbeat{game_ready:true}|Message::AdapterStatus{..}|Message::AdapterError{..}=>{},
+                Message::AdapterHeartbeat{game_ready:true}|Message::AdapterStatus{..}|Message::AdapterError{..}|Message::BootstrapFailure{..}=>{},
                 _=>anyhow::bail!("unexpected adapter message"),
             },
             value=ui_incoming.recv()=>{
@@ -422,6 +442,16 @@ async fn serve_active(
             _=tokio::signal::ctrl_c()=>break,
         }
     }
+    timeout(
+        DEADLINE,
+        ipc::write(
+            &mut adapter_tx,
+            &Message::SessionEnd {
+                reason: "bridge_session_closed".into(),
+            },
+        ),
+    )
+    .await??;
     client.close().await
 }
 

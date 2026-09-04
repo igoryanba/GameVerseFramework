@@ -43,16 +43,18 @@ namespace GameVerse.AdapterProtocol
     }
     public sealed class SessionConfig
     {
+        public ulong? character_id;
         public float[] spawn;
         public float heading;
         public uint model_hash;
         public uint instance_id;
+        public System.Collections.Generic.Dictionary<string, short> appearance;
         public bool IsValid()
         {
             if (spawn == null || spawn.Length != 3 || float.IsNaN(heading) || float.IsInfinity(heading) || model_hash == 0) return false;
             foreach (float value in spawn)
                 if (float.IsNaN(value) || float.IsInfinity(value) || Math.Abs(value) > 20000) return false;
-            return true;
+            return (!character_id.HasValue || character_id.Value > 0) && (appearance == null || appearance.Count <= 64);
         }
     }
     public enum LocomotionState { Idle, Walk, Run, Sprint, Jump, Fall, Ragdoll, Aim, Dead }

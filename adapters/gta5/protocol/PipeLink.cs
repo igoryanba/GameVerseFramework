@@ -36,6 +36,11 @@ namespace GameVerse.AdapterProtocol
             var message = Wire.Message("adapter_status"); message["event"] = name; message["id"] = id == null ? JValue.CreateNull() : JToken.FromObject(id);
             reports.TryAdd(message);
         }
+        public void ReportBootstrapFailure(string code, string message)
+        {
+            var report = Wire.Message("bootstrap_failure"); report["code"] = code; report["message"] = message;
+            reports.TryAdd(report);
+        }
         private async Task Run()
         {
             while (!stop.IsCancellationRequested)

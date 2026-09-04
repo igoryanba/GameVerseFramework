@@ -1,6 +1,5 @@
 //! Standalone client session and replaceable game adapter; no game-process access.
 pub mod ipc;
-#[cfg(windows)]
 pub mod ipc_m2;
 pub mod m2;
 pub mod presence;

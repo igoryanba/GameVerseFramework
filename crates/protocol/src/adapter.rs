@@ -62,6 +62,12 @@ pub enum Message {
         entity: EntityId,
         config: SessionConfig,
     },
+    SessionActive {
+        session: u64,
+    },
+    SessionEnd {
+        reason: String,
+    },
     LocalPlayerState {
         sequence: u64,
         state: PlayerState,
@@ -86,6 +92,10 @@ pub enum Message {
         code: String,
         message: String,
     },
+    BootstrapFailure {
+        code: String,
+        message: String,
+    },
     Reset {
         reason: String,
     },
@@ -102,6 +112,8 @@ impl Message {
                 entity,
                 config,
             } => *session > 0 && id_valid(entity) && config.valid(),
+            Self::SessionActive { session } => *session > 0,
+            Self::SessionEnd { reason } => !reason.is_empty() && reason.len() <= 256,
             Self::LocalPlayerState { sequence, state } => *sequence > 0 && state.valid(),
             Self::RemoteEntityCreate { entity } | Self::RemoteEntityUpdate { entity } => {
                 id_valid(&entity.id) && entity.state.valid()
@@ -110,7 +122,9 @@ impl Message {
             Self::AdapterStatus { event, id } => {
                 event.len() <= 64 && id.as_ref().is_none_or(id_valid)
             }
-            Self::AdapterError { code, message } => code.len() <= 64 && message.len() <= 512,
+            Self::AdapterError { code, message } | Self::BootstrapFailure { code, message } => {
+                !code.is_empty() && code.len() <= 64 && !message.is_empty() && message.len() <= 512
+            }
             Self::Reset { reason } => reason.len() <= 256,
             Self::AdapterHeartbeat { .. } => true,
         }
