@@ -136,6 +136,31 @@ impl VehicleWorld {
     pub fn owner(&self, id: VehicleId) -> Result<Option<SessionId>, Error> {
         Ok(self.vehicles.get(&id).ok_or(Error::UnknownVehicle)?.owner)
     }
+
+    pub fn destroy(&mut self, id: VehicleId) -> Result<(), Error> {
+        self.vehicles.remove(&id).ok_or(Error::UnknownVehicle)?;
+        Ok(())
+    }
+
+    pub fn occupants(&self, id: VehicleId) -> Result<Vec<(i8, SessionId)>, Error> {
+        Ok(self
+            .vehicles
+            .get(&id)
+            .ok_or(Error::UnknownVehicle)?
+            .occupants
+            .iter()
+            .map(|(seat, session)| (*seat, *session))
+            .collect())
+    }
+
+    pub fn frame(&self, id: VehicleId) -> Result<Option<&VehicleFrame>, Error> {
+        Ok(self
+            .vehicles
+            .get(&id)
+            .ok_or(Error::UnknownVehicle)?
+            .frame
+            .as_ref())
+    }
 }
 
 fn migrate_owner(vehicle: &mut Vehicle) {
@@ -171,5 +196,38 @@ mod tests {
         assert_eq!(world.owner(id).unwrap(), Some(20));
         world.set_interested(id, []).unwrap();
         assert_eq!(world.owner(id).unwrap(), None);
+    }
+
+    #[test]
+    fn two_players_share_one_vehicle_without_stale_generation() {
+        let mut world = VehicleWorld::default();
+        let first = world.spawn().unwrap();
+        world.set_interested(first, [10, 20]).unwrap();
+        world.enter(first, 10, -1).unwrap();
+        world.enter(first, 20, 0).unwrap();
+        assert_eq!(world.occupants(first).unwrap(), vec![(-1, 10), (0, 20)]);
+        let frame = VehicleFrame {
+            sequence: 1,
+            transform: gameverse_protocol::presence_v2::Transform {
+                position: [0.0; 3],
+                rotation: [0.0, 0.0, 0.0, 1.0],
+                velocity: [1.0, 0.0, 0.0],
+            },
+            steering: 0.0,
+            throttle: 1.0,
+            brake: 0.0,
+            gear: 1,
+            engine_health: 1_000.0,
+            body_health: 1_000.0,
+        };
+        assert!(world.publish(first, 10, frame.clone()).unwrap());
+        assert_eq!(world.publish(first, 20, frame), Err(Error::NotOwner));
+        world.disconnect(10);
+        assert_eq!(world.owner(first).unwrap(), Some(20));
+        world.destroy(first).unwrap();
+        let second = world.spawn().unwrap();
+        assert_eq!(second.slot, first.slot);
+        assert!(second.generation > first.generation);
+        assert_eq!(world.owner(first), Err(Error::UnknownVehicle));
     }
 }

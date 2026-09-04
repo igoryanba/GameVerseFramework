@@ -81,6 +81,28 @@ namespace GameVerse.AdapterProtocol
         public bool IsValid() => aim_target == null || PlayerState.VectorIsValid(aim_target, 3, 20000);
     }
     public sealed class VehicleOccupancyV2 { public EntityId vehicle; public sbyte seat; }
+    public sealed class VehicleFrameV2
+    {
+        public ulong sequence;
+        public TransformV2 transform;
+        public float steering;
+        public float throttle;
+        public float brake;
+        public sbyte gear;
+        public float engine_health;
+        public float body_health;
+        public bool IsValid() => sequence > 0 && transform != null && transform.IsValid()
+            && FiniteRange(steering, -1, 1) && FiniteRange(throttle, -1, 1) && FiniteRange(brake, -1, 1)
+            && gear >= -1 && gear <= 10 && FiniteRange(engine_health, -4000, 1000) && FiniteRange(body_health, 0, 1000);
+        private static bool FiniteRange(float value, float minimum, float maximum) => !float.IsNaN(value) && !float.IsInfinity(value) && value >= minimum && value <= maximum;
+    }
+    public sealed class RemoteVehicleEntity
+    {
+        public EntityId id;
+        public uint model_hash;
+        public VehicleFrameV2 frame;
+        public bool IsValid() => id != null && id.generation > 0 && id.slot < 128 && model_hash != 0 && frame != null && frame.IsValid();
+    }
     public sealed class PlayerFrameV2
     {
         public ulong sequence;

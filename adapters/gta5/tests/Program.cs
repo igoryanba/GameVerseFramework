@@ -28,11 +28,14 @@ if (args.Contains("--self-test"))
     if(!locomotion.Update(state)||locomotion.Current!=LocomotionState.Jump)throw new Exception("Immediate jump failed");
     var config=new SessionConfig{spawn=new[]{1f,2f,3f},heading=90f,model_hash=1,instance_id=0};
     if(!config.IsValid())throw new Exception("Valid session config rejected");
+    var vehicleFrame=new VehicleFrameV2{sequence=1,transform=new TransformV2{position=new[]{1f,2f,3f},rotation=new[]{0f,0f,0f,1f},velocity=new[]{0f,0f,0f}},steering=0.25f,throttle=1f,brake=0f,gear=1,engine_health=1000f,body_health=1000f};
+    if(!vehicleFrame.IsValid())throw new Exception("Valid vehicle frame rejected");
+    vehicleFrame.steering=2f;if(vehicleFrame.IsValid())throw new Exception("Invalid vehicle steering accepted");
     var presenceFixture=JObject.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory,"presence-v2.json")));
     if((ulong)presenceFixture["server_tick"]!=7 || (string)presenceFixture["deltas"][0]["locomotion"]!="run"
         || (uint)presenceFixture["deltas"][0]["appearance"]["model_hash"]!=0x705e61f2)
         throw new Exception("Presence v2 shared fixture mismatch");
-    Console.WriteLine("PASS framing, Presence v2 fixture, session config, locomotion state and hysteresis");return;
+    Console.WriteLine("PASS framing, Presence v2 fixture, session config, locomotion, vehicle validation and hysteresis");return;
 }
 
 int seconds=int.Parse(Value("--duration","30"));

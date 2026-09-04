@@ -12,6 +12,7 @@ namespace GameVerse.GtaAdapter
     public sealed class EntryPoint : Script
     {
         private readonly Dictionary<EntityId, RemotePed> remotes = new Dictionary<EntityId, RemotePed>();
+        private readonly Dictionary<EntityId, RemoteVehicle> remoteVehicles = new Dictionary<EntityId, RemoteVehicle>();
         private readonly Stopwatch elapsed = Stopwatch.StartNew();
         private readonly PipeLink link;
         private readonly SessionBootstrap bootstrap = new SessionBootstrap();
@@ -72,6 +73,7 @@ namespace GameVerse.GtaAdapter
                 }
                 for (int i = 0; i < 64 && link.Commands.TryTake(out JObject message); i++) Handle(message);
                 foreach (var ped in remotes.Values) ped.Tick();
+                foreach (var vehicle in remoteVehicles.Values) vehicle.Tick();
             }
             catch (Exception e) { Log("ADAPTER_ERROR " + e); link.Publish(null, false); Cleanup(); }
         }
@@ -106,11 +108,27 @@ namespace GameVerse.GtaAdapter
                 case "remote_entity_destroy":
                     var id = message["id"].ToObject<EntityId>();
                     if (remotes.TryGetValue(id, out RemotePed removed)) { removed.Dispose(); remotes.Remove(id); } break;
+                case "remote_vehicle_create":
+                    var vehicleEntity = message.ToObject<RemoteVehicleEntity>();
+                    if (vehicleEntity == null || !vehicleEntity.IsValid()) throw new InvalidDataException("Invalid remote vehicle");
+                    if (!remoteVehicles.ContainsKey(vehicleEntity.id) && remoteVehicles.Count < 128)
+                        remoteVehicles.Add(vehicleEntity.id, new RemoteVehicle(vehicleEntity, (name, vehicleId) => { Log(name + " " + vehicleId); link.Report(name, vehicleId); }));
+                    break;
+                case "remote_vehicle_update":
+                    var vehicleId = message["id"].ToObject<EntityId>();
+                    var vehicleFrame = message["frame"].ToObject<VehicleFrameV2>();
+                    if (vehicleId == null || vehicleId.generation == 0 || vehicleId.slot >= 128 || vehicleFrame == null || !vehicleFrame.IsValid()) throw new InvalidDataException("Invalid remote vehicle update");
+                    if (remoteVehicles.TryGetValue(vehicleId, out RemoteVehicle remoteVehicle)) remoteVehicle.Update(vehicleFrame);
+                    break;
+                case "remote_vehicle_destroy":
+                    var destroyedVehicleId = message["id"].ToObject<EntityId>();
+                    if (remoteVehicles.TryGetValue(destroyedVehicleId, out RemoteVehicle destroyedVehicle)) { destroyedVehicle.Dispose(); remoteVehicles.Remove(destroyedVehicleId); }
+                    break;
                 case "reset": Cleanup(); bootstrap.Reset(); bootstrapReported = false; local = null; break;
                 default: throw new InvalidDataException("Unexpected bridge command");
             }
         }
-        private void Cleanup() { foreach (var ped in remotes.Values) ped.Dispose(); remotes.Clear(); }
+        private void Cleanup() { foreach (var ped in remotes.Values) ped.Dispose(); remotes.Clear(); foreach (var vehicle in remoteVehicles.Values) vehicle.Dispose(); remoteVehicles.Clear(); }
         private void Log(string message)
         {
             lock (logGate) { try { File.AppendAllText(logPath, DateTime.UtcNow.ToString("O") + " " + message + Environment.NewLine); } catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { } }

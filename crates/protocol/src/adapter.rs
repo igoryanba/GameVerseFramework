@@ -1,6 +1,7 @@
 //! Named-pipe protocol v1. All GTA calls remain in the adapter script tick.
 use crate::{
     presence::{Entity, PlayerState},
+    presence_v2::{VehicleFrame, VehicleId, MAX_VEHICLES},
     EntityId, Error, MAX_FRAME,
 };
 use serde::{Deserialize, Serialize};
@@ -81,6 +82,18 @@ pub enum Message {
     RemoteEntityDestroy {
         id: EntityId,
     },
+    RemoteVehicleCreate {
+        id: VehicleId,
+        model_hash: u32,
+        frame: VehicleFrame,
+    },
+    RemoteVehicleUpdate {
+        id: VehicleId,
+        frame: VehicleFrame,
+    },
+    RemoteVehicleDestroy {
+        id: VehicleId,
+    },
     AdapterHeartbeat {
         game_ready: bool,
     },
@@ -119,6 +132,20 @@ impl Message {
                 id_valid(&entity.id) && entity.state.valid()
             }
             Self::RemoteEntityDestroy { id } => id_valid(id),
+            Self::RemoteVehicleCreate {
+                id,
+                model_hash,
+                frame,
+            } => {
+                id.slot < MAX_VEHICLES as u32
+                    && id.generation > 0
+                    && *model_hash != 0
+                    && frame.valid()
+            }
+            Self::RemoteVehicleUpdate { id, frame } => {
+                id.slot < MAX_VEHICLES as u32 && id.generation > 0 && frame.valid()
+            }
+            Self::RemoteVehicleDestroy { id } => id.slot < MAX_VEHICLES as u32 && id.generation > 0,
             Self::AdapterStatus { event, id } => {
                 event.len() <= 64 && id.as_ref().is_none_or(id_valid)
             }
