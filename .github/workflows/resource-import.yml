@@ -1,0 +1,36 @@
+name: Resource Import Acceptance
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  resource-import:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.0
+          components: rustfmt, clippy
+      - name: Test manifest and sandbox runtime
+        run: cargo test --locked -p gameverse-resource-manifest -p gameverse-resource-runtime
+      - name: Lint resource components
+        run: cargo clippy --locked -p gameverse-resource-manifest -p gameverse-resource-runtime --all-targets -- -D warnings
+      - name: Check resource component formatting
+        run: cargo fmt -p gameverse-resource-manifest -p gameverse-resource-runtime -- --check
+      - name: Test analyzer
+        run: cargo test --manifest-path tools/fivem-analyzer/Cargo.toml
+      - name: Analyze and convert MIT acceptance resource
+        run: cargo run --manifest-path tools/fivem-analyzer/Cargo.toml -- --path fixtures/resources/compat-basic --format json --gameverse-manifest fixtures/resources/compat-basic/gameverse.generated.toml
+      - name: Validate generated resource manifest
+        run: cargo run --locked -p gameverse-resource-runtime --bin gameverse-resource-host -- validate --manifest fixtures/resources/compat-basic/gameverse.generated.toml
+      - name: Run paired acceptance
+        run: cargo run --locked -p gameverse-resource-runtime --bin gameverse-resource-acceptance -- --manifest fixtures/resources/compat-basic/gameverse.generated.toml --report resource-acceptance.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: resource-acceptance-${{ matrix.os }}
+          path: resource-acceptance.json
+          if-no-files-found: ignore

@@ -1,0 +1,12 @@
+name = "compat-basic"
+client_scripts = ["client.lua"]
+server_scripts = ["server.lua"]
+shared_scripts = ["shared.lua"]
+dependencies = []
+files = []
+exports = ["fixture_answer"]
+
+[source]
+manifest = "fxmanifest.lua"
+legacy = false
+license = "MIT"

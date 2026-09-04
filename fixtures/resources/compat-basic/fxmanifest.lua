@@ -1,0 +1,8 @@
+fx_version 'cerulean'
+game 'gta5'
+author 'GameVerse contributors'
+description 'MIT acceptance resource for the isolated compatibility host'
+shared_script 'shared.lua'
+client_script 'client.lua'
+server_script 'server.lua'
+export 'fixture_answer'

@@ -25,10 +25,10 @@ jobs:
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run Performance Demo
-        run: cargo run -p perf_demo --release
+        run: cargo run --manifest-path benchmarks/perf_demo/Cargo.toml --release
 
       - name: Upload performance report
         uses: actions/upload-artifact@v3
         with:
           name: perf_report
-          path: perf_reports/perf_report.json 
+          path: perf_reports/perf_report.json
