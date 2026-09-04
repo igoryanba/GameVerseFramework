@@ -2,6 +2,9 @@
 //! Persistence adapters hash credentials and execute the bundled PostgreSQL migration.
 use std::collections::{BTreeMap, BTreeSet};
 
+pub mod auth;
+pub mod persistence;
+
 pub type AccountId = u64;
 pub type CharacterId = u64;
 pub type ItemId = u32;
@@ -92,7 +95,7 @@ pub struct ShopItem {
     pub price: i64,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Receipt {
     pub transaction_id: u64,
     pub cash: i64,

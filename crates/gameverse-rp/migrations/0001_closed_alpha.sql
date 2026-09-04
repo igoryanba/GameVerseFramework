@@ -1,5 +1,3 @@
-BEGIN;
-
 CREATE TABLE accounts (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     login TEXT NOT NULL UNIQUE CHECK (length(login) BETWEEN 3 AND 64),
@@ -144,5 +142,3 @@ CREATE INDEX bans_account_active_idx ON bans(account_id, expires_at) WHERE revok
 CREATE INDEX characters_account_idx ON characters(account_id);
 CREATE INDEX ledger_character_time_idx ON ledger_entries(character_id, created_at DESC);
 CREATE INDEX audit_time_idx ON audit_events(created_at DESC);
-
-COMMIT;

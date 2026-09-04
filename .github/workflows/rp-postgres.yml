@@ -1,0 +1,35 @@
+name: RP PostgreSQL Acceptance
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: gameverse
+          POSTGRES_PASSWORD: gameverse-ci
+          POSTGRES_DB: gameverse
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U gameverse -d gameverse"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://gameverse:gameverse-ci@localhost:5432/gameverse
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.0
+          components: rustfmt, clippy
+      - name: Test PostgreSQL vertical slice
+        run: cargo test --locked -p gameverse-rp --test postgres -- --nocapture
+      - name: Lint RP persistence
+        run: cargo clippy --locked -p gameverse-rp --all-targets -- -D warnings
+      - name: Check RP formatting
+        run: cargo fmt -p gameverse-rp -- --check

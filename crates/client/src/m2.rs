@@ -65,11 +65,17 @@ impl Client {
             ControlMessage::SessionBegin { config } => config,
             _ => anyhow::bail!("missing session configuration"),
         };
-        write_control(&mut send, &ControlMessage::SpawnReady).await?;
+        write_control(
+            &mut send,
+            &ControlMessage::SpawnReady {
+                request_id: "diagnostic-spawn".into(),
+            },
+        )
+        .await?;
         anyhow::ensure!(
             matches!(
                 timeout(HANDSHAKE_TIMEOUT, read_control(&mut recv)).await??,
-                ControlMessage::SpawnAck
+                ControlMessage::SpawnAck { request_id } if request_id == "diagnostic-spawn"
             ),
             "missing spawn acknowledgement"
         );

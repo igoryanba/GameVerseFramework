@@ -4,6 +4,7 @@ use crate::{
     EntityId, Error, MAX_FRAME,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 pub const VERSION: u16 = 1;
 pub const DEFAULT_PIPE: &str = r"\\.\pipe\gameverse-gta-v1";
 pub const GAME_VERSION: &str = "1.0.1158.13";
@@ -11,10 +12,14 @@ pub const GAME_VERSION: &str = "1.0.1158.13";
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SessionConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub character_id: Option<u64>,
     pub spawn: [f32; 3],
     pub heading: f32,
     pub model_hash: u32,
     pub instance_id: u32,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub appearance: BTreeMap<String, i16>,
 }
 impl SessionConfig {
     pub fn valid(&self) -> bool {
@@ -23,16 +28,20 @@ impl SessionConfig {
             .all(|v| v.is_finite() && v.abs() <= 20_000.0)
             && self.heading.is_finite()
             && self.model_hash != 0
+            && self.character_id.is_none_or(|id| id > 0)
+            && self.appearance.len() <= 64
     }
 }
 impl Default for SessionConfig {
     fn default() -> Self {
         Self {
+            character_id: None,
             // Los Santos International Airport, outside the Story prologue area.
             spawn: [-1037.7, -2737.7, 20.17],
             heading: 330.0,
             model_hash: 0x705e61f2,
             instance_id: 0,
+            appearance: BTreeMap::new(),
         }
     }
 }

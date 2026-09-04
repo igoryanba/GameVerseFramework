@@ -149,7 +149,9 @@ async fn session(connecting: quinn::Connecting, state: Arc<Mutex<State>>) -> Res
     .await?;
     write_control(&mut send, &ControlMessage::SessionBegin { config }).await?;
     match timeout(HANDSHAKE_TIMEOUT, read_control(&mut recv)).await?? {
-        ControlMessage::SpawnReady => write_control(&mut send, &ControlMessage::SpawnAck).await?,
+        ControlMessage::SpawnReady { request_id } => {
+            write_control(&mut send, &ControlMessage::SpawnAck { request_id }).await?
+        }
         _ => anyhow::bail!("expected spawn_ready"),
     }
     let mut realtime_window = tokio::time::Instant::now();

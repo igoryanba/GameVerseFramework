@@ -5,6 +5,13 @@ use serde::{Deserialize, Serialize};
 pub const VERSION: u16 = 2;
 pub const RESOURCE_API_VERSION: u16 = 1;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthMode {
+    Register,
+    Login,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Capabilities {
@@ -61,27 +68,46 @@ pub enum ControlMessage {
     SessionBegin {
         config: SessionConfig,
     },
-    SpawnReady,
-    SpawnAck,
+    SpawnReady {
+        request_id: String,
+    },
+    SpawnAck {
+        request_id: String,
+    },
     AuthRequest {
+        request_id: String,
+        mode: AuthMode,
         login: String,
         password: String,
         invite: Option<String>,
     },
+    AuthResume {
+        request_id: String,
+        refresh_token: String,
+    },
+    Logout {
+        request_id: String,
+        refresh_token: String,
+    },
     AuthResult {
+        request_id: String,
         account_id: u64,
         access_token: String,
+        refresh_token: String,
         expires_at_ms: u64,
     },
     CharacterList {
+        request_id: String,
         characters: Vec<CharacterSummary>,
     },
     CreateCharacter {
+        request_id: String,
         first_name: String,
         last_name: String,
         model_hash: u32,
     },
     SelectCharacter {
+        request_id: String,
         character_id: u64,
     },
     EntityCreate {
@@ -110,6 +136,7 @@ pub enum ControlMessage {
         event: ResourceEvent,
     },
     ChatCommand {
+        request_id: String,
         message: String,
     },
     ChatMessage {
@@ -118,19 +145,45 @@ pub enum ControlMessage {
         message: String,
     },
     InventoryCommand {
+        request_id: String,
         action: String,
         item_id: u32,
         quantity: u32,
         idempotency_key: String,
     },
     InventorySnapshot {
+        request_id: String,
         revision: u64,
         items: Vec<InventoryItem>,
     },
     EconomyResult {
+        request_id: String,
         transaction_id: u64,
         cash: i64,
         bank: i64,
+    },
+    JobCommand {
+        request_id: String,
+        action: String,
+        route: String,
+        idempotency_key: Option<String>,
+    },
+    JobState {
+        request_id: String,
+        active_route: Option<String>,
+        revision: u64,
+    },
+    ShopCatalog {
+        request_id: String,
+        shop: String,
+        items: Vec<ShopItem>,
+    },
+    ShopCommand {
+        request_id: String,
+        shop: String,
+        item_id: u32,
+        quantity: u32,
+        idempotency_key: String,
     },
     Disconnect {
         reason: String,
@@ -139,6 +192,14 @@ pub enum ControlMessage {
         code: String,
         reason: String,
     },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ShopItem {
+    pub item_id: u32,
+    pub name: String,
+    pub price: i64,
 }
 
 impl ControlMessage {
@@ -185,33 +246,67 @@ impl ControlMessage {
             }
             Self::SessionBegin { config } => config.valid(),
             Self::AuthRequest {
+                request_id,
+                mode,
                 login,
                 password,
                 invite,
             } => {
-                (3..=64).contains(&login.len())
+                valid_request_id(request_id)
+                    && (3..=64).contains(&login.len())
                     && (8..=256).contains(&password.len())
-                    && invite.as_ref().is_none_or(|value| value.len() <= 256)
+                    && match mode {
+                        AuthMode::Register => {
+                            invite.as_ref().is_some_and(|value| valid_text(value, 256))
+                        }
+                        AuthMode::Login => invite.is_none(),
+                    }
             }
+            Self::AuthResume {
+                request_id,
+                refresh_token,
+            }
+            | Self::Logout {
+                request_id,
+                refresh_token,
+            } => valid_request_id(request_id) && valid_text(refresh_token, 256),
             Self::AuthResult {
+                request_id,
                 account_id,
                 access_token,
+                refresh_token,
                 expires_at_ms,
             } => {
-                *account_id > 0
+                valid_request_id(request_id)
+                    && *account_id > 0
                     && !access_token.is_empty()
                     && access_token.len() <= 4096
+                    && valid_text(refresh_token, 256)
                     && *expires_at_ms > 0
             }
-            Self::CharacterList { characters } => {
-                characters.len() <= 3 && characters.iter().all(valid_character)
+            Self::CharacterList {
+                request_id,
+                characters,
+            } => {
+                valid_request_id(request_id)
+                    && characters.len() <= 3
+                    && characters.iter().all(valid_character)
             }
             Self::CreateCharacter {
+                request_id,
                 first_name,
                 last_name,
                 model_hash,
-            } => valid_name(first_name) && valid_name(last_name) && *model_hash != 0,
-            Self::SelectCharacter { character_id } => *character_id > 0,
+            } => {
+                valid_request_id(request_id)
+                    && valid_name(first_name)
+                    && valid_name(last_name)
+                    && *model_hash != 0
+            }
+            Self::SelectCharacter {
+                request_id,
+                character_id,
+            } => valid_request_id(request_id) && *character_id > 0,
             Self::EntityCreate { entity }
             | Self::EntityDestroy { entity }
             | Self::EntityStreamOut { entity } => valid_entity(entity),
@@ -231,7 +326,10 @@ impl ControlMessage {
                         .all(|(seat, entity)| (-1..=15).contains(seat) && valid_entity(entity))
             }
             Self::ResourceEvent { event } => valid_resource_event(event),
-            Self::ChatCommand { message } => valid_text(message, 512),
+            Self::ChatCommand {
+                request_id,
+                message,
+            } => valid_request_id(request_id) && valid_text(message, 512),
             Self::ChatMessage {
                 source,
                 channel,
@@ -242,32 +340,88 @@ impl ControlMessage {
                     && valid_text(message, 512)
             }
             Self::InventoryCommand {
+                request_id,
                 action,
                 item_id,
                 quantity,
                 idempotency_key,
             } => {
-                valid_text(action, 32)
+                valid_request_id(request_id)
+                    && valid_text(action, 32)
                     && *item_id > 0
                     && (1..=100).contains(quantity)
                     && valid_text(idempotency_key, 128)
             }
-            Self::InventorySnapshot { items, .. } => {
-                items.len() <= 256
+            Self::InventorySnapshot {
+                request_id, items, ..
+            } => {
+                valid_request_id(request_id)
+                    && items.len() <= 256
                     && items
                         .iter()
                         .all(|item| item.item_id > 0 && item.quantity > 0)
             }
             Self::EconomyResult {
+                request_id,
                 transaction_id,
                 cash,
                 bank,
-            } => *transaction_id > 0 && *cash >= 0 && *bank >= 0,
+            } => valid_request_id(request_id) && *transaction_id > 0 && *cash >= 0 && *bank >= 0,
+            Self::JobCommand {
+                request_id,
+                action,
+                route,
+                idempotency_key,
+            } => {
+                valid_request_id(request_id)
+                    && valid_text(action, 32)
+                    && valid_text(route, 64)
+                    && idempotency_key
+                        .as_ref()
+                        .is_none_or(|key| valid_text(key, 128))
+            }
+            Self::JobState {
+                request_id,
+                active_route,
+                ..
+            } => {
+                valid_request_id(request_id)
+                    && active_route
+                        .as_ref()
+                        .is_none_or(|route| valid_text(route, 64))
+            }
+            Self::ShopCatalog {
+                request_id,
+                shop,
+                items,
+            } => {
+                valid_request_id(request_id)
+                    && valid_text(shop, 64)
+                    && items.len() <= 256
+                    && items.iter().all(|item| {
+                        item.item_id > 0 && valid_text(&item.name, 64) && item.price > 0
+                    })
+            }
+            Self::ShopCommand {
+                request_id,
+                shop,
+                item_id,
+                quantity,
+                idempotency_key,
+            } => {
+                valid_request_id(request_id)
+                    && valid_text(shop, 64)
+                    && *item_id > 0
+                    && (1..=100).contains(quantity)
+                    && valid_text(idempotency_key, 128)
+            }
             Self::Disconnect { reason } => !reason.is_empty() && reason.len() <= 256,
             Self::Reject { code, reason } => {
                 !code.is_empty() && code.len() <= 64 && !reason.is_empty() && reason.len() <= 256
             }
-            Self::SpawnReady | Self::SpawnAck => true,
+            Self::SpawnReady { request_id } | Self::SpawnAck { request_id } => {
+                valid_request_id(request_id)
+            }
         };
         if valid {
             Ok(())
@@ -279,6 +433,9 @@ impl ControlMessage {
 
 fn valid_text(value: &str, max: usize) -> bool {
     !value.trim().is_empty() && value.len() <= max
+}
+fn valid_request_id(value: &str) -> bool {
+    valid_text(value, 128)
 }
 fn valid_name(value: &str) -> bool {
     (2..=32).contains(&value.chars().count())
@@ -422,6 +579,7 @@ mod tests {
         };
         assert!(encode(&event).is_err());
         assert!(encode(&ControlMessage::InventoryCommand {
+            request_id: "request-1".into(),
             action: "buy".into(),
             item_id: 1,
             quantity: 0,
