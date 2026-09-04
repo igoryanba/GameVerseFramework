@@ -270,6 +270,93 @@ impl Client {
     pub async fn read_control(&mut self) -> Result<ControlMessage> {
         read_control(&mut self.recv).await
     }
+    pub async fn inventory(&mut self, request_id: &str) -> Result<Vec<(u32, u32)>> {
+        write_control(
+            &mut self.send,
+            &ControlMessage::InventoryCommand {
+                request_id: request_id.into(),
+                action: "snapshot".into(),
+                item_id: 0,
+                quantity: 0,
+                idempotency_key: String::new(),
+            },
+        )
+        .await?;
+        match read_control(&mut self.recv).await? {
+            ControlMessage::InventorySnapshot {
+                request_id: response_id,
+                items,
+                ..
+            } if response_id == request_id => Ok(items
+                .into_iter()
+                .map(|item| (item.item_id, item.quantity))
+                .collect()),
+            message => anyhow::bail!("unexpected inventory response: {message:?}"),
+        }
+    }
+
+    pub async fn start_delivery(&mut self, request_id: &str, route: &str) -> Result<()> {
+        write_control(
+            &mut self.send,
+            &ControlMessage::JobCommand {
+                request_id: request_id.into(),
+                action: "start".into(),
+                route: route.into(),
+                idempotency_key: None,
+            },
+        )
+        .await?;
+        anyhow::ensure!(
+            matches!(
+                read_control(&mut self.recv).await?,
+                ControlMessage::JobState { request_id: response_id, active_route: Some(active), .. }
+                    if response_id == request_id && active == route
+            ),
+            "invalid start-delivery response"
+        );
+        Ok(())
+    }
+
+    pub async fn finish_delivery(
+        &mut self,
+        request_id: &str,
+        route: &str,
+        idempotency_key: &str,
+    ) -> Result<(u64, i64, i64)> {
+        write_control(
+            &mut self.send,
+            &ControlMessage::JobCommand {
+                request_id: request_id.into(),
+                action: "finish".into(),
+                route: route.into(),
+                idempotency_key: Some(idempotency_key.into()),
+            },
+        )
+        .await?;
+        economy_response(&mut self.recv, request_id).await
+    }
+
+    pub async fn buy(
+        &mut self,
+        request_id: &str,
+        shop: &str,
+        item_id: u32,
+        quantity: u32,
+        idempotency_key: &str,
+    ) -> Result<(u64, i64, i64)> {
+        write_control(
+            &mut self.send,
+            &ControlMessage::ShopCommand {
+                request_id: request_id.into(),
+                shop: shop.into(),
+                item_id,
+                quantity,
+                idempotency_key: idempotency_key.into(),
+            },
+        )
+        .await?;
+        economy_response(&mut self.recv, request_id).await
+    }
     pub async fn close(mut self) -> Result<()> {
         write_control(
             &mut self.send,
@@ -282,6 +369,21 @@ impl Client {
         self.connection.close(0_u32.into(), b"client shutdown");
         self.endpoint.wait_idle().await;
         Ok(())
+    }
+}
+
+async fn economy_response(
+    recv: &mut quinn::RecvStream,
+    request_id: &str,
+) -> Result<(u64, i64, i64)> {
+    match read_control(recv).await? {
+        ControlMessage::EconomyResult {
+            request_id: response_id,
+            transaction_id,
+            cash,
+            bank,
+        } if response_id == request_id => Ok((transaction_id, cash, bank)),
+        message => anyhow::bail!("unexpected economy response: {message:?}"),
     }
 }
 
