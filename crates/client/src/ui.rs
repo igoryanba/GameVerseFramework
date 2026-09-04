@@ -185,8 +185,26 @@ mod tests {
             .reject_remote_clients(true)
             .create(&pipe)
             .unwrap();
-        let client = ClientOptions::new().open(&pipe).unwrap();
-        server.connect().await.unwrap();
+        let server_connect = tokio::spawn(async move {
+            server.connect().await.unwrap();
+            server
+        });
+        tokio::task::yield_now().await;
+        let mut client = None;
+        for _ in 0..100 {
+            match ClientOptions::new().open(&pipe) {
+                Ok(value) => {
+                    client = Some(value);
+                    break;
+                }
+                Err(error) if error.raw_os_error() == Some(231) => {
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                }
+                Err(error) => panic!("open test pipe: {error}"),
+            }
+        }
+        let client = client.expect("test pipe remained busy");
+        let server = server_connect.await.unwrap();
         let (mut server_rx, mut server_tx) = tokio::io::split(server);
         let (mut client_rx, mut client_tx) = tokio::io::split(client);
         let server_task = tokio::spawn(async move {
