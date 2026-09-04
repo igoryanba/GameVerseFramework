@@ -3,7 +3,11 @@ param(
     [string]$Runtime = 'win-x64',
     [string]$OutputDirectory = '',
     [string]$Dotnet = 'dotnet',
-    [string]$Cargo = 'cargo'
+    [string]$Cargo = 'cargo',
+    [string]$SigningKeyPath = '',
+    [string]$UpdateBaseUrl = '',
+    [string]$Version = '0.1.0-alpha.1',
+    [string]$MinimumLauncherVersion = '0.1.0-alpha.1'
 )
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
@@ -69,6 +73,12 @@ $manifest = [ordered]@{
     files = @($files)
 }
 $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $stage 'install-manifest.json') -Encoding utf8NoBOM
+
+if ($SigningKeyPath) {
+    if (-not $UpdateBaseUrl) { throw 'UpdateBaseUrl is required when SigningKeyPath is set' }
+    & (Join-Path $PSScriptRoot 'create-update-manifest.ps1') -PackageRoot $stage -BaseUrl $UpdateBaseUrl -Version $Version -MinimumLauncherVersion $MinimumLauncherVersion -SigningKeyPath $SigningKeyPath
+    if ($LASTEXITCODE -ne 0) { throw 'Update manifest signing failed' }
+}
 
 $clientZip = Join-Path $artifacts 'GameVerse-alpha-win-x64.zip'
 $symbolsZip = Join-Path $artifacts 'GameVerse-alpha-win-x64-symbols.zip'

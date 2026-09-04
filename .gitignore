@@ -25,6 +25,7 @@ logs/
 
 # Binary releases
 /bin/
+/artifacts/
 
 # Misc
 m0-report/

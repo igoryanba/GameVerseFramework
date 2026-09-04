@@ -40,6 +40,8 @@ internal static class Launcher
             return 0;
         }
         if (command == "self-test") return await SelfTestAsync();
+        if (command == "__generate-update-test-key") return GenerateUpdateTestKey(args);
+        if (command == "verify-update") return VerifyUpdate(args);
         LauncherConfig config;
         try { config = Load(); }
         catch (Exception error)
@@ -275,8 +277,54 @@ internal static class Launcher
         await WaitForReadyEventAsync(child, "self_test_ready", TimeSpan.FromSeconds(3), "Self-test child");
         await child.WaitForExitAsync();
         bool passed = child.ExitCode == 0;
-        Console.WriteLine(JsonSerializer.Serialize(new { status = passed ? "passed" : "failed", readiness_event = passed, child_cleaned_up = child.HasExited }));
+        bool updateSecurity = UpdateSecuritySelfTest();
+        passed = passed && updateSecurity;
+        Console.WriteLine(JsonSerializer.Serialize(new { status = passed ? "passed" : "failed", readiness_event = child.ExitCode == 0, child_cleaned_up = child.HasExited, update_signature = updateSecurity }));
         return passed ? 0 : 1;
+    }
+
+    private static int VerifyUpdate(string[] args)
+    {
+        if (args.Length != 4) throw new ArgumentException("verify-update requires manifest, signature, and public key paths");
+        VerifiedUpdate update = UpdateSecurity.Verify(File.ReadAllBytes(args[1]), File.ReadAllBytes(args[2]), File.ReadAllText(args[3]));
+        Console.WriteLine(JsonSerializer.Serialize(new { status = "verified", update.Version, update.Channel, files = update.Files.Count }));
+        return 0;
+    }
+
+    private static int GenerateUpdateTestKey(string[] args)
+    {
+        if (args.Length != 3) throw new ArgumentException("test key generation requires private and public output paths");
+        using ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        File.WriteAllText(args[1], key.ExportECPrivateKeyPem());
+        File.WriteAllText(args[2], key.ExportSubjectPublicKeyInfoPem());
+        return 0;
+    }
+
+    private static bool UpdateSecuritySelfTest()
+    {
+        using ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        string pem = key.ExportSubjectPublicKeyInfoPem();
+        byte[] manifest = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            schema_version = 1,
+            version = "0.1.0",
+            channel = "alpha",
+            minimum_launcher_version = "0.1.0",
+            signature = new { algorithm = "ECDSA_P256_SHA256", key_id = "self-test" },
+            files = new[] { new { path = "bridge/gameverse-gta-bridge-m2.exe", size = 1, sha256 = new string('a', 64), url = "https://updates.gameverse.invalid/bridge.exe" } }
+        });
+        byte[] signature = key.SignData(manifest, HashAlgorithmName.SHA256);
+        VerifiedUpdate verified = UpdateSecurity.Verify(manifest, signature, pem);
+        manifest[^1] ^= 1;
+        try
+        {
+            UpdateSecurity.Verify(manifest, signature, pem);
+            return false;
+        }
+        catch (CryptographicException)
+        {
+            return verified.Files.Count == 1;
+        }
     }
 
     private static int OpenLogs(LauncherConfig config)
@@ -333,12 +381,13 @@ internal static class Launcher
             if (document.RootElement.GetProperty("schema_version").GetInt32() != 1)
                 throw new InvalidDataException("unsupported schema");
             string root = Path.GetFullPath(AppContext.BaseDirectory);
+            string rootPrefix = root.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
             int count = 0;
             foreach (JsonElement file in document.RootElement.GetProperty("files").EnumerateArray())
             {
                 string relative = file.GetProperty("path").GetString() ?? throw new InvalidDataException("missing path");
                 string full = Path.GetFullPath(relative.Replace('/', Path.DirectorySeparatorChar), root);
-                if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase) || !File.Exists(full))
+                if (!full.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase) || !File.Exists(full))
                     throw new InvalidDataException($"invalid packaged path: {relative}");
                 long size = file.GetProperty("size").GetInt64();
                 string hash = file.GetProperty("sha256").GetString() ?? "";
@@ -372,7 +421,7 @@ internal static class Launcher
     }
     private static int Usage()
     {
-        Console.Error.WriteLine("Usage: GameVerse.Launcher init|verify|start|logs|diagnostics [output.zip]|self-test");
+        Console.Error.WriteLine("Usage: GameVerse.Launcher init|verify|start|logs|diagnostics [output.zip]|self-test|verify-update <manifest> <signature> <public-key.pem>");
         return 1;
     }
 

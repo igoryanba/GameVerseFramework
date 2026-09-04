@@ -10,4 +10,4 @@ GameVerse.Launcher.exe start
 GameVerse.Launcher.exe diagnostics
 ```
 
-UI commands now reach the M2 control stream through the local bridge, and refresh tokens are stored by the UI host with DPAPI. The remaining launcher release work is a signed update manifest, rollback, a reproducible client package, and full adapter/bootstrap progress reporting.
+UI commands now reach the M2 control stream through the local bridge, and refresh tokens are stored by the UI host with DPAPI. The package builder can create a detached ECDSA P-256/SHA-256 update manifest when a release signing key and HTTPS base URL are supplied. The launcher verifies the exact manifest bytes and rejects unsafe paths, duplicate files, non-HTTPS URLs, invalid hashes, and invalid signatures. Atomic installation and rollback are still pending.
