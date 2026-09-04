@@ -27,7 +27,9 @@ jobs:
       - name: Validate Compose configuration
         run: docker compose -f deployment/alpha/compose.yaml config --quiet
       - name: Start closed-alpha stack
-        run: docker compose -f deployment/alpha/compose.yaml up --build -d
+        run: |
+          set -o pipefail
+          docker compose -f deployment/alpha/compose.yaml up --build -d 2>&1 | tee alpha-build.log
       - name: Verify readiness and migrations
         run: |
           curl --fail --retry 20 --retry-delay 2 --retry-all-errors http://127.0.0.1:30123/v1/ready
@@ -38,7 +40,10 @@ jobs:
       - name: Capture deployment logs
         if: failure()
         run: |
-          docker compose -f deployment/alpha/compose.yaml logs --no-color > alpha-deployment.log
+          {
+            test -f alpha-build.log && cat alpha-build.log
+            docker compose -f deployment/alpha/compose.yaml logs --no-color
+          } > alpha-deployment.log
           diagnostics="$(tail -n 80 alpha-deployment.log)"
           diagnostics="${diagnostics//'%'/'%25'}"
           diagnostics="${diagnostics//$'\r'/'%0D'}"
