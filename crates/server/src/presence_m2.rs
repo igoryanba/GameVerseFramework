@@ -480,6 +480,7 @@ async fn alpha_session(
             } => {
                 store.revoke_session(&refresh_token).await?;
                 write_control(&mut send, &ControlMessage::LogoutResult { request_id }).await?;
+                send.finish().await?;
                 return Ok(());
             }
             _ => {
@@ -521,6 +522,7 @@ async fn alpha_session(
                 ControlMessage::Logout { request_id, refresh_token } => {
                     store.revoke_session(&refresh_token).await?;
                     write_control(&mut send, &ControlMessage::LogoutResult { request_id }).await?;
+                    send.finish().await?;
                     break;
                 }
                 ControlMessage::ChatCommand { request_id, message } => {
