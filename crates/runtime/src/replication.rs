@@ -208,25 +208,20 @@ fn component_delta(
         id,
         kind: p::DeltaKind::Upsert,
         transform: old
-            .filter(|old| old.transform == new.transform)
-            .is_none()
+            .is_none_or(|old| old.transform != new.transform)
             .then(|| new.transform.clone()),
         appearance: old
-            .filter(|old| old.appearance == new.appearance)
-            .is_none()
+            .is_none_or(|old| old.appearance != new.appearance)
             .then(|| new.appearance.clone())
             .flatten(),
         locomotion: old
-            .filter(|old| old.locomotion == new.locomotion)
-            .is_none()
+            .is_none_or(|old| old.locomotion != new.locomotion)
             .then_some(new.locomotion),
         combat: old
-            .filter(|old| old.combat == new.combat)
-            .is_none()
+            .is_none_or(|old| old.combat != new.combat)
             .then(|| new.combat.clone()),
         vehicle: old
-            .filter(|old| old.vehicle == new.vehicle)
-            .is_none()
+            .is_none_or(|old| old.vehicle != new.vehicle)
             .then(|| new.vehicle.clone())
             .flatten(),
         cleared: Vec::new(),

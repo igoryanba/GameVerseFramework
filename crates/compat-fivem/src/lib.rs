@@ -180,12 +180,15 @@ impl FiveMCompat {
     {
         anyhow::ensure!(!name.is_empty(), "callback name is empty");
         let mut callbacks = self.callbacks.lock().unwrap();
-        anyhow::ensure!(
-            !callbacks.contains_key(name),
-            "callback already registered: {name}"
-        );
-        callbacks.insert(name.into(), Arc::new(handler));
-        Ok(())
+        match callbacks.entry(name.into()) {
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(Arc::new(handler));
+                Ok(())
+            }
+            std::collections::hash_map::Entry::Occupied(_) => {
+                anyhow::bail!("callback already registered: {name}")
+            }
+        }
     }
     pub fn trigger_callback(&self, name: &str, args: Vec<NativeValue>) -> Result<Vec<NativeValue>> {
         let handler = self
@@ -205,14 +208,16 @@ impl FiveMCompat {
             !resource.is_empty() && !name.is_empty(),
             "resource and export names are required"
         );
-        let key = (resource.into(), name.into());
         let mut exports = self.exports.lock().unwrap();
-        anyhow::ensure!(
-            !exports.contains_key(&key),
-            "export already registered: {resource}:{name}"
-        );
-        exports.insert(key, Arc::new(handler));
-        Ok(())
+        match exports.entry((resource.into(), name.into())) {
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(Arc::new(handler));
+                Ok(())
+            }
+            std::collections::hash_map::Entry::Occupied(_) => {
+                anyhow::bail!("export already registered: {resource}:{name}")
+            }
+        }
     }
     pub fn call_export(
         &self,
