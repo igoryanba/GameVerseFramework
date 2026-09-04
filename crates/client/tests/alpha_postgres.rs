@@ -150,7 +150,7 @@ async fn ui_command(
         },
     )
     .await?;
-    Ok(ui::read(rx).await?)
+    ui::read(rx).await
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
