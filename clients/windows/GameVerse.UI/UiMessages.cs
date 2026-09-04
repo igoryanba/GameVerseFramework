@@ -106,20 +106,30 @@ internal static partial class UiMessageValidator
             && request?.Command == "ui.ready";
         bool rejectedOriginlessCommand = !TryParse("{\"schema_version\":1,\"request_id\":\"x\",\"command\":\"process.start\",\"payload\":{}}", out _, out _);
         bool rejectedSchema = !TryParse("{\"schema_version\":2,\"request_id\":\"x\",\"command\":\"ui.ready\",\"payload\":{}}", out _, out _);
+        bool rejectedRequestId = !TryParse("{\"schema_version\":1,\"request_id\":\"bad id\",\"command\":\"ui.ready\",\"payload\":{}}", out _, out _);
+        bool rejectedPayload = !TryParse("{\"schema_version\":1,\"request_id\":\"x\",\"command\":\"ui.ready\",\"payload\":[]}", out _, out _);
         bool rejectedOversize = !TryParse(valid + new string(' ', MaxMessageBytes), out _, out _);
         bool assetsPresent = new[] { "index.html", "app.css", "app.js", Path.Combine("locales", "ru-RU.json") }
             .All(file => File.Exists(Path.Combine(AppContext.BaseDirectory, "assets", file)));
         bool tokenRoundtrip = TokenStore.SelfTest();
-        bool passed = accepted && rejectedOriginlessCommand && rejectedSchema && rejectedOversize && assetsPresent && tokenRoundtrip;
+        string index = assetsPresent ? File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "assets", "index.html")) : "";
+        bool securityPolicy = index.Contains("Content-Security-Policy", StringComparison.Ordinal)
+            && index.Contains("default-src 'none'", StringComparison.Ordinal)
+            && index.Contains("frame-src 'none'", StringComparison.Ordinal);
+        bool passed = accepted && rejectedOriginlessCommand && rejectedSchema && rejectedRequestId
+            && rejectedPayload && rejectedOversize && assetsPresent && tokenRoundtrip && securityPolicy;
         Console.WriteLine(JsonSerializer.Serialize(new
         {
             status = passed ? "passed" : "failed",
             accepted,
             rejected_unsupported_command = rejectedOriginlessCommand,
             rejected_schema = rejectedSchema,
+            rejected_request_id = rejectedRequestId,
+            rejected_payload = rejectedPayload,
             rejected_oversize = rejectedOversize,
             assets_present = assetsPresent,
-            dpapi_roundtrip = tokenRoundtrip
+            dpapi_roundtrip = tokenRoundtrip,
+            csp_present = securityPolicy
         }, UiJson.Options));
         return passed ? 0 : 1;
     }
