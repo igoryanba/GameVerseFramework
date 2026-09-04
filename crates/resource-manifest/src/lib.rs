@@ -68,19 +68,14 @@ pub fn parse_fivem(root: &Path) -> Result<ParsedManifest> {
     };
     let raw = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
     let text = strip_comments(&raw);
-    let blocked_dynamic = [
-        "dofile(",
-        "load(",
-        "loadfile(",
-        "require(",
-        "function(",
-        "while ",
-        "for ",
-    ]
-    .into_iter()
-    .filter(|token| text.contains(token))
-    .map(str::to_string)
-    .collect();
+    let dynamic =
+        Regex::new(r"(?m)\b(?:dofile|load|loadfile|require)\s*\(|\bfunction\b|\bwhile\b|\bfor\b")?;
+    let blocked_dynamic = dynamic
+        .find_iter(&text)
+        .map(|value| value.as_str().trim().to_string())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
     let manifest = ResourceManifest {
         name: root
             .file_name()
@@ -312,5 +307,61 @@ mod tests {
         graph.insert("a".into(), a);
         graph.insert("b".into(), b);
         assert!(validate_dependency_graph(&graph).is_err());
+    }
+
+    #[test]
+    fn parses_legacy_manifest_and_marks_dynamic_lua_without_running_it() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("client.lua"), "return true").unwrap();
+        fs::write(
+            dir.path().join("__resource.lua"),
+            "client_script 'client.lua'\nfunction build() while true do end end",
+        )
+        .unwrap();
+        let parsed = parse_fivem(dir.path()).unwrap();
+        assert!(parsed.manifest.source.legacy);
+        assert_eq!(parsed.manifest.client_scripts, ["client.lua"]);
+        assert!(parsed.blocked_dynamic.contains(&"function".to_string()));
+        assert!(parsed.blocked_dynamic.contains(&"while".to_string()));
+    }
+
+    #[test]
+    fn rejects_absolute_and_unmatched_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("fxmanifest.lua"),
+            "client_script 'missing/*.lua'",
+        )
+        .unwrap();
+        let parsed = parse_fivem(dir.path()).unwrap();
+        assert!(resolve_and_validate(dir.path(), &parsed.manifest).is_err());
+        let mut absolute = parsed.manifest;
+        absolute.client_scripts = vec![if cfg!(windows) {
+            "C:/outside.lua".into()
+        } else {
+            "/outside.lua".into()
+        }];
+        assert!(resolve_and_validate(dir.path(), &absolute).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlink_escape() {
+        use std::os::unix::fs::symlink;
+        let resource = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        fs::write(outside.path().join("outside.lua"), "return true").unwrap();
+        symlink(
+            outside.path().join("outside.lua"),
+            resource.path().join("escape.lua"),
+        )
+        .unwrap();
+        fs::write(
+            resource.path().join("fxmanifest.lua"),
+            "client_script 'escape.lua'",
+        )
+        .unwrap();
+        let parsed = parse_fivem(resource.path()).unwrap();
+        assert!(resolve_and_validate(resource.path(), &parsed.manifest).is_err());
     }
 }

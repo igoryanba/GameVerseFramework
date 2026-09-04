@@ -4,7 +4,7 @@ use gameverse_resource_manifest::{resolve_and_validate, ResourceManifest};
 use mlua::{HookTriggers, Lua, LuaOptions, LuaSerdeExt, MultiValue, StdLib, Value, VmState};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::VecDeque,
+    collections::{BTreeMap, BTreeSet, VecDeque},
     fs,
     path::{Path, PathBuf},
     sync::{
@@ -227,6 +227,9 @@ impl ResourceHost {
         let result = self.load_scripts();
         if let Err(error) = result {
             let _ = self.reset_registrations();
+            if let Ok(mut outbound) = self.outbound.lock() {
+                outbound.clear();
+            }
             self.state = LifecycleState::Stopped;
             return Err(error);
         }
@@ -361,11 +364,59 @@ impl ResourceHost {
 }
 
 pub struct ResourceCluster {
-    hosts: Vec<ResourceHost>,
+    hosts: BTreeMap<String, ResourceHost>,
+    start_order: Vec<String>,
 }
 impl ResourceCluster {
-    pub fn new(hosts: Vec<ResourceHost>) -> Self {
-        Self { hosts }
+    pub fn new(hosts: Vec<ResourceHost>) -> Result<Self> {
+        let hosts: BTreeMap<_, _> = hosts
+            .into_iter()
+            .map(|host| (host.manifest.name.clone(), host))
+            .collect();
+        let start_order = dependency_order(&hosts)?;
+        Ok(Self { hosts, start_order })
+    }
+
+    pub fn start_order(&self) -> &[String] {
+        &self.start_order
+    }
+
+    pub fn start_all(&mut self) -> Result<()> {
+        let mut started = Vec::new();
+        for name in self.start_order.clone() {
+            if let Err(error) = self
+                .hosts
+                .get_mut(&name)
+                .expect("ordered host exists")
+                .start()
+            {
+                for started_name in started.into_iter().rev() {
+                    let _ = self
+                        .hosts
+                        .get_mut(&started_name)
+                        .expect("started host exists")
+                        .stop();
+                }
+                return Err(error).with_context(|| format!("start resource {name}"));
+            }
+            started.push(name);
+        }
+        Ok(())
+    }
+
+    pub fn stop_all(&mut self) -> Result<()> {
+        for name in self.start_order.clone().into_iter().rev() {
+            let host = self.hosts.get_mut(&name).expect("ordered host exists");
+            if host.state() == LifecycleState::Started {
+                host.stop()
+                    .with_context(|| format!("stop resource {name}"))?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn host(&self, resource: &str) -> Option<&ResourceHost> {
+        self.hosts.get(resource)
     }
     pub fn call_export(
         &self,
@@ -374,11 +425,45 @@ impl ResourceCluster {
         arguments: Vec<serde_json::Value>,
     ) -> Result<Vec<serde_json::Value>> {
         self.hosts
-            .iter()
-            .find(|host| host.manifest.name == resource)
+            .get(resource)
             .ok_or_else(|| anyhow::anyhow!("unknown resource: {resource}"))?
             .call_export(export, arguments)
     }
+}
+
+fn dependency_order(hosts: &BTreeMap<String, ResourceHost>) -> Result<Vec<String>> {
+    fn visit(
+        name: &str,
+        hosts: &BTreeMap<String, ResourceHost>,
+        visiting: &mut BTreeSet<String>,
+        visited: &mut BTreeSet<String>,
+        output: &mut Vec<String>,
+    ) -> Result<()> {
+        if visited.contains(name) {
+            return Ok(());
+        }
+        anyhow::ensure!(
+            visiting.insert(name.into()),
+            "cyclic resource dependency at {name}"
+        );
+        for dependency in &hosts[name].manifest.dependencies {
+            anyhow::ensure!(
+                hosts.contains_key(dependency),
+                "missing resource dependency {dependency} for {name}"
+            );
+            visit(dependency, hosts, visiting, visited, output)?;
+        }
+        visiting.remove(name);
+        visited.insert(name.into());
+        output.push(name.into());
+        Ok(())
+    }
+    let mut output = Vec::new();
+    let mut visited = BTreeSet::new();
+    for name in hosts.keys() {
+        visit(name, hosts, &mut BTreeSet::new(), &mut visited, &mut output)?;
+    }
+    Ok(output)
 }
 
 const BOOTSTRAP: &str = r#"
@@ -496,5 +581,100 @@ mod tests {
         )
         .unwrap();
         assert!(host.start().is_err());
+    }
+
+    #[test]
+    fn enforces_payload_queue_registration_and_memory_limits() {
+        let limits = Limits {
+            handlers: 1,
+            callbacks: 1,
+            queue: 2,
+            ..Limits::default()
+        };
+        let event = ResourceEvent {
+            resource: "fixture".into(),
+            name: "large".into(),
+            source: None,
+            target: None,
+            arguments: vec![serde_json::json!("x".repeat(limits.event_payload_bytes))],
+            correlation_id: None,
+        };
+        assert!(event.validate(&limits).is_err());
+
+        let (dir, manifest) =
+            fixture("AddEventHandler('a', function() end)\nAddEventHandler('b', function() end)");
+        let mut host =
+            ResourceHost::new(dir.path(), manifest, HostSide::Client, limits.clone()).unwrap();
+        assert!(host.start().is_err());
+        assert!(host.drain_outbound().is_empty());
+
+        fs::write(
+            dir.path().join("main.lua"),
+            "local value = string.rep('x', 20000000)",
+        )
+        .unwrap();
+        let mut host =
+            ResourceHost::new(dir.path(), host.manifest.clone(), HostSide::Client, limits).unwrap();
+        assert!(host.start().is_err());
+    }
+
+    #[test]
+    fn starts_dependencies_calls_cross_resource_export_and_stops_in_reverse() {
+        let (provider_dir, mut provider) = fixture("exports('answer', function() return 42 end)");
+        provider.name = "provider".into();
+        let (consumer_dir, mut consumer) = fixture("RegisterNetEvent('ready', function() end)");
+        consumer.name = "consumer".into();
+        consumer.dependencies = vec!["provider".into()];
+        let provider_host = ResourceHost::new(
+            provider_dir.path(),
+            provider,
+            HostSide::Server,
+            Limits::default(),
+        )
+        .unwrap();
+        let consumer_host = ResourceHost::new(
+            consumer_dir.path(),
+            consumer,
+            HostSide::Server,
+            Limits::default(),
+        )
+        .unwrap();
+        let mut cluster = ResourceCluster::new(vec![consumer_host, provider_host]).unwrap();
+        assert_eq!(cluster.start_order(), ["provider", "consumer"]);
+        cluster.start_all().unwrap();
+        assert_eq!(
+            cluster.call_export("provider", "answer", vec![]).unwrap(),
+            [serde_json::json!(42)]
+        );
+        cluster.stop_all().unwrap();
+        assert_eq!(
+            cluster.host("provider").unwrap().state(),
+            LifecycleState::Stopped
+        );
+        assert_eq!(
+            cluster.host("consumer").unwrap().state(),
+            LifecycleState::Stopped
+        );
+    }
+
+    #[test]
+    fn restart_does_not_duplicate_old_handlers() {
+        let (dir, manifest) =
+            fixture("RegisterNetEvent('ping', function() TriggerServerEvent('pong') end)");
+        let mut host =
+            ResourceHost::new(dir.path(), manifest, HostSide::Client, Limits::default()).unwrap();
+        host.start().unwrap();
+        host.stop().unwrap();
+        host.start().unwrap();
+        host.dispatch(&ResourceEvent {
+            resource: "fixture".into(),
+            name: "ping".into(),
+            source: None,
+            target: None,
+            arguments: vec![],
+            correlation_id: None,
+        })
+        .unwrap();
+        assert_eq!(host.drain_outbound().len(), 1);
     }
 }
