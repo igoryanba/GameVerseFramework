@@ -12,4 +12,13 @@ docker compose ps
 
 The server identity is generated once and retained in `server-identity`. Copy `/var/lib/gameverse/identity/server-cert.der` from the server container to an authenticated distribution location for the Windows launcher; clients trust that pinned certificate.
 
-The migration currently represents the RP persistence contract. Database-backed account and RP command handling is the next integration step; the M2 presence server starts only after the schema has been applied.
+The M2 server applies every embedded SQLx migration in filename order after PostgreSQL becomes healthy and before it starts accepting sessions. Database-backed account, character, courier, shop and reconnect handling are part of the M2 server.
+
+Operational endpoints bind to localhost on the host by default:
+
+- `http://127.0.0.1:30123/v1/health`
+- `http://127.0.0.1:30123/v1/ready`
+- `http://127.0.0.1:30123/v1/version`
+- `http://127.0.0.1:30123/v1/metrics`
+
+The admin mutation API and backup automation remain closed-alpha release work.

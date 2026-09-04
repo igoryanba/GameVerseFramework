@@ -14,33 +14,6 @@ services:
       timeout: 3s
       retries: 20
 
-  migrate:
-    image: postgres:17-alpine
-    restart: "no"
-    environment:
-      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
-    volumes:
-      - ../../crates/gameverse-rp/migrations:/migrations:ro
-    command:
-      - /bin/sh
-      - -ec
-      - |
-        psql -v ON_ERROR_STOP=1 -h postgres -U gameverse -d gameverse -c \
-          "CREATE TABLE IF NOT EXISTS gameverse_schema_migrations(version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())"
-        for migration in /migrations/*.sql; do
-          version=$$(basename "$$migration")
-          applied=$$(psql -h postgres -U gameverse -d gameverse -tAc \
-            "SELECT EXISTS(SELECT 1 FROM gameverse_schema_migrations WHERE version='$$version')")
-          if [ "$$applied" != "t" ]; then
-            psql -v ON_ERROR_STOP=1 -h postgres -U gameverse -d gameverse -f "$$migration"
-            psql -v ON_ERROR_STOP=1 -h postgres -U gameverse -d gameverse -c \
-              "INSERT INTO gameverse_schema_migrations(version) VALUES('$$version')"
-          fi
-        done
-    depends_on:
-      postgres:
-        condition: service_healthy
-
   server:
     build:
       context: ../..
@@ -52,8 +25,8 @@ services:
     volumes:
       - server-identity:/var/lib/gameverse/identity
     depends_on:
-      migrate:
-        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:30123/v1/ready >/dev/null"]
       interval: 10s

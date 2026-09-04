@@ -1,0 +1,48 @@
+name: Closed Alpha Deployment
+on:
+  push:
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'crates/**'
+      - 'deployment/alpha/**'
+      - '.github/workflows/alpha-deployment.yml'
+  pull_request:
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'crates/**'
+      - 'deployment/alpha/**'
+      - '.github/workflows/alpha-deployment.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compose:
+    runs-on: ubuntu-latest
+    env:
+      POSTGRES_PASSWORD: gameverse-deployment-ci
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose configuration
+        run: docker compose -f deployment/alpha/compose.yaml config --quiet
+      - name: Start closed-alpha stack
+        run: docker compose -f deployment/alpha/compose.yaml up --build -d
+      - name: Verify readiness and migrations
+        run: |
+          curl --fail --retry 20 --retry-delay 2 --retry-all-errors http://127.0.0.1:30123/v1/ready
+          curl --fail http://127.0.0.1:30123/v1/version
+          curl --fail http://127.0.0.1:30123/v1/metrics | grep gameverse_players
+          test "$(docker compose -f deployment/alpha/compose.yaml exec -T postgres psql -U gameverse -d gameverse -tAc "SELECT count(*) FROM _sqlx_migrations WHERE success")" -eq 2
+          test "$(docker compose -f deployment/alpha/compose.yaml exec -T postgres psql -U gameverse -d gameverse -tAc "SELECT count(*) FROM shop_items")" -ge 2
+      - name: Capture deployment logs
+        if: failure()
+        run: docker compose -f deployment/alpha/compose.yaml logs --no-color > alpha-deployment.log
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: alpha-deployment-log
+          path: alpha-deployment.log
+      - name: Stop stack
+        if: always()
+        run: docker compose -f deployment/alpha/compose.yaml down -v

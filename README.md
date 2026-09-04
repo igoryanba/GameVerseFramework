@@ -12,7 +12,9 @@ GameVerse is an experimental independent multiplayer runtime for a locally insta
 - Static FiveM resource analyzer, safe manifest conversion, sandboxed Lua host, dependency ordering, exports, callbacks, timers, rollback, and two MIT acceptance resources.
 - Server-authoritative closed-alpha RP domain for invites, characters, positions, wallets, immutable ledger entries, inventory, shops, courier work, and moderation.
 - PostgreSQL schema for the RP vertical slice and a minimal Docker Compose deployment for the M2 server plus PostgreSQL.
-- First Windows launcher shell for installation checks, ordered bridge/game startup, logs, and a redacted diagnostics archive.
+- Windows launcher with pinned-certificate and install-manifest checks, ordered UI/bridge/game startup, logs, and a redacted diagnostics archive.
+- Reproducible self-contained Windows alpha packaging with SHA256 inventory and separate symbols.
+- Versioned M2 health, readiness, version and Prometheus metrics endpoints.
 
 The legacy `core`, old services, admin panel, Kubernetes/Terraform files, and historical performance claims are retained as research material. They are not part of the supported alpha runtime or its CI gate.
 
@@ -68,6 +70,7 @@ Build the Windows adapter and protocol harness:
 ```powershell
 ./adapters/gta5/setup.ps1
 dotnet build clients/windows/GameVerse.Launcher -c Release
+./clients/windows/package-alpha.ps1
 ```
 
 Run the development server and PostgreSQL on Linux:
@@ -89,7 +92,7 @@ The branch is ready for a closed alpha only after all of these pass:
 4. Two real GTA clients and one shared vehicle with ownership migration.
 5. PostgreSQL-backed invite → account → character → delivery → purchase → reconnect acceptance.
 6. Clean launcher install, signed update/rollback, and diagnostic package acceptance.
-7. Protected admin API with audit log and reproducible Linux deployment.
+7. Protected admin API with audit log and reproducible Linux deployment. Health and metrics endpoints are already available; administrative mutations remain pending.
 
 Position-based voice is the next required milestone after the base alpha.
 
