@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Win32;
@@ -12,8 +13,13 @@ internal sealed record LauncherConfig(
     string UiPath,
     string BridgePath,
     string UiPipe,
+    string AdapterPipe,
     string ServerAddress,
     string CertificatePath,
+    string CertificateSha256,
+    string UpdateChannel,
+    string LogLevel,
+    bool RequireInstallManifest,
     string? LogDirectory);
 
 internal sealed record Check(string Name, bool Passed, string Detail);
@@ -67,11 +73,15 @@ internal static class Launcher
         {
             PropertyNameCaseInsensitive = true
         }) ?? throw new InvalidDataException("Launcher configuration is empty");
-        if (new[] { config.GameDirectory, config.UiPath, config.BridgePath, config.UiPipe, config.ServerAddress, config.CertificatePath }
+        if (new[] { config.GameDirectory, config.UiPath, config.BridgePath, config.UiPipe, config.AdapterPipe, config.ServerAddress, config.CertificatePath, config.CertificateSha256, config.UpdateChannel, config.LogLevel }
             .Any(string.IsNullOrWhiteSpace))
             throw new InvalidDataException("Launcher configuration contains an empty required value");
         if (!config.UiPipe.StartsWith(@"\\.\pipe\", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("UiPipe must be a local Windows named-pipe path");
+        if (!config.AdapterPipe.StartsWith(@"\\.\pipe\", StringComparison.OrdinalIgnoreCase) || config.AdapterPipe == config.UiPipe)
+            throw new InvalidDataException("AdapterPipe must be a distinct local Windows named-pipe path");
+        if (!Regex.IsMatch(config.CertificateSha256, "^[A-Fa-f0-9]{64}$"))
+            throw new InvalidDataException("CertificateSha256 must contain 64 hexadecimal characters");
         return config;
     }
 
@@ -81,12 +91,17 @@ internal static class Launcher
         if (File.Exists(path)) throw new IOException($"Refusing to replace {path}");
         var example = new LauncherConfig(
             @"C:\Games\Grand Theft Auto V Enhanced",
-            @"C:\GameVerse\GameVerse.UI.exe",
-            @"C:\GameVerse\gameverse-gta-bridge-m2.exe",
+            @"ui\GameVerse.UI.exe",
+            @"bridge\gameverse-gta-bridge-m2.exe",
             @"\\.\pipe\gameverse-ui-v1",
+            @"\\.\pipe\gameverse-gta-v1",
             "127.0.0.1:30122",
-            @"C:\GameVerse\server-cert.der",
-            @"C:\GameVerse\logs");
+            @"server-cert.der",
+            new string('0', 64),
+            "alpha",
+            "info",
+            false,
+            @"%LOCALAPPDATA%\GameVerse\logs");
         File.WriteAllText(path, JsonSerializer.Serialize(example, new JsonSerializerOptions { WriteIndented = true }));
         Console.WriteLine(JsonSerializer.Serialize(new { status = "created", path }));
         return 0;
@@ -94,17 +109,19 @@ internal static class Launcher
 
     private static List<Check> Checks(LauncherConfig config)
     {
-        string game = Path.GetFullPath(Environment.ExpandEnvironmentVariables(config.GameDirectory));
-        string ui = Path.GetFullPath(Environment.ExpandEnvironmentVariables(config.UiPath));
-        string bridge = Path.GetFullPath(Environment.ExpandEnvironmentVariables(config.BridgePath));
-        string cert = Path.GetFullPath(Environment.ExpandEnvironmentVariables(config.CertificatePath));
+        string game = ResolvePath(config.GameDirectory);
+        string ui = ResolvePath(config.UiPath);
+        string bridge = ResolvePath(config.BridgePath);
+        string cert = ResolvePath(config.CertificatePath);
         string enhanced = Path.Combine(game, "GTA5_Enhanced.exe");
         string play = Path.Combine(game, "PlayGTAV.exe");
         MemoryStatus memory = new();
         GlobalMemoryStatusEx(memory);
         ulong freeGiB = memory.AvailablePhysical / 1024 / 1024 / 1024;
+        Check installManifest = CheckInstallManifest(config.RequireInstallManifest);
         return new List<Check>
         {
+            installManifest,
             new("windows", OperatingSystem.IsWindowsVersionAtLeast(10), Environment.OSVersion.VersionString),
             new("game_directory", Directory.Exists(game), game),
             new("gta_enhanced", File.Exists(enhanced), enhanced),
@@ -113,6 +130,7 @@ internal static class Launcher
             new("webview2_runtime", WebView2Version() is not null, WebView2Version() ?? "Install Microsoft Edge WebView2 Evergreen Runtime"),
             new("bridge", File.Exists(bridge), bridge),
             new("server_certificate", File.Exists(cert), cert),
+            new("server_certificate_fingerprint", File.Exists(cert) && CertificateHash(cert).Equals(config.CertificateSha256, StringComparison.OrdinalIgnoreCase), File.Exists(cert) ? CertificateHash(cert) : "certificate unavailable"),
             new("free_memory", freeGiB >= 4, $"{freeGiB} GiB available"),
             new("adapter", File.Exists(Path.Combine(game, "scripts", "GameVerse.GtaAdapter.dll")), Path.Combine(game, "scripts", "GameVerse.GtaAdapter.dll")),
             new("scripthook", File.Exists(Path.Combine(game, "ScriptHookV.dll")), Path.Combine(game, "ScriptHookV.dll")),
@@ -130,10 +148,10 @@ internal static class Launcher
     private static async Task<int> StartAsync(LauncherConfig config)
     {
         if (Verify(config) != 0) return 3;
-        string game = Path.GetFullPath(Environment.ExpandEnvironmentVariables(config.GameDirectory));
-        string ui = Path.GetFullPath(Environment.ExpandEnvironmentVariables(config.UiPath));
-        string bridge = Path.GetFullPath(Environment.ExpandEnvironmentVariables(config.BridgePath));
-        string cert = Path.GetFullPath(Environment.ExpandEnvironmentVariables(config.CertificatePath));
+        string game = ResolvePath(config.GameDirectory);
+        string ui = ResolvePath(config.UiPath);
+        string bridge = ResolvePath(config.BridgePath);
+        string cert = ResolvePath(config.CertificatePath);
         ProcessStartInfo uiInfo = new()
         {
             FileName = ui,
@@ -163,6 +181,8 @@ internal static class Launcher
         bridgeInfo.ArgumentList.Add(cert);
         bridgeInfo.ArgumentList.Add("--ui-pipe");
         bridgeInfo.ArgumentList.Add(config.UiPipe);
+        bridgeInfo.ArgumentList.Add("--pipe");
+        bridgeInfo.ArgumentList.Add(config.AdapterPipe);
         using Process bridgeProcess = Process.Start(bridgeInfo) ?? throw new InvalidOperationException("Bridge did not start");
         try { await WaitForReadyEventAsync(bridgeProcess, "m2_pipe_ready", TimeSpan.FromSeconds(15), "Bridge"); }
         catch
@@ -296,7 +316,44 @@ internal static class Launcher
         finally { Directory.Delete(staging, true); }
     }
 
-    private static string LogDirectory(LauncherConfig config) => Path.GetFullPath(Environment.ExpandEnvironmentVariables(config.LogDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GameVerse", "logs")));
+    private static string ResolvePath(string value)
+    {
+        string expanded = Environment.ExpandEnvironmentVariables(value);
+        return Path.GetFullPath(expanded, AppContext.BaseDirectory);
+    }
+    private static string CertificateHash(string path) => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
+    private static Check CheckInstallManifest(bool required)
+    {
+        string manifestPath = Path.Combine(AppContext.BaseDirectory, "install-manifest.json");
+        if (!File.Exists(manifestPath))
+            return new Check("install_manifest", !required, required ? "install-manifest.json is missing" : "development build");
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(manifestPath));
+            if (document.RootElement.GetProperty("schema_version").GetInt32() != 1)
+                throw new InvalidDataException("unsupported schema");
+            string root = Path.GetFullPath(AppContext.BaseDirectory);
+            int count = 0;
+            foreach (JsonElement file in document.RootElement.GetProperty("files").EnumerateArray())
+            {
+                string relative = file.GetProperty("path").GetString() ?? throw new InvalidDataException("missing path");
+                string full = Path.GetFullPath(relative.Replace('/', Path.DirectorySeparatorChar), root);
+                if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase) || !File.Exists(full))
+                    throw new InvalidDataException($"invalid packaged path: {relative}");
+                long size = file.GetProperty("size").GetInt64();
+                string hash = file.GetProperty("sha256").GetString() ?? "";
+                if (new FileInfo(full).Length != size || !CertificateHash(full).Equals(hash, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException($"package integrity check failed: {relative}");
+                count++;
+            }
+            return new Check("install_manifest", count > 0, $"{count} packaged files verified");
+        }
+        catch (Exception error) when (error is IOException or JsonException or InvalidDataException or KeyNotFoundException)
+        {
+            return new Check("install_manifest", false, error.Message);
+        }
+    }
+    private static string LogDirectory(LauncherConfig config) => ResolvePath(config.LogDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GameVerse", "logs"));
     private static string? WebView2Version()
     {
         const string client = @"SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}";

@@ -44,3 +44,12 @@ jobs:
           & ./clients/windows/GameVerse.Launcher/bin/Release/net8.0-windows/GameVerse.Launcher.exe self-test
           dotnet build clients/windows/GameVerse.UI -c Release --nologo
           & ./clients/windows/GameVerse.UI/bin/Release/net8.0-windows/GameVerse.UI.exe --self-test
+      - name: Package closed-alpha Windows client
+        shell: pwsh
+        run: ./clients/windows/package-alpha.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GameVerse-alpha-win-x64
+          path: |
+            artifacts/GameVerse-alpha-win-x64.zip
+            artifacts/GameVerse-alpha-win-x64-symbols.zip
