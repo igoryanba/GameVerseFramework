@@ -10,4 +10,4 @@ GameVerse.Launcher.exe start
 GameVerse.Launcher.exe diagnostics
 ```
 
-The next launcher milestone connects UI commands to the M2 control stream, adds DPAPI token storage, a signed update manifest, rollback, and adapter-ready progress events.
+UI commands now reach the M2 control stream through the local bridge, and refresh tokens are stored by the UI host with DPAPI. The remaining launcher release work is a signed update manifest, rollback, a reproducible client package, and full adapter/bootstrap progress reporting.
