@@ -1,0 +1,60 @@
+name: M2 32 Player Release Soak
+on:
+  workflow_dispatch:
+    inputs:
+      duration_seconds:
+        description: Soak duration in seconds
+        required: true
+        default: '1800'
+        type: string
+  schedule:
+    - cron: '17 2 * * 1'
+permissions:
+  contents: read
+jobs:
+  soak:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.0
+      - name: Validate duration
+        env:
+          REQUESTED_DURATION: ${{ inputs.duration_seconds || '1800' }}
+        run: |
+          case "$REQUESTED_DURATION" in *[!0-9]*|'') exit 2;; esac
+          test "$REQUESTED_DURATION" -ge 60
+          test "$REQUESTED_DURATION" -le 1800
+          echo "SOAK_DURATION=$REQUESTED_DURATION" >> "$GITHUB_ENV"
+      - name: Build M2 server and bots
+        run: cargo build --locked --release -p gameverse-server --bin gameverse-presence-server-m2 -p gameverse-client --bin gameverse-presence-bot-m2
+      - name: Run 32-client soak at 20 Hz
+        run: |
+          set -euo pipefail
+          mkdir -p m2-soak-report
+          server=target/release/gameverse-presence-server-m2
+          bot=target/release/gameverse-presence-bot-m2
+          "$server" --init-identity --cert m2-soak-report/server.der --key m2-soak-report/server.key
+          "$server" --bind 127.0.0.1:0 --cert m2-soak-report/server.der --key m2-soak-report/server.key --duration "$((SOAK_DURATION + 15))" >m2-soak-report/server.jsonl 2>m2-soak-report/server.log &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 100); do
+            address=$(jq -r 'select(.event == "m2_ready") | .address' m2-soak-report/server.jsonl 2>/dev/null | head -n1)
+            test -n "$address" && break
+            sleep 0.1
+          done
+          test -n "${address:-}"
+          "$bot" --server "$address" --cert m2-soak-report/server.der --clients 32 --duration "$SOAK_DURATION" --report m2-soak-report/clients.json
+          kill -INT "$server_pid"
+          wait "$server_pid"
+          trap - EXIT
+          minimum_published=$((SOAK_DURATION * 32 * 15))
+          jq -e --argjson minimum "$minimum_published" '.clients == 32 and .completed == 32 and .clean_shutdown and .errors == 0 and .published >= $minimum' m2-soak-report/clients.json
+          jq -s -e 'last | .event == "m2_shutdown" and .players == 0 and .accepted_sessions == 32 and .disconnects == 32 and .max_tick_micros > 0' m2-soak-report/server.jsonl
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: m2-32-player-release-soak
+          path: m2-soak-report/
