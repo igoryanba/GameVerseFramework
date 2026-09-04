@@ -729,11 +729,10 @@ fn split_frame(frame: p::ServerFrame, maximum: usize) -> Result<Vec<p::ServerFra
                 baseline: 1,
                 deltas: vec![last],
             };
-            let single = gameverse_protocol::control_v2::encode_realtime(
-                &RealtimeMessage::Server {
+            let single =
+                gameverse_protocol::control_v2::encode_realtime(&RealtimeMessage::Server {
                     frame: current.clone(),
-                },
-            )?;
+                })?;
             anyhow::ensure!(
                 single.len() <= maximum,
                 "single entity delta exceeds negotiated QUIC datagram size"
