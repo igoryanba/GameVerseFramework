@@ -117,22 +117,21 @@ The worker never invokes GTA APIs; invalid model and load timeout are reported.
 ## Current boundaries and next milestones
 
 This milestone supports two local presence clients, ped model/transform, render
-interpolation, state capture and cleanup/reconnect. Remote presentation is frozen,
-non-colliding and kinematic; it does not yet play walking or combat animations.
+interpolation, state capture and cleanup/reconnect. M1.2 adds task-driven remote
+locomotion and a server-provided RP session bootstrap while retaining the
+non-colliding presentation boundary.
 Health/armor/movement/weapon fields are captured and relayed, not gameplay authority.
 Poses are client-owned; server validation is not authoritative GTA physics.
 
-M1.1 adds two real Windows machines and explicit LAN/TLS configuration. M1.2 adds
-animation/death/aiming behavior. M1.3 adds vehicles and ownership migration. A
+M1.1 adds two real Windows machines and explicit LAN/TLS configuration. The current
+M1.2 branch implements task-driven locomotion, death/aim presentation and session
+bootstrap; its GTA visual acceptance remains to be run. M1.3 adds vehicles and ownership migration. A
 replaceable native GameHost comes later. No FiveM dependency, vehicles, RP, voice,
 CEF, memory patching or low-level loader replacement is added here. The 33 known
 legacy-core build errors are separate debt and are not changed by this feature.
 
-On this development machine, launching with the game's working directory resolved
-an initial `Could not find socialclub.dll!` dialog. ScriptHookV recognized the game
-build and registered SHVDNE, but the game did not reach Story Mode or the adapter.
-A control launch with all nine newly added host/adapter files removed also exited
-before Story Mode, with code **4919**; the root cause is unconfirmed. The added
-files were left outside the game directory after this check. G1–G3 and an in-game
-30-minute soak remain **blocked** until a normal Story Mode launch is available.
-See output acceptance reports for independently verified synthetic results.
+The later acceptance run reached Story Mode through `PlayGTAV.exe`: G1 telemetry,
+G2 remote-ped creation and visual presence, and G3 real-player observation plus
+reconnect/generation cleanup passed. The retained report is
+`outputs/M1-gta-live-success-report.md`. A 30-minute in-game soak and two-real-PC
+test remain future acceptance work.

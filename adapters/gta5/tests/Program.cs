@@ -19,7 +19,20 @@ if (args.Contains("--self-test"))
     var prefix=new byte[]{0,0,0,(byte)duplicate.Length};
     bool rejected=false;try{await Wire.Read(new MemoryStream(prefix.Concat(duplicate).ToArray()),CancellationToken.None);}catch(Newtonsoft.Json.JsonReaderException){rejected=true;}
     if(!rejected)throw new Exception("Accepted duplicate property");
-    Console.WriteLine("PASS fragmented frame, oversized frame, empty frame, truncated body, duplicate property");return;
+    var state=new PlayerState{timestamp_ms=1,position=new[]{0f,0f,0f},rotation=new[]{0f,0f,0f,1f},velocity=new[]{0f,0f,0f},model_hash=1,health=200,armor=0,movement=1,weapon_hash=0};
+    var locomotion=new LocomotionController();
+    if(locomotion.Update(state)||locomotion.Current!=LocomotionState.Idle)throw new Exception("Bad idle state");
+    state.velocity=new[]{3f,0f,0f};state.movement=3;
+    if(locomotion.Update(state)||!locomotion.Update(state)||locomotion.Current!=LocomotionState.Run)throw new Exception("Locomotion hysteresis failed");
+    state.movement=9;
+    if(!locomotion.Update(state)||locomotion.Current!=LocomotionState.Jump)throw new Exception("Immediate jump failed");
+    var config=new SessionConfig{spawn=new[]{1f,2f,3f},heading=90f,model_hash=1,instance_id=0};
+    if(!config.IsValid())throw new Exception("Valid session config rejected");
+    var presenceFixture=JObject.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory,"presence-v2.json")));
+    if((ulong)presenceFixture["server_tick"]!=7 || (string)presenceFixture["deltas"][0]["locomotion"]!="run"
+        || (uint)presenceFixture["deltas"][0]["appearance"]["model_hash"]!=0x705e61f2)
+        throw new Exception("Presence v2 shared fixture mismatch");
+    Console.WriteLine("PASS framing, Presence v2 fixture, session config, locomotion state and hysteresis");return;
 }
 
 int seconds=int.Parse(Value("--duration","30"));

@@ -30,6 +30,7 @@ logs/
 m0-report/
 .m0/
 .m1/
+.research/
 adapters/gta5/**/bin/
 adapters/gta5/**/obj/
 adapters/gta5/vendor/

@@ -116,6 +116,7 @@ pub mod bridge {
                 &Message::SessionBegin {
                     session: client.session,
                     entity: client.entity,
+                    config: adapter::SessionConfig::default(),
                 },
             ),
         )

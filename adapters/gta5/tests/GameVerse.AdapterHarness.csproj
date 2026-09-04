@@ -5,5 +5,6 @@
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" PrivateAssets="all" Condition="'$(TargetFramework)' == 'net48'" />
     <Compile Include="..\protocol\*.cs" Link="Protocol\%(Filename)%(Extension)" />
     <None Include="..\protocol\hello-v1.frame" Link="hello-v1.frame" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\protocol\presence-v2.json" Link="presence-v2.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

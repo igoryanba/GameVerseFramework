@@ -1,0 +1,27 @@
+name: Independent Runtime M2
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  protocol-and-adapter:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.0
+          components: rustfmt, clippy
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Test Presence v2 and compatibility API
+        run: cargo test --locked -p gameverse-protocol -p gameverse-runtime -p gameverse-transport -p gameverse-compat-fivem
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Lint independent runtime
+        run: cargo clippy --locked -p gameverse-protocol -p gameverse-runtime -p gameverse-transport -p gameverse-compat-fivem --all-targets -- -D warnings
+      - name: Test static resource analyzer
+        run: cargo test --manifest-path tools/fivem-analyzer/Cargo.toml
+      - name: Compile adapter and run protocol tests
+        shell: pwsh
+        run: ./adapters/gta5/setup.ps1

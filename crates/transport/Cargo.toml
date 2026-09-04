@@ -10,3 +10,4 @@ tokio = { version = "1", features = ["io-util", "time", "sync", "rt-multi-thread
 quinn = "0.10.2"
 rustls = "0.21"
 rcgen = "0.11"
+bytes = "1"

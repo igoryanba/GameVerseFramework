@@ -14,6 +14,7 @@ namespace GameVerse.GtaAdapter
         private readonly Dictionary<EntityId, RemotePed> remotes = new Dictionary<EntityId, RemotePed>();
         private readonly Stopwatch elapsed = Stopwatch.StartNew();
         private readonly PipeLink link;
+        private readonly SessionBootstrap bootstrap = new SessionBootstrap();
         private readonly string logPath;
         private readonly object logGate = new object();
         private EntityId local;
@@ -28,7 +29,7 @@ namespace GameVerse.GtaAdapter
             Log("GTA_ADAPTER_LOADED=true BUILD=" + build + " SUPPORTED=" + validBuild);
             link = new PipeLink(Log, build ?? "unknown");
             Tick += OnTick;
-            Aborted += (sender, args) => { link.Dispose(); Cleanup(); Log("ADAPTER_STOPPED=true"); };
+            Aborted += (sender, args) => { link.Dispose(); Cleanup(); bootstrap.Reset(); Log("ADAPTER_STOPPED=true"); };
             link.Start();
         }
         private void OnTick(object sender, EventArgs args)
@@ -40,6 +41,7 @@ namespace GameVerse.GtaAdapter
                 Ped player = ready ? Game.Player.Character : null;
                 ready = ready && player != null && player.Exists();
                 if (!ready) { link.Publish(null, false); Cleanup(); return; }
+                bootstrap.Tick();
                 if (elapsed.ElapsedMilliseconds - lastSample >= 50)
                 {
                     lastSample = elapsed.ElapsedMilliseconds;
@@ -64,7 +66,13 @@ namespace GameVerse.GtaAdapter
             switch ((string)message["type"])
             {
                 case "session_begin":
-                    Cleanup(); local = message["entity"].ToObject<EntityId>(); link.Report("session_ready", local); break;
+                    Cleanup();
+                    local = message["entity"].ToObject<EntityId>();
+                    var config = message["config"]?.ToObject<SessionConfig>();
+                    if (config == null || !config.IsValid()) throw new InvalidDataException("Invalid session config");
+                    bootstrap.Begin(config);
+                    link.Report("session_ready", local);
+                    break;
                 case "remote_entity_create":
                 case "remote_entity_update":
                     var entity = Wire.Entity(message);
@@ -75,7 +83,7 @@ namespace GameVerse.GtaAdapter
                 case "remote_entity_destroy":
                     var id = message["id"].ToObject<EntityId>();
                     if (remotes.TryGetValue(id, out RemotePed removed)) { removed.Dispose(); remotes.Remove(id); } break;
-                case "reset": Cleanup(); local = null; break;
+                case "reset": Cleanup(); bootstrap.Reset(); local = null; break;
                 default: throw new InvalidDataException("Unexpected bridge command");
             }
         }

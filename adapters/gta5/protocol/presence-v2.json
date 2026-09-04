@@ -1,0 +1,1 @@
+{"server_tick":7,"baseline":3,"deltas":[{"id":{"slot":1,"generation":2},"kind":"upsert","transform":{"position":[2.0,0.0,0.0],"rotation":[0.0,0.0,0.0,1.0],"velocity":[0.0,0.0,0.0]},"appearance":{"model_hash":1885233650},"locomotion":"run","combat":{"aiming":false,"shooting":false,"reloading":false,"dead":false,"weapon_hash":0,"aim_target":null},"vehicle":null}]}

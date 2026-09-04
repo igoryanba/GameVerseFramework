@@ -1128,6 +1128,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "toml 0.8.23",
 ]
 
 [[package]]
@@ -1219,6 +1220,7 @@ name = "gameverse-transport"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytes",
  "gameverse-protocol",
  "quinn",
  "rcgen",

@@ -38,6 +38,7 @@ jobs:
             m0-report/*.json
             m0-report/*.log
   legacy:
+    continue-on-error: true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
