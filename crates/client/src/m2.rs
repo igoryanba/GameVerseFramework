@@ -21,6 +21,7 @@ pub struct Client {
     endpoint: quinn::Endpoint,
     connection: quinn::Connection,
     send: quinn::SendStream,
+    recv: quinn::RecvStream,
 }
 impl Client {
     pub async fn connect(
@@ -79,6 +80,7 @@ impl Client {
             endpoint,
             connection,
             send,
+            recv,
         })
     }
     pub fn publish(&self, frame: PlayerFrame) -> Result<()> {
@@ -89,6 +91,9 @@ impl Client {
             RealtimeMessage::Server { frame } => Ok(frame),
             _ => anyhow::bail!("unexpected realtime message"),
         }
+    }
+    pub async fn read_control(&mut self) -> Result<ControlMessage> {
+        Ok(read_control(&mut self.recv).await?)
     }
     pub async fn close(mut self) -> Result<()> {
         write_control(
