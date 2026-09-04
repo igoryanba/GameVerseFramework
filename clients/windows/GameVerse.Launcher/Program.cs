@@ -3,12 +3,15 @@ using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.Win32;
 
 return await Launcher.RunAsync(args);
 
 internal sealed record LauncherConfig(
     string GameDirectory,
+    string UiPath,
     string BridgePath,
+    string UiPipe,
     string ServerAddress,
     string CertificatePath,
     string? LogDirectory);
@@ -44,10 +47,16 @@ internal static class Launcher
     {
         string path = Path.Combine(AppContext.BaseDirectory, ConfigName);
         if (!File.Exists(path)) throw new FileNotFoundException($"Create {ConfigName} with 'init' first", path);
-        return JsonSerializer.Deserialize<LauncherConfig>(File.ReadAllText(path), new JsonSerializerOptions
+        LauncherConfig config = JsonSerializer.Deserialize<LauncherConfig>(File.ReadAllText(path), new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true
         }) ?? throw new InvalidDataException("Launcher configuration is empty");
+        if (new[] { config.GameDirectory, config.UiPath, config.BridgePath, config.UiPipe, config.ServerAddress, config.CertificatePath }
+            .Any(string.IsNullOrWhiteSpace))
+            throw new InvalidDataException("Launcher configuration contains an empty required value");
+        if (!config.UiPipe.StartsWith(@"\\.\pipe\", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("UiPipe must be a local Windows named-pipe path");
+        return config;
     }
 
     private static int WriteExample()
@@ -56,7 +65,9 @@ internal static class Launcher
         if (File.Exists(path)) throw new IOException($"Refusing to replace {path}");
         var example = new LauncherConfig(
             @"C:\Games\Grand Theft Auto V Enhanced",
+            @"C:\GameVerse\GameVerse.UI.exe",
             @"C:\GameVerse\gameverse-gta-bridge-m2.exe",
+            @"\\.\pipe\gameverse-ui-v1",
             "127.0.0.1:30122",
             @"C:\GameVerse\server-cert.der",
             @"C:\GameVerse\logs");
@@ -68,6 +79,7 @@ internal static class Launcher
     private static List<Check> Checks(LauncherConfig config)
     {
         string game = Path.GetFullPath(Environment.ExpandEnvironmentVariables(config.GameDirectory));
+        string ui = Path.GetFullPath(Environment.ExpandEnvironmentVariables(config.UiPath));
         string bridge = Path.GetFullPath(Environment.ExpandEnvironmentVariables(config.BridgePath));
         string cert = Path.GetFullPath(Environment.ExpandEnvironmentVariables(config.CertificatePath));
         string enhanced = Path.Combine(game, "GTA5_Enhanced.exe");
@@ -81,6 +93,8 @@ internal static class Launcher
             new("game_directory", Directory.Exists(game), game),
             new("gta_enhanced", File.Exists(enhanced), enhanced),
             new("play_gtav", File.Exists(play), play),
+            new("gameverse_ui", File.Exists(ui), ui),
+            new("webview2_runtime", WebView2Version() is not null, WebView2Version() ?? "Install Microsoft Edge WebView2 Evergreen Runtime"),
             new("bridge", File.Exists(bridge), bridge),
             new("server_certificate", File.Exists(cert), cert),
             new("free_memory", freeGiB >= 4, $"{freeGiB} GiB available"),
@@ -101,8 +115,23 @@ internal static class Launcher
     {
         if (Verify(config) != 0) return 3;
         string game = Path.GetFullPath(Environment.ExpandEnvironmentVariables(config.GameDirectory));
+        string ui = Path.GetFullPath(Environment.ExpandEnvironmentVariables(config.UiPath));
         string bridge = Path.GetFullPath(Environment.ExpandEnvironmentVariables(config.BridgePath));
         string cert = Path.GetFullPath(Environment.ExpandEnvironmentVariables(config.CertificatePath));
+        ProcessStartInfo uiInfo = new()
+        {
+            FileName = ui,
+            UseShellExecute = false,
+            CreateNoWindow = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            WorkingDirectory = Path.GetDirectoryName(ui)!
+        };
+        uiInfo.ArgumentList.Add("--pipe");
+        uiInfo.ArgumentList.Add(config.UiPipe);
+        Process uiProcess = Process.Start(uiInfo) ?? throw new InvalidOperationException("GameVerse UI did not start");
+        try { await WaitForReadyEventAsync(uiProcess, "ui_ready", TimeSpan.FromSeconds(20), "GameVerse UI"); }
+        catch { uiProcess.Dispose(); throw; }
         ProcessStartInfo bridgeInfo = new()
         {
             FileName = bridge,
@@ -116,19 +145,57 @@ internal static class Launcher
         bridgeInfo.ArgumentList.Add(config.ServerAddress);
         bridgeInfo.ArgumentList.Add("--cert");
         bridgeInfo.ArgumentList.Add(cert);
+        bridgeInfo.ArgumentList.Add("--ui-pipe");
+        bridgeInfo.ArgumentList.Add(config.UiPipe);
         using Process bridgeProcess = Process.Start(bridgeInfo) ?? throw new InvalidOperationException("Bridge did not start");
-        await WaitForBridgeReadyAsync(bridgeProcess, TimeSpan.FromSeconds(15));
+        try { await WaitForReadyEventAsync(bridgeProcess, "m2_pipe_ready", TimeSpan.FromSeconds(15), "Bridge"); }
+        catch
+        {
+            if (!uiProcess.HasExited) uiProcess.Kill(entireProcessTree: true);
+            uiProcess.Dispose();
+            throw;
+        }
         Process.Start(new ProcessStartInfo
         {
             FileName = Path.Combine(game, "PlayGTAV.exe"),
             WorkingDirectory = game,
             UseShellExecute = true
         });
-        Console.WriteLine(JsonSerializer.Serialize(new { status = "started", bridge_pid = bridgeProcess.Id, stage = "waiting_for_adapter" }));
-        return 0;
+        Console.WriteLine(JsonSerializer.Serialize(new { status = "started", ui_pid = uiProcess.Id, bridge_pid = bridgeProcess.Id, stage = "waiting_for_adapter" }));
+        try
+        {
+            using Process gameProcess = await WaitForGameAsync(TimeSpan.FromMinutes(2));
+            Console.WriteLine(JsonSerializer.Serialize(new { status = "active", game_pid = gameProcess.Id }));
+            await gameProcess.WaitForExitAsync();
+            return 0;
+        }
+        finally
+        {
+            if (!bridgeProcess.HasExited) bridgeProcess.Kill(entireProcessTree: true);
+            if (!uiProcess.HasExited) uiProcess.Kill(entireProcessTree: true);
+            uiProcess.Dispose();
+        }
     }
 
-    private static async Task WaitForBridgeReadyAsync(Process process, TimeSpan timeout)
+    private static async Task<Process> WaitForGameAsync(TimeSpan timeout)
+    {
+        using CancellationTokenSource deadline = new(timeout);
+        try
+        {
+            while (true)
+            {
+                Process? game = Process.GetProcessesByName("GTA5_Enhanced").FirstOrDefault();
+                if (game is not null) return game;
+                await Task.Delay(500, deadline.Token);
+            }
+        }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+        {
+            throw new TimeoutException("GTA V Enhanced did not start within two minutes");
+        }
+    }
+
+    private static async Task WaitForReadyEventAsync(Process process, string expectedEvent, TimeSpan timeout, string component)
     {
         using CancellationTokenSource deadline = new(timeout);
         try
@@ -143,13 +210,13 @@ internal static class Launcher
                 }
                 using JsonDocument message = JsonDocument.Parse(line);
                 if (message.RootElement.TryGetProperty("event", out JsonElement value)
-                    && value.GetString() == "m2_pipe_ready") return;
+                    && value.GetString() == expectedEvent) return;
             }
         }
         catch (OperationCanceledException) when (deadline.IsCancellationRequested)
         {
             if (!process.HasExited) process.Kill(entireProcessTree: true);
-            throw new TimeoutException("Bridge did not report named-pipe readiness within 15 seconds");
+            throw new TimeoutException($"{component} did not report readiness within {timeout.TotalSeconds:0} seconds");
         }
     }
 
@@ -191,6 +258,22 @@ internal static class Launcher
     }
 
     private static string LogDirectory(LauncherConfig config) => Path.GetFullPath(Environment.ExpandEnvironmentVariables(config.LogDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GameVerse", "logs")));
+    private static string? WebView2Version()
+    {
+        const string client = @"SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}";
+        foreach ((RegistryHive hive, RegistryView view) in new[]
+        {
+            (RegistryHive.CurrentUser, RegistryView.Default),
+            (RegistryHive.LocalMachine, RegistryView.Registry32),
+            (RegistryHive.LocalMachine, RegistryView.Registry64)
+        })
+        {
+            using RegistryKey root = RegistryKey.OpenBaseKey(hive, view);
+            using RegistryKey? key = root.OpenSubKey(client);
+            if (key?.GetValue("pv") is string version && !string.IsNullOrWhiteSpace(version)) return version;
+        }
+        return null;
+    }
     private static int Usage()
     {
         Console.Error.WriteLine("Usage: GameVerse.Launcher init|verify|start|logs|diagnostics [output.zip]");

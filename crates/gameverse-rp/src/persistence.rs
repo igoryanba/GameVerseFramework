@@ -26,6 +26,13 @@ pub struct SessionGrant {
     pub tokens: auth::TokenPair,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ShopOffer {
+    pub item_id: u32,
+    pub name: String,
+    pub price: i64,
+}
+
 #[async_trait]
 pub trait AccountRepository {
     async fn register_account(
@@ -76,6 +83,7 @@ pub trait EconomyRepository {
 #[async_trait]
 pub trait InventoryRepository {
     async fn inventory(&self, character_id: CharacterId) -> Result<Vec<(u32, u32)>>;
+    async fn shop_catalog(&self, shop: &str) -> Result<Vec<ShopOffer>>;
     async fn buy(
         &self,
         character_id: CharacterId,
@@ -435,6 +443,24 @@ impl InventoryRepository for PostgresStore {
         Ok(rows
             .into_iter()
             .map(|(item, quantity)| (item as u32, quantity as u32))
+            .collect())
+    }
+
+    async fn shop_catalog(&self, shop: &str) -> Result<Vec<ShopOffer>> {
+        anyhow::ensure!(!shop.is_empty() && shop.len() <= 64, "invalid shop");
+        let rows: Vec<(i32, String, i64)> = sqlx::query_as(
+            "SELECT d.id,d.name,si.price FROM shops s JOIN shop_items si ON si.shop_id=s.id JOIN item_definitions d ON d.id=si.item_id WHERE s.name=$1 AND s.enabled ORDER BY d.id LIMIT 256",
+        )
+        .bind(shop)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(item_id, name, price)| ShopOffer {
+                item_id: item_id as u32,
+                name,
+                price,
+            })
             .collect())
     }
 

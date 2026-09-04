@@ -1,0 +1,21 @@
+{
+  "nav": {
+    "overview": "Обзор",
+    "character": "Персонаж",
+    "world": "Мир и работа",
+    "inventory": "Инвентарь"
+  },
+  "stages": {
+    "checking": "Проверка компонентов",
+    "ui_ready": "Интерфейс готов",
+    "bridge_ready": "Bridge подключён",
+    "game_starting": "Запуск GTA V Enhanced",
+    "adapter_ready": "Адаптер подключён",
+    "auth_required": "Требуется вход",
+    "character_required": "Выберите персонажа",
+    "spawning": "Появление в мире",
+    "active": "Подключено",
+    "reconnecting": "Переподключение",
+    "failed": "Ошибка подключения"
+  }
+}

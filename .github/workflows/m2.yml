@@ -38,4 +38,8 @@ jobs:
         shell: pwsh
         run: ./adapters/gta5/setup.ps1
       - name: Compile Windows launcher
-        run: dotnet build clients/windows/GameVerse.Launcher -c Release --nologo
+        shell: pwsh
+        run: |
+          dotnet build clients/windows/GameVerse.Launcher -c Release --nologo
+          dotnet build clients/windows/GameVerse.UI -c Release --nologo
+          & ./clients/windows/GameVerse.UI/bin/Release/net8.0-windows/GameVerse.UI.exe --self-test

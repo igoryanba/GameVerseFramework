@@ -4,6 +4,7 @@ pub mod ipc;
 pub mod ipc_m2;
 pub mod m2;
 pub mod presence;
+pub mod ui;
 use anyhow::Result;
 use gameverse_protocol::{EntityId, Message, SessionId, Snapshot, VERSION};
 use gameverse_transport::{

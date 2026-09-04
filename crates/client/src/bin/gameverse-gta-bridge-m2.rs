@@ -8,7 +8,9 @@ struct Args {
     cert: std::path::PathBuf,
     #[arg(long,default_value=gameverse_protocol::adapter::DEFAULT_PIPE)]
     pipe: String,
-    #[arg(long, default_value_t = 3600)]
+    #[arg(long,default_value=gameverse_client::ui::DEFAULT_PIPE)]
+    ui_pipe: String,
+    #[arg(long, default_value_t = 86400)]
     duration: u64,
 }
 #[tokio::main]
@@ -18,6 +20,7 @@ async fn main() -> Result<()> {
     {
         gameverse_client::ipc_m2::run(
             &args.pipe,
+            &args.ui_pipe,
             args.server,
             &args.cert,
             std::time::Duration::from_secs(args.duration),

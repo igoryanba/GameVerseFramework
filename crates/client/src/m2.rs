@@ -14,6 +14,240 @@ use gameverse_transport::{
 use std::{collections::BTreeMap, net::SocketAddr, path::Path};
 use tokio::time::timeout;
 
+/// Negotiated M2 connection used by the interactive launcher flow before an
+/// entity exists. Authentication and character selection remain explicit.
+pub struct InteractiveClient {
+    endpoint: quinn::Endpoint,
+    connection: quinn::Connection,
+    send: quinn::SendStream,
+    recv: quinn::RecvStream,
+    account_id: Option<u64>,
+    access_token: Option<String>,
+    refresh_token: Option<String>,
+}
+
+impl InteractiveClient {
+    pub async fn connect(
+        address: SocketAddr,
+        cert: &Path,
+        gta_build: Option<String>,
+    ) -> Result<Self> {
+        let endpoint = client_endpoint(cert)?;
+        let connection =
+            timeout(HANDSHAKE_TIMEOUT, endpoint.connect(address, "localhost")?).await??;
+        let (mut send, mut recv) = timeout(HANDSHAKE_TIMEOUT, connection.open_bi()).await??;
+        write_control(
+            &mut send,
+            &ControlMessage::ClientHello {
+                control_versions: vec![VERSION],
+                presence_versions: vec![p::VERSION],
+                client_build: env!("CARGO_PKG_VERSION").into(),
+                capabilities: Capabilities {
+                    datagrams: true,
+                    resource_api: RESOURCE_API_VERSION,
+                    gta_edition: gta_build.as_ref().map(|_| "enhanced".into()),
+                    gta_build,
+                },
+            },
+        )
+        .await?;
+        match timeout(HANDSHAKE_TIMEOUT, read_control(&mut recv)).await?? {
+            ControlMessage::ServerHello {
+                control_version: VERSION,
+                presence_version: p::VERSION,
+                ..
+            } => {}
+            ControlMessage::Reject { code, reason } => {
+                anyhow::bail!("server rejected {code}: {reason}")
+            }
+            message => anyhow::bail!("invalid M2 server hello: {message:?}"),
+        }
+        Ok(Self {
+            endpoint,
+            connection,
+            send,
+            recv,
+            account_id: None,
+            access_token: None,
+            refresh_token: None,
+        })
+    }
+
+    pub async fn authenticate(
+        &mut self,
+        request_id: &str,
+        authentication: AlphaAuthentication,
+    ) -> Result<(u64, String, String)> {
+        let message = match authentication {
+            AlphaAuthentication::Register {
+                login,
+                password,
+                invite,
+            } => ControlMessage::AuthRequest {
+                request_id: request_id.into(),
+                mode: gameverse_protocol::control_v2::AuthMode::Register,
+                login,
+                password,
+                invite: Some(invite),
+            },
+            AlphaAuthentication::Login { login, password } => ControlMessage::AuthRequest {
+                request_id: request_id.into(),
+                mode: gameverse_protocol::control_v2::AuthMode::Login,
+                login,
+                password,
+                invite: None,
+            },
+            AlphaAuthentication::Resume { refresh_token } => ControlMessage::AuthResume {
+                request_id: request_id.into(),
+                refresh_token,
+            },
+        };
+        write_control(&mut self.send, &message).await?;
+        match timeout(HANDSHAKE_TIMEOUT, read_control(&mut self.recv)).await?? {
+            ControlMessage::AuthResult {
+                request_id: response_id,
+                account_id,
+                access_token,
+                refresh_token,
+                ..
+            } if response_id == request_id => {
+                self.account_id = Some(account_id);
+                self.access_token = Some(access_token.clone());
+                self.refresh_token = Some(refresh_token.clone());
+                Ok((account_id, access_token, refresh_token))
+            }
+            ControlMessage::Reject { code, reason } => anyhow::bail!("{code}: {reason}"),
+            message => anyhow::bail!("invalid authentication result: {message:?}"),
+        }
+    }
+
+    pub async fn characters(
+        &mut self,
+        request_id: &str,
+    ) -> Result<Vec<gameverse_protocol::control_v2::CharacterSummary>> {
+        write_control(
+            &mut self.send,
+            &ControlMessage::CharacterList {
+                request_id: request_id.into(),
+                characters: vec![],
+            },
+        )
+        .await?;
+        match timeout(HANDSHAKE_TIMEOUT, read_control(&mut self.recv)).await?? {
+            ControlMessage::CharacterList {
+                request_id: response_id,
+                characters,
+            } if response_id == request_id => Ok(characters),
+            ControlMessage::Reject { code, reason } => anyhow::bail!("{code}: {reason}"),
+            message => anyhow::bail!("invalid character list: {message:?}"),
+        }
+    }
+
+    pub async fn create_character(
+        &mut self,
+        request_id: &str,
+        character: NewCharacter,
+    ) -> Result<Vec<gameverse_protocol::control_v2::CharacterSummary>> {
+        write_control(
+            &mut self.send,
+            &ControlMessage::CreateCharacter {
+                request_id: request_id.into(),
+                first_name: character.first_name,
+                last_name: character.last_name,
+                model_hash: character.model_hash,
+            },
+        )
+        .await?;
+        match timeout(HANDSHAKE_TIMEOUT, read_control(&mut self.recv)).await?? {
+            ControlMessage::CharacterList {
+                request_id: response_id,
+                characters,
+            } if response_id == request_id => Ok(characters),
+            ControlMessage::Reject { code, reason } => anyhow::bail!("{code}: {reason}"),
+            message => anyhow::bail!("invalid create-character response: {message:?}"),
+        }
+    }
+
+    pub async fn select_character(
+        mut self,
+        request_id: &str,
+        character_id: u64,
+    ) -> Result<PendingClient> {
+        write_control(
+            &mut self.send,
+            &ControlMessage::SelectCharacter {
+                request_id: request_id.into(),
+                character_id,
+            },
+        )
+        .await?;
+        match timeout(HANDSHAKE_TIMEOUT, read_control(&mut self.recv)).await?? {
+            ControlMessage::SessionBegin {
+                session,
+                entity,
+                config,
+            } => Ok(PendingClient {
+                endpoint: self.endpoint,
+                connection: self.connection,
+                send: self.send,
+                recv: self.recv,
+                session,
+                entity,
+                config,
+                account_id: self.account_id,
+                access_token: self.access_token,
+                refresh_token: self.refresh_token,
+            }),
+            ControlMessage::Reject { code, reason } => anyhow::bail!("{code}: {reason}"),
+            message => anyhow::bail!("missing session configuration: {message:?}"),
+        }
+    }
+}
+
+pub struct PendingClient {
+    endpoint: quinn::Endpoint,
+    connection: quinn::Connection,
+    send: quinn::SendStream,
+    recv: quinn::RecvStream,
+    pub session: SessionId,
+    pub entity: EntityId,
+    pub config: SessionConfig,
+    account_id: Option<u64>,
+    access_token: Option<String>,
+    refresh_token: Option<String>,
+}
+
+impl PendingClient {
+    pub async fn spawn_ready(mut self, request_id: &str) -> Result<Client> {
+        write_control(
+            &mut self.send,
+            &ControlMessage::SpawnReady {
+                request_id: request_id.into(),
+            },
+        )
+        .await?;
+        anyhow::ensure!(
+            matches!(
+                timeout(HANDSHAKE_TIMEOUT, read_control(&mut self.recv)).await??,
+                ControlMessage::SpawnAck { request_id: response_id } if response_id == request_id
+            ),
+            "missing spawn acknowledgement"
+        );
+        Ok(Client {
+            session: self.session,
+            entity: self.entity,
+            config: self.config,
+            account_id: self.account_id,
+            access_token: self.access_token,
+            refresh_token: self.refresh_token,
+            endpoint: self.endpoint,
+            connection: self.connection,
+            send: self.send,
+            recv: self.recv,
+        })
+    }
+}
+
 pub struct Client {
     pub session: SessionId,
     pub entity: EntityId,
@@ -270,6 +504,10 @@ impl Client {
     pub async fn read_control(&mut self) -> Result<ControlMessage> {
         read_control(&mut self.recv).await
     }
+    pub async fn exchange(&mut self, message: ControlMessage) -> Result<ControlMessage> {
+        write_control(&mut self.send, &message).await?;
+        read_control(&mut self.recv).await
+    }
     pub async fn inventory(&mut self, request_id: &str) -> Result<Vec<(u32, u32)>> {
         write_control(
             &mut self.send,
@@ -356,6 +594,29 @@ impl Client {
         )
         .await?;
         economy_response(&mut self.recv, request_id).await
+    }
+    pub async fn shop_catalog(
+        &mut self,
+        request_id: &str,
+        shop: &str,
+    ) -> Result<Vec<gameverse_protocol::control_v2::ShopItem>> {
+        write_control(
+            &mut self.send,
+            &ControlMessage::ShopCatalog {
+                request_id: request_id.into(),
+                shop: shop.into(),
+                items: vec![],
+            },
+        )
+        .await?;
+        match read_control(&mut self.recv).await? {
+            ControlMessage::ShopCatalog {
+                request_id: response_id,
+                items,
+                ..
+            } if response_id == request_id => Ok(items),
+            message => anyhow::bail!("unexpected shop catalog response: {message:?}"),
+        }
     }
     pub async fn close(mut self) -> Result<()> {
         write_control(

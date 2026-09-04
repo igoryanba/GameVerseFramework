@@ -491,6 +491,14 @@ async fn alpha_session(
                     let items = store.inventory(character_id).await?.into_iter().map(|(item_id, quantity)| gameverse_protocol::control_v2::InventoryItem { item_id, quantity }).collect();
                     write_control(&mut send, &ControlMessage::InventorySnapshot { request_id, revision: 0, items }).await?;
                 }
+                ControlMessage::ShopCatalog { request_id, shop, items } if items.is_empty() => {
+                    let items = store.shop_catalog(&shop).await?.into_iter().map(|item| gameverse_protocol::control_v2::ShopItem {
+                        item_id: item.item_id,
+                        name: item.name,
+                        price: item.price,
+                    }).collect();
+                    write_control(&mut send, &ControlMessage::ShopCatalog { request_id, shop, items }).await?;
+                }
                 ControlMessage::JobCommand { request_id, action, route, idempotency_key: _ } if action == "start" => {
                     store.start_delivery(character_id, &route).await?;
                     write_control(&mut send, &ControlMessage::JobState { request_id, active_route: Some(route), revision: 1 }).await?;
