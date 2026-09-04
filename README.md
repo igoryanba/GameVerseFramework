@@ -8,14 +8,16 @@ GameVerse is an experimental independent multiplayer runtime for a locally insta
 - Presence v2 component model, spatial interest management, baselines, deltas, stream-out, destroy, reconnect generations, and bounded frames.
 - Separate M2 server and client entrypoints with version/capability negotiation, reliable session bootstrap, and realtime QUIC datagrams.
 - Windows M2 bridge that translates the current GTA adapter IPC into Presence v2 while the tested v1 path remains available.
-- GTA Enhanced adapter prototype with session bootstrap and remote ped locomotion states. The adapter supports up to 31 remote players; two-client GTA and vehicle acceptance are still pending.
+- GTA Enhanced adapter prototype with session bootstrap, remote ped locomotion states, and a bounded `RemoteVehicle` presentation component. End-to-end vehicle routing and two-client GTA acceptance are still pending.
 - Static FiveM resource analyzer, safe manifest conversion, sandboxed Lua host, dependency ordering, exports, callbacks, timers, rollback, and two MIT acceptance resources.
 - Server-authoritative closed-alpha RP domain for invites, characters, positions, wallets, immutable ledger entries, inventory, shops, courier work, and moderation.
 - PostgreSQL schema for the RP vertical slice and a minimal Docker Compose deployment for the M2 server plus PostgreSQL.
 - Windows launcher with pinned-certificate and install-manifest checks, ordered UI/bridge/game startup, logs, and a redacted diagnostics archive.
 - Reproducible self-contained Windows alpha packaging with SHA256 inventory and separate symbols.
-- Detached ECDSA P-256/SHA-256 update manifests with strict path, URL, size, hash and signature validation.
+- Detached ECDSA P-256/SHA-256 updates with strict validation, same-volume staging, atomic directory replacement, post-update self-test and automatic rollback.
 - Versioned M2 health, readiness, version and Prometheus metrics endpoints.
+- A separately bound bearer-protected moderation API that verifies the actor's database role, revokes sessions on ban, supports administrator unban, and records audit events.
+- PostgreSQL backup and guarded restore scripts, with restoration verified in the deployment workflow.
 - Full headless UI → bridge → QUIC → PostgreSQL → fake-adapter acceptance and a 32-client, 20 Hz, 60-second CI load smoke.
 
 The legacy `core`, old services, admin panel, Kubernetes/Terraform files, and historical performance claims are retained as research material. They are not part of the supported alpha runtime or its CI gate.
@@ -94,7 +96,7 @@ The branch is ready for a closed alpha only after all of these pass:
 4. Two real GTA clients and one shared vehicle with ownership migration.
 5. PostgreSQL-backed invite → account → character → delivery → purchase → reconnect acceptance.
 6. Clean launcher install, signed update/rollback, and diagnostic package acceptance.
-7. Protected admin API with audit log and reproducible Linux deployment. Health and metrics endpoints are already available; administrative mutations remain pending.
+7. Protected admin API with audit log and reproducible Linux deployment. Ban/unban and audit inspection are implemented; kick, mute and resource controls remain pending.
 
 Position-based voice is the next required milestone after the base alpha.
 

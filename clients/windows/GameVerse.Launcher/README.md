@@ -7,7 +7,8 @@ GameVerse.Launcher.exe init
 # edit launcher.json
 GameVerse.Launcher.exe verify
 GameVerse.Launcher.exe start
+GameVerse.Launcher.exe update
 GameVerse.Launcher.exe diagnostics
 ```
 
-UI commands now reach the M2 control stream through the local bridge, and refresh tokens are stored by the UI host with DPAPI. The package builder can create a detached ECDSA P-256/SHA-256 update manifest when a release signing key and HTTPS base URL are supplied. The launcher verifies the exact manifest bytes and rejects unsafe paths, duplicate files, non-HTTPS URLs, invalid hashes, and invalid signatures. Atomic installation and rollback are still pending.
+UI commands reach the M2 control stream through the local bridge, and refresh tokens are stored by the UI host with DPAPI. The package builder creates a detached ECDSA P-256/SHA-256 update manifest and embeds only the public verification key when a release signing key and HTTPS base URL are supplied. The launcher verifies the exact manifest bytes, downloads each file into a same-volume staging directory, checks sizes and hashes, preserves local configuration, and atomically switches directories. It retains one previous version and restores it when the new launcher's self-test fails or times out.
