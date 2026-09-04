@@ -408,7 +408,9 @@ async fn serve_active(
             break;
         }
         tokio::select! {
-            value=adapter_incoming.recv()=>match value.ok_or_else(||anyhow::anyhow!("adapter reader stopped"))?? {
+            value=adapter_incoming.recv()=>match value {
+                None | Some(Err(_)) => break,
+                Some(Ok(message)) => match message {
                 Message::LocalPlayerState{sequence:local_sequence,state}=>{
                     if local_sequence>sequence{sequence=local_sequence;}else{sequence+=1;}
                     client.publish(from_legacy(sequence,state))?;
@@ -416,9 +418,10 @@ async fn serve_active(
                 Message::AdapterHeartbeat{game_ready:false}=>anyhow::bail!("game unavailable"),
                 Message::AdapterHeartbeat{game_ready:true}|Message::AdapterStatus{..}|Message::AdapterError{..}|Message::BootstrapFailure{..}=>{},
                 _=>anyhow::bail!("unexpected adapter message"),
+                }
             },
             value=ui_incoming.recv()=>{
-                let request=value.ok_or_else(||anyhow::anyhow!("UI reader stopped"))??;
+                let request=match value { Some(Ok(request))=>request, None|Some(Err(_))=>break };
                 let response=match handle_active(&mut client,&request).await {
                     Ok(value)=>value,
                     Err(error)=>UiResponse::error(&request.request_id,"request_failed",public_error(&error)),
@@ -446,7 +449,7 @@ async fn serve_active(
             _=tokio::signal::ctrl_c()=>break,
         }
     }
-    timeout(
+    let _ = timeout(
         DEADLINE,
         ipc::write(
             &mut adapter_tx,
@@ -455,7 +458,7 @@ async fn serve_active(
             },
         ),
     )
-    .await??;
+    .await;
     client.close().await
 }
 

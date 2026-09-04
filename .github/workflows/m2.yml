@@ -28,7 +28,10 @@ jobs:
           $output
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "``````text`n$output`n``````"
           if ($code -ne 0) {
-            $annotation = $output.Substring([Math]::Max(0, $output.Length - 5000)).Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
+            $lines = $output -split "`r?`n"
+            $diagnosticLines = $lines | Where-Object { $_ -match '^(error|warning):|^\s*-->|clippy::' }
+            $diagnostics = if ($diagnosticLines) { $diagnosticLines -join "`n" } else { $output.Substring([Math]::Max(0, $output.Length - 4000)) }
+            $annotation = $diagnostics.Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
             Write-Output "::error title=Clippy diagnostics::$annotation"
             exit $code
           }
