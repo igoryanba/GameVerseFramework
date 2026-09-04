@@ -20,7 +20,10 @@ internal sealed record LauncherConfig(
     string UpdateChannel,
     string LogLevel,
     bool RequireInstallManifest,
-    string? LogDirectory);
+    string? LogDirectory,
+    string? UpdateManifestUrl,
+    string? UpdateSignatureUrl,
+    string? UpdatePublicKeyPath);
 
 internal sealed record Check(string Name, bool Passed, string Detail);
 
@@ -41,6 +44,7 @@ internal static class Launcher
         }
         if (command == "self-test") return await SelfTestAsync();
         if (command == "__generate-update-test-key") return GenerateUpdateTestKey(args);
+        if (command == "__apply-update") return await ApplyUpdateAsync(args);
         if (command == "verify-update") return VerifyUpdate(args);
         LauncherConfig config;
         try { config = Load(); }
@@ -57,6 +61,7 @@ internal static class Launcher
                 "start" => await StartAsync(config),
                 "logs" => OpenLogs(config),
                 "diagnostics" => Diagnostics(config, args.ElementAtOrDefault(1)),
+                "update" => await UpdateAsync(config),
                 _ => Usage()
             };
         }
@@ -103,7 +108,10 @@ internal static class Launcher
             "alpha",
             "info",
             false,
-            @"%LOCALAPPDATA%\GameVerse\logs");
+            @"%LOCALAPPDATA%\GameVerse\logs",
+            null,
+            null,
+            @"update-public-key.pem");
         File.WriteAllText(path, JsonSerializer.Serialize(example, new JsonSerializerOptions { WriteIndented = true }));
         Console.WriteLine(JsonSerializer.Serialize(new { status = "created", path }));
         return 0;
@@ -283,8 +291,9 @@ internal static class Launcher
         await child.WaitForExitAsync();
         bool passed = child.ExitCode == 0;
         bool updateSecurity = UpdateSecuritySelfTest();
-        passed = passed && updateSecurity;
-        Console.WriteLine(JsonSerializer.Serialize(new { status = passed ? "passed" : "failed", readiness_event = child.ExitCode == 0, child_cleaned_up = child.HasExited, update_signature = updateSecurity }));
+        bool atomicUpdate = AtomicUpdateSelfTest();
+        passed = passed && updateSecurity && atomicUpdate;
+        Console.WriteLine(JsonSerializer.Serialize(new { status = passed ? "passed" : "failed", readiness_event = child.ExitCode == 0, child_cleaned_up = child.HasExited, update_signature = updateSecurity, atomic_update_rollback = atomicUpdate }));
         return passed ? 0 : 1;
     }
 
@@ -330,6 +339,112 @@ internal static class Launcher
         {
             return verified.Files.Count == 1;
         }
+    }
+
+    private static bool AtomicUpdateSelfTest()
+    {
+        string parent = Path.Combine(Path.GetTempPath(), "gameverse-update-test-" + Guid.NewGuid().ToString("N"));
+        string install = Path.Combine(parent, "GameVerse");
+        string backup = install + ".previous";
+        string stage = Path.Combine(parent, ".gameverse-update-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(install);
+            File.WriteAllText(Path.Combine(install, "version.txt"), "old");
+            WriteTestInstall(stage, "new");
+            if (!AtomicUpdate.Apply(install, stage, backup, out _)) return false;
+            if (File.ReadAllText(Path.Combine(install, "version.txt")) != "new" || File.ReadAllText(Path.Combine(backup, "version.txt")) != "old") return false;
+
+            string broken = Path.Combine(parent, ".gameverse-update-" + Guid.NewGuid().ToString("N"));
+            WriteTestInstall(broken, "broken");
+            File.WriteAllText(Path.Combine(broken, "version.txt"), "tampered");
+            bool applied = AtomicUpdate.Apply(install, broken, backup, out _);
+            return !applied && File.ReadAllText(Path.Combine(install, "version.txt")) == "new";
+        }
+        finally
+        {
+            if (Directory.Exists(parent)) Directory.Delete(parent, true);
+        }
+    }
+
+    private static void WriteTestInstall(string directory, string version)
+    {
+        Directory.CreateDirectory(directory);
+        string file = Path.Combine(directory, "version.txt");
+        File.WriteAllText(file, version);
+        File.WriteAllText(Path.Combine(directory, "install-manifest.json"), JsonSerializer.Serialize(new
+        {
+            schema_version = 1,
+            files = new[] { new { path = "version.txt", size = new FileInfo(file).Length, sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(file))) } }
+        }));
+    }
+
+    private static async Task<int> UpdateAsync(LauncherConfig config)
+    {
+        if (!Uri.TryCreate(config.UpdateManifestUrl, UriKind.Absolute, out Uri? manifestUrl) || manifestUrl.Scheme != Uri.UriSchemeHttps
+            || !Uri.TryCreate(config.UpdateSignatureUrl, UriKind.Absolute, out Uri? signatureUrl) || signatureUrl.Scheme != Uri.UriSchemeHttps
+            || string.IsNullOrWhiteSpace(config.UpdatePublicKeyPath))
+            throw new InvalidDataException("UpdateManifestUrl, UpdateSignatureUrl and UpdatePublicKeyPath must configure signed HTTPS updates");
+        using HttpClient client = new() { Timeout = TimeSpan.FromMinutes(10) };
+        byte[] manifest = await AtomicUpdate.DownloadSmallAsync(client, manifestUrl, 1024 * 1024, CancellationToken.None);
+        byte[] signature = await AtomicUpdate.DownloadSmallAsync(client, signatureUrl, 1024, CancellationToken.None);
+        VerifiedUpdate update = UpdateSecurity.Verify(manifest, signature, File.ReadAllText(ResolvePath(config.UpdatePublicKeyPath)));
+        if (!update.Channel.Equals(config.UpdateChannel, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("update channel does not match launcher configuration");
+        string launcherVersion = typeof(Launcher).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+        if (!VersionAtLeast(launcherVersion, update.MinimumLauncherVersion)) throw new InvalidDataException($"update requires launcher {update.MinimumLauncherVersion} or newer");
+
+        string install = Path.GetFullPath(AppContext.BaseDirectory).TrimEnd(Path.DirectorySeparatorChar);
+        string staging = await AtomicUpdate.StageAsync(update, install, client, CancellationToken.None);
+        string? relativeCertificate = Path.IsPathRooted(config.CertificatePath) ? null : config.CertificatePath;
+        AtomicUpdate.PreserveLocalFiles(install, staging, ConfigName, relativeCertificate);
+
+        string helperDirectory = Path.Combine(Path.GetTempPath(), "GameVerse-Updater-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(helperDirectory);
+        string executable = Environment.ProcessPath ?? throw new InvalidOperationException("launcher executable path is unavailable");
+        if (Path.GetFileNameWithoutExtension(executable).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("atomic update requires the packaged launcher executable");
+        string helper = Path.Combine(helperDirectory, Path.GetFileName(executable));
+        File.Copy(executable, helper);
+        ProcessStartInfo info = new() { FileName = helper, UseShellExecute = false, CreateNoWindow = true };
+        info.ArgumentList.Add("__apply-update");
+        info.ArgumentList.Add(install);
+        info.ArgumentList.Add(staging);
+        info.ArgumentList.Add(install + ".previous");
+        info.ArgumentList.Add(Environment.ProcessId.ToString());
+        Process.Start(info)?.Dispose();
+        Console.WriteLine(JsonSerializer.Serialize(new { status = "staged", update.Version, action = "launcher_will_restart_after_atomic_install" }));
+        return 0;
+    }
+
+    private static async Task<int> ApplyUpdateAsync(string[] args)
+    {
+        if (args.Length != 5 || !int.TryParse(args[4], out int parentPid)) throw new ArgumentException("invalid update transaction arguments");
+        await AtomicUpdate.WaitForExitAsync(parentPid, TimeSpan.FromMinutes(2));
+        bool applied = AtomicUpdate.Apply(args[1], args[2], args[3], out string detail);
+        if (applied)
+        {
+            string launcher = Path.Combine(args[1], "GameVerse.Launcher.exe");
+            if (File.Exists(launcher)) Process.Start(new ProcessStartInfo { FileName = launcher, UseShellExecute = true, WorkingDirectory = args[1] })?.Dispose();
+        }
+        return applied ? 0 : 1;
+    }
+
+    private static bool VersionAtLeast(string actual, string required)
+    {
+        static int[] Parts(string value)
+        {
+            string core = value.Split('-', 2)[0];
+            string[] pieces = core.Split('.');
+            if (pieces.Length is < 1 or > 4 || pieces.Any(piece => !int.TryParse(piece, out _))) throw new InvalidDataException($"invalid version: {value}");
+            return pieces.Select(int.Parse).Concat(Enumerable.Repeat(0, 4)).Take(4).ToArray();
+        }
+        int[] left = Parts(actual);
+        int[] right = Parts(required);
+        for (int index = 0; index < 4; index++)
+        {
+            if (left[index] != right[index]) return left[index] > right[index];
+        }
+        return true;
     }
 
     private static int OpenLogs(LauncherConfig config)
@@ -426,7 +541,7 @@ internal static class Launcher
     }
     private static int Usage()
     {
-        Console.Error.WriteLine("Usage: GameVerse.Launcher init|verify|start|logs|diagnostics [output.zip]|self-test|verify-update <manifest> <signature> <public-key.pem>");
+        Console.Error.WriteLine("Usage: GameVerse.Launcher init|verify|start|update|logs|diagnostics [output.zip]|self-test|verify-update <manifest> <signature> <public-key.pem>");
         return 1;
     }
 

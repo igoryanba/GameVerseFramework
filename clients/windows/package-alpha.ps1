@@ -53,6 +53,9 @@ $example = [ordered]@{
     LogLevel = 'info'
     RequireInstallManifest = $true
     LogDirectory = '%LOCALAPPDATA%\GameVerse\logs'
+    UpdateManifestUrl = ''
+    UpdateSignatureUrl = ''
+    UpdatePublicKeyPath = 'update-public-key.pem'
 }
 $example | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stage 'launcher.example.json') -Encoding utf8NoBOM
 
