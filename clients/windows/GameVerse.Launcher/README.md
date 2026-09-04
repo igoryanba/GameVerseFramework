@@ -1,6 +1,6 @@
 # GameVerse Windows launcher
 
-This is the first deterministic launcher shell for the closed alpha. It checks GTA V Enhanced, the M2 bridge, the pinned server certificate, ScriptHook components, the adapter, and available memory. It starts the bridge before `PlayGTAV.exe`, opens logs, and creates a diagnostics archive without configuration secrets.
+This is the first deterministic launcher shell for the closed alpha. It checks GTA V Enhanced, the M2 bridge, the pinned server certificate, ScriptHook components, the adapter, and available memory. It waits for the bridge's named-pipe-ready event before starting `PlayGTAV.exe`, opens logs, and creates a diagnostics archive without configuration secrets.
 
 ```powershell
 GameVerse.Launcher.exe init

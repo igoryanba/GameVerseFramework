@@ -108,6 +108,8 @@ internal static class Launcher
             FileName = bridge,
             UseShellExecute = false,
             CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
             WorkingDirectory = Path.GetDirectoryName(bridge)!
         };
         bridgeInfo.ArgumentList.Add("--server");
@@ -115,8 +117,7 @@ internal static class Launcher
         bridgeInfo.ArgumentList.Add("--cert");
         bridgeInfo.ArgumentList.Add(cert);
         using Process bridgeProcess = Process.Start(bridgeInfo) ?? throw new InvalidOperationException("Bridge did not start");
-        await Task.Delay(500);
-        if (bridgeProcess.HasExited) throw new InvalidOperationException($"Bridge stopped with code {bridgeProcess.ExitCode}");
+        await WaitForBridgeReadyAsync(bridgeProcess, TimeSpan.FromSeconds(15));
         Process.Start(new ProcessStartInfo
         {
             FileName = Path.Combine(game, "PlayGTAV.exe"),
@@ -125,6 +126,31 @@ internal static class Launcher
         });
         Console.WriteLine(JsonSerializer.Serialize(new { status = "started", bridge_pid = bridgeProcess.Id, stage = "waiting_for_adapter" }));
         return 0;
+    }
+
+    private static async Task WaitForBridgeReadyAsync(Process process, TimeSpan timeout)
+    {
+        using CancellationTokenSource deadline = new(timeout);
+        try
+        {
+            while (true)
+            {
+                string? line = await process.StandardOutput.ReadLineAsync(deadline.Token);
+                if (line is null)
+                {
+                    string error = await process.StandardError.ReadToEndAsync(deadline.Token);
+                    throw new InvalidOperationException($"Bridge stopped before readiness: {error.Trim()}");
+                }
+                using JsonDocument message = JsonDocument.Parse(line);
+                if (message.RootElement.TryGetProperty("event", out JsonElement value)
+                    && value.GetString() == "m2_pipe_ready") return;
+            }
+        }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+        {
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+            throw new TimeoutException("Bridge did not report named-pipe readiness within 15 seconds");
+        }
     }
 
     private static int OpenLogs(LauncherConfig config)
