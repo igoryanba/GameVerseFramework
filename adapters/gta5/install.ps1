@@ -30,13 +30,22 @@ $manifestPath = Join-Path $GamePath 'GameVerse.install.json'
 if (Test-Path -LiteralPath $manifestPath) { throw 'An installation manifest already exists' }
 New-Item -ItemType Directory -Path (Join-Path $GamePath 'scripts') -Force | Out-Null
 $manifest = [Collections.Generic.List[object]]::new()
+$copied = [Collections.Generic.List[string]]::new()
 try {
     foreach ($file in $files) {
         $target = Join-Path $GamePath $file.Relative
         Copy-Item -LiteralPath $file.Source -Destination $target
-        $manifest.Add([pscustomobject]@{Path=$target;SHA256=(Get-FileHash -LiteralPath $target).Hash})
+        $copied.Add($target)
+        $manifest.Add([pscustomobject]@{RelativePath=$file.Relative;SHA256=(Get-FileHash -LiteralPath $target).Hash})
     }
+    $manifestTemporary = $manifestPath + '.tmp'
+    ConvertTo-Json -InputObject $manifest.ToArray() | Set-Content -LiteralPath $manifestTemporary
+    Move-Item -LiteralPath $manifestTemporary -Destination $manifestPath
 }
-finally { ConvertTo-Json -InputObject $manifest.ToArray() | Set-Content -LiteralPath $manifestPath }
+catch {
+    foreach ($target in $copied) { Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue }
+    Remove-Item -LiteralPath ($manifestPath + '.tmp') -Force -ErrorAction SilentlyContinue
+    throw
+}
 Write-Output 'Installed adapter files. Start the presence server, bridge and bot, then enter Story Mode.'
 # No args.txt, launcher changes, entitlement changes or anti-cheat settings are applied.

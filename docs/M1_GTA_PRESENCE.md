@@ -61,6 +61,16 @@ arguments, change anti-cheat settings or alter entitlement checks. If the normal
 game/host cannot start under those constraints, record the blocker rather than
 modifying those systems.
 
+Installation is transactional: a failed copy removes the files copied by that
+attempt. To remove a completed installation, close GTA and run:
+
+```powershell
+./adapters/gta5/uninstall.ps1 -GamePath '<GTA directory>'
+```
+
+The remover validates every manifest path and SHA256 before deleting anything.
+It refuses removal if an installed file was changed after installation.
+
 In separate terminals, using the binaries from your Cargo target directory:
 
 ```powershell
@@ -71,10 +81,20 @@ gameverse-gta-bridge --cert .m1/game/cert.der --duration 2100
 gameverse-presence-bot --cert .m1/game/cert.der --duration 1800 --report .m1/game/bot.json
 ```
 
-Start GTA and enter Story Mode. The adapter automatically connects when a valid
-local ped exists. The bot waits for that real pose and anchors its circular path
-near it, avoiding an arbitrary remote world coordinate. Remain near the initial
+For a repeatable test, use the acceptance runner. It launches
+`GTA5_Enhanced.exe` directly with the game directory as its working directory;
+it intentionally does not use `PlayGTAV.exe`. It starts the server, bridge and bot,
+captures logs, stops its child processes, and writes `acceptance.json`:
+
+```powershell
+./scripts/m1-gta-acceptance.ps1 -GamePath '<GTA directory>' -Seconds 300
+```
+
+Enter Story Mode after the game opens. The adapter automatically connects when a
+valid local ped exists. The bot waits for that real pose and anchors its circular
+path near it, avoiding an arbitrary remote world coordinate. Remain near the initial
 position to observe the remote ped; move/turn locally for the reverse-direction test.
+The runner stops the game when the test ends unless `-LeaveGameRunning` is passed.
 
 - **G1:** game log contains `GTA_ADAPTER_LOADED=true`, supported build, and
   `IPC_CONNECTED=true`; Rust logs `local_player_state_received` with actual XYZ.
