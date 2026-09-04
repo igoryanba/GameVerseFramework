@@ -73,6 +73,14 @@ CREATE TABLE ledger_entries (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (character_id, idempotency_key)
 );
+CREATE TABLE command_receipts (
+    character_id BIGINT NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+    idempotency_key TEXT NOT NULL CHECK (length(idempotency_key) BETWEEN 1 AND 128),
+    request_fingerprint TEXT NOT NULL CHECK (length(request_fingerprint) BETWEEN 1 AND 512),
+    response JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (character_id, idempotency_key)
+);
 CREATE TABLE item_definitions (
     id INTEGER PRIMARY KEY CHECK (id > 0),
     name TEXT NOT NULL UNIQUE,

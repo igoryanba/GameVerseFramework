@@ -92,6 +92,12 @@ pub struct Receipt {
     pub bank: i64,
 }
 
+#[derive(Clone)]
+struct AppliedTransaction {
+    receipt: Receipt,
+    fingerprint: String,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AuditEvent {
     pub sequence: u64,
@@ -113,7 +119,7 @@ pub struct AlphaDomain {
     shops: BTreeMap<String, BTreeMap<ItemId, ShopItem>>,
     jobs: BTreeMap<CharacterId, String>,
     ledger: Vec<LedgerEntry>,
-    receipts: BTreeMap<(CharacterId, String), Receipt>,
+    receipts: BTreeMap<(CharacterId, String), AppliedTransaction>,
     muted: BTreeSet<AccountId>,
     audit: Vec<AuditEvent>,
 }
@@ -258,7 +264,23 @@ impl AlphaDomain {
         reason: &str,
         key: &str,
     ) -> Result<Receipt, Error> {
-        self.transact(character, cash, bank, reason, key)
+        let fingerprint = format!("ledger:{cash}:{bank}:{reason}");
+        self.transact(character, cash, bank, reason, key, &fingerprint)
+    }
+
+    fn replay(
+        &self,
+        character: CharacterId,
+        key: &str,
+        fingerprint: &str,
+    ) -> Result<Option<Receipt>, Error> {
+        match self.receipts.get(&(character, key.into())) {
+            Some(applied) if applied.fingerprint == fingerprint => {
+                Ok(Some(applied.receipt.clone()))
+            }
+            Some(_) => Err(Error::TransactionConflict),
+            None => Ok(None),
+        }
     }
 
     fn transact(
@@ -268,12 +290,13 @@ impl AlphaDomain {
         bank_delta: i64,
         reason: &str,
         key: &str,
+        fingerprint: &str,
     ) -> Result<Receipt, Error> {
         if key.is_empty() || key.len() > 128 || reason.is_empty() || reason.len() > 128 {
             return Err(Error::Invalid);
         }
-        if let Some(receipt) = self.receipts.get(&(character, key.into())) {
-            return Ok(receipt.clone());
+        if let Some(receipt) = self.replay(character, key, fingerprint)? {
+            return Ok(receipt);
         }
         let wallet = self.wallets.get(&character).ok_or(Error::NotFound)?;
         let cash = wallet.cash.checked_add(cash_delta).ok_or(Error::Invalid)?;
@@ -297,8 +320,13 @@ impl AlphaDomain {
             bank,
         };
         self.ledger.push(entry);
-        self.receipts
-            .insert((character, key.into()), receipt.clone());
+        self.receipts.insert(
+            (character, key.into()),
+            AppliedTransaction {
+                receipt: receipt.clone(),
+                fingerprint: fingerprint.into(),
+            },
+        );
         Ok(receipt)
     }
 
@@ -313,8 +341,9 @@ impl AlphaDomain {
         if quantity == 0 || quantity > 100 {
             return Err(Error::Invalid);
         }
-        if let Some(receipt) = self.receipts.get(&(character, key.into())) {
-            return Ok(receipt.clone());
+        let fingerprint = format!("buy:{shop}:{item_id}:{quantity}");
+        if let Some(receipt) = self.replay(character, key, &fingerprint)? {
+            return Ok(receipt);
         }
         let offer = self
             .shops
@@ -335,7 +364,7 @@ impl AlphaDomain {
         if current_weight + added_weight > 30_000 {
             return Err(Error::Capacity);
         }
-        let receipt = self.transact(character, -price, 0, "shop_purchase", key)?;
+        let receipt = self.transact(character, -price, 0, "shop_purchase", key, &fingerprint)?;
         *self
             .inventory
             .get_mut(&character)
@@ -359,13 +388,14 @@ impl AlphaDomain {
         route: &str,
         key: &str,
     ) -> Result<Receipt, Error> {
-        if let Some(receipt) = self.receipts.get(&(character, key.into())) {
-            return Ok(receipt.clone());
+        let fingerprint = format!("delivery:{route}");
+        if let Some(receipt) = self.replay(character, key, &fingerprint)? {
+            return Ok(receipt);
         }
         if self.jobs.get(&character).map(String::as_str) != Some(route) {
             return Err(Error::Forbidden);
         }
-        let receipt = self.transact(character, 500, 0, "courier_delivery", key)?;
+        let receipt = self.transact(character, 500, 0, "courier_delivery", key, &fingerprint)?;
         self.jobs.remove(&character);
         Ok(receipt)
     }
@@ -508,6 +538,10 @@ mod tests {
         assert_eq!(replay, bought);
         assert_eq!(domain.item_count(character, 1), 2);
         assert_eq!(domain.ledger().len(), 2);
+        assert_eq!(
+            domain.buy(character, "market", 1, 3, "purchase:1"),
+            Err(Error::TransactionConflict)
+        );
     }
 
     #[test]
