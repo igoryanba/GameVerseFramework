@@ -354,12 +354,14 @@ internal static class Launcher
             WriteTestInstall(stage, "new");
             if (!AtomicUpdate.Apply(install, stage, backup, out _)) return false;
             if (File.ReadAllText(Path.Combine(install, "version.txt")) != "new" || File.ReadAllText(Path.Combine(backup, "version.txt")) != "old") return false;
+            if (!AtomicUpdate.Rollback(install, backup, out _)) return false;
+            if (File.ReadAllText(Path.Combine(install, "version.txt")) != "old") return false;
 
             string broken = Path.Combine(parent, ".gameverse-update-" + Guid.NewGuid().ToString("N"));
             WriteTestInstall(broken, "broken");
             File.WriteAllText(Path.Combine(broken, "version.txt"), "tampered");
             bool applied = AtomicUpdate.Apply(install, broken, backup, out _);
-            return !applied && File.ReadAllText(Path.Combine(install, "version.txt")) == "new";
+            return !applied && File.ReadAllText(Path.Combine(install, "version.txt")) == "old";
         }
         finally
         {
@@ -424,9 +426,31 @@ internal static class Launcher
         if (applied)
         {
             string launcher = Path.Combine(args[1], "GameVerse.Launcher.exe");
-            if (File.Exists(launcher)) Process.Start(new ProcessStartInfo { FileName = launcher, UseShellExecute = true, WorkingDirectory = args[1] })?.Dispose();
+            applied = await UpdatedLauncherSelfTestAsync(launcher);
+            if (!applied) AtomicUpdate.Rollback(args[1], args[3], out detail);
+            else Process.Start(new ProcessStartInfo { FileName = launcher, UseShellExecute = true, WorkingDirectory = args[1] })?.Dispose();
         }
         return applied ? 0 : 1;
+    }
+
+    private static async Task<bool> UpdatedLauncherSelfTestAsync(string launcher)
+    {
+        if (!File.Exists(launcher)) return false;
+        using Process? process = Process.Start(new ProcessStartInfo
+        {
+            FileName = launcher,
+            Arguments = "self-test",
+            WorkingDirectory = Path.GetDirectoryName(launcher)!,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        });
+        if (process is null) return false;
+        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(30));
+        try { await process.WaitForExitAsync(deadline.Token); }
+        catch (OperationCanceledException) { try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { } return false; }
+        return process.ExitCode == 0;
     }
 
     private static bool VersionAtLeast(string actual, string required)

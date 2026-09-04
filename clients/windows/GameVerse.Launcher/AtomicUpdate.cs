@@ -127,6 +127,28 @@ internal static class AtomicUpdate
         }
     }
 
+    internal static bool Rollback(string installRoot, string backupRoot, out string detail)
+    {
+        string install = NormalizeDirectory(installRoot);
+        string backup = NormalizeDirectory(backupRoot);
+        if (!StringComparer.OrdinalIgnoreCase.Equals(backup, install + ".previous") || !Directory.Exists(install) || !Directory.Exists(backup))
+            throw new InvalidDataException("rollback directories are outside the permitted transaction layout");
+        string failed = install + ".failed-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            Directory.Move(install, failed);
+            Directory.Move(backup, install);
+            detail = $"previous version restored; failed version retained at {failed}";
+            return true;
+        }
+        catch (Exception error)
+        {
+            if (!Directory.Exists(install) && Directory.Exists(failed)) Directory.Move(failed, install);
+            detail = "rollback failed: " + error.Message;
+            return false;
+        }
+    }
+
     internal static bool VerifyInstallTree(string root, out string detail)
     {
         try
