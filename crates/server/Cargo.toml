@@ -8,10 +8,11 @@ edition = "2021"
 gameverse-protocol = { path = "../protocol" }
 gameverse-runtime = { path = "../runtime" }
 gameverse-transport = { path = "../transport" }
+gameverse-rp = { path = "../gameverse-rp" }
 anyhow = "1"
 tokio = { version = "1", features = ["full"] }
 serde_json = "1"
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 
 [dev-dependencies]
 tempfile = "3"

@@ -15,6 +15,8 @@ struct Args {
     init_identity: bool,
     #[arg(long)]
     duration: Option<u64>,
+    #[arg(long, env = "DATABASE_URL")]
+    database_url: Option<String>,
 }
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -36,9 +38,13 @@ async fn main() -> Result<()> {
         }
         let _ = tx.send(true);
     });
-    println!(
-        "{}",
+    let report = if let Some(database_url) = args.database_url {
+        let store = gameverse_rp::persistence::PostgresStore::connect(&database_url, 16).await?;
+        store.migrate().await?;
+        gameverse_server::presence_m2::run_alpha(endpoint, store, rx).await?
+    } else {
         gameverse_server::presence_m2::run(endpoint, rx).await?
-    );
+    };
+    println!("{}", report);
     Ok(())
 }

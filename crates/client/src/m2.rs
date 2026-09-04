@@ -18,6 +18,9 @@ pub struct Client {
     pub session: SessionId,
     pub entity: EntityId,
     pub config: SessionConfig,
+    pub account_id: Option<u64>,
+    pub access_token: Option<String>,
+    pub refresh_token: Option<String>,
     endpoint: quinn::Endpoint,
     connection: quinn::Connection,
     send: quinn::SendStream,
@@ -48,23 +51,26 @@ impl Client {
             },
         )
         .await?;
-        let (session, entity) = match timeout(HANDSHAKE_TIMEOUT, read_control(&mut recv)).await?? {
+        match timeout(HANDSHAKE_TIMEOUT, read_control(&mut recv)).await?? {
             ControlMessage::ServerHello {
                 control_version: VERSION,
                 presence_version: p::VERSION,
-                session,
-                entity,
                 ..
-            } => (session, entity),
+            } => {}
             ControlMessage::Reject { code, reason } => {
                 anyhow::bail!("server rejected {code}: {reason}")
             }
             _ => anyhow::bail!("invalid M2 server hello"),
         };
-        let config = match timeout(HANDSHAKE_TIMEOUT, read_control(&mut recv)).await?? {
-            ControlMessage::SessionBegin { config } => config,
-            _ => anyhow::bail!("missing session configuration"),
-        };
+        let (session, entity, config) =
+            match timeout(HANDSHAKE_TIMEOUT, read_control(&mut recv)).await?? {
+                ControlMessage::SessionBegin {
+                    session,
+                    entity,
+                    config,
+                } => (session, entity, config),
+                _ => anyhow::bail!("missing session configuration"),
+            };
         write_control(
             &mut send,
             &ControlMessage::SpawnReady {
@@ -83,6 +89,169 @@ impl Client {
             session,
             entity,
             config,
+            account_id: None,
+            access_token: None,
+            refresh_token: None,
+            endpoint,
+            connection,
+            send,
+            recv,
+        })
+    }
+
+    pub async fn connect_alpha(
+        address: SocketAddr,
+        cert: &Path,
+        authentication: AlphaAuthentication,
+        character: NewCharacter,
+    ) -> Result<Self> {
+        let endpoint = client_endpoint(cert)?;
+        let connection =
+            timeout(HANDSHAKE_TIMEOUT, endpoint.connect(address, "localhost")?).await??;
+        let (mut send, mut recv) = timeout(HANDSHAKE_TIMEOUT, connection.open_bi()).await??;
+        write_control(
+            &mut send,
+            &ControlMessage::ClientHello {
+                control_versions: vec![VERSION],
+                presence_versions: vec![p::VERSION],
+                client_build: env!("CARGO_PKG_VERSION").into(),
+                capabilities: Capabilities {
+                    datagrams: true,
+                    resource_api: RESOURCE_API_VERSION,
+                    gta_edition: None,
+                    gta_build: None,
+                },
+            },
+        )
+        .await?;
+        match timeout(HANDSHAKE_TIMEOUT, read_control(&mut recv)).await?? {
+            ControlMessage::ServerHello {
+                control_version: VERSION,
+                presence_version: p::VERSION,
+                ..
+            } => {}
+            ControlMessage::Reject { code, reason } => {
+                anyhow::bail!("server rejected {code}: {reason}")
+            }
+            _ => anyhow::bail!("invalid alpha server hello"),
+        }
+
+        let auth_request_id = "alpha-auth".to_string();
+        let auth_message = match authentication {
+            AlphaAuthentication::Register {
+                login,
+                password,
+                invite,
+            } => ControlMessage::AuthRequest {
+                request_id: auth_request_id.clone(),
+                mode: gameverse_protocol::control_v2::AuthMode::Register,
+                login,
+                password,
+                invite: Some(invite),
+            },
+            AlphaAuthentication::Login { login, password } => ControlMessage::AuthRequest {
+                request_id: auth_request_id.clone(),
+                mode: gameverse_protocol::control_v2::AuthMode::Login,
+                login,
+                password,
+                invite: None,
+            },
+            AlphaAuthentication::Resume { refresh_token } => ControlMessage::AuthResume {
+                request_id: auth_request_id.clone(),
+                refresh_token,
+            },
+        };
+        write_control(&mut send, &auth_message).await?;
+        let (account_id, access_token, refresh_token) =
+            match timeout(HANDSHAKE_TIMEOUT, read_control(&mut recv)).await?? {
+                ControlMessage::AuthResult {
+                    request_id,
+                    account_id,
+                    access_token,
+                    refresh_token,
+                    ..
+                } if request_id == auth_request_id => (account_id, access_token, refresh_token),
+                ControlMessage::Reject { code, reason } => {
+                    anyhow::bail!("authentication rejected {code}: {reason}")
+                }
+                _ => anyhow::bail!("invalid authentication result"),
+            };
+
+        write_control(
+            &mut send,
+            &ControlMessage::CharacterList {
+                request_id: "alpha-characters".into(),
+                characters: vec![],
+            },
+        )
+        .await?;
+        let mut characters = match timeout(HANDSHAKE_TIMEOUT, read_control(&mut recv)).await?? {
+            ControlMessage::CharacterList {
+                request_id,
+                characters,
+            } if request_id == "alpha-characters" => characters,
+            _ => anyhow::bail!("invalid character list"),
+        };
+        if characters.is_empty() {
+            write_control(
+                &mut send,
+                &ControlMessage::CreateCharacter {
+                    request_id: "alpha-create-character".into(),
+                    first_name: character.first_name,
+                    last_name: character.last_name,
+                    model_hash: character.model_hash,
+                },
+            )
+            .await?;
+            characters = match timeout(HANDSHAKE_TIMEOUT, read_control(&mut recv)).await?? {
+                ControlMessage::CharacterList {
+                    request_id,
+                    characters,
+                } if request_id == "alpha-create-character" => characters,
+                _ => anyhow::bail!("invalid create-character response"),
+            };
+        }
+        let selected = characters
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("account has no character"))?;
+        write_control(
+            &mut send,
+            &ControlMessage::SelectCharacter {
+                request_id: "alpha-select-character".into(),
+                character_id: selected.id,
+            },
+        )
+        .await?;
+        let (session, entity, config) =
+            match timeout(HANDSHAKE_TIMEOUT, read_control(&mut recv)).await?? {
+                ControlMessage::SessionBegin {
+                    session,
+                    entity,
+                    config,
+                } => (session, entity, config),
+                _ => anyhow::bail!("missing alpha session configuration"),
+            };
+        write_control(
+            &mut send,
+            &ControlMessage::SpawnReady {
+                request_id: "alpha-spawn".into(),
+            },
+        )
+        .await?;
+        anyhow::ensure!(
+            matches!(
+                timeout(HANDSHAKE_TIMEOUT, read_control(&mut recv)).await??,
+                ControlMessage::SpawnAck { request_id } if request_id == "alpha-spawn"
+            ),
+            "missing alpha spawn acknowledgement"
+        );
+        Ok(Self {
+            session,
+            entity,
+            config,
+            account_id: Some(account_id),
+            access_token: Some(access_token),
+            refresh_token: Some(refresh_token),
             endpoint,
             connection,
             send,
@@ -114,6 +283,27 @@ impl Client {
         self.endpoint.wait_idle().await;
         Ok(())
     }
+}
+
+pub enum AlphaAuthentication {
+    Register {
+        login: String,
+        password: String,
+        invite: String,
+    },
+    Login {
+        login: String,
+        password: String,
+    },
+    Resume {
+        refresh_token: String,
+    },
+}
+
+pub struct NewCharacter {
+    pub first_name: String,
+    pub last_name: String,
+    pub model_hash: u32,
 }
 
 #[derive(Default)]

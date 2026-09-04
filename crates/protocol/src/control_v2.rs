@@ -60,12 +60,13 @@ pub enum ControlMessage {
     ServerHello {
         control_version: u16,
         presence_version: u16,
-        session: SessionId,
-        entity: EntityId,
+        server_id: String,
         max_players: u16,
         tick_hz: u16,
     },
     SessionBegin {
+        session: SessionId,
+        entity: EntityId,
         config: SessionConfig,
     },
     SpawnReady {
@@ -230,21 +231,23 @@ impl ControlMessage {
             Self::ServerHello {
                 control_version,
                 presence_version,
-                session,
-                entity,
+                server_id,
                 max_players,
                 tick_hz,
             } => {
                 *control_version == VERSION
                     && *presence_version == presence_v2::VERSION
-                    && *session > 0
-                    && entity.generation > 0
+                    && valid_text(server_id, 128)
                     && *max_players > 0
                     && *max_players <= presence_v2::MAX_PLAYERS as u16
                     && *tick_hz > 0
                     && *tick_hz <= 60
             }
-            Self::SessionBegin { config } => config.valid(),
+            Self::SessionBegin {
+                session,
+                entity,
+                config,
+            } => *session > 0 && valid_entity(entity) && config.valid(),
             Self::AuthRequest {
                 request_id,
                 mode,
@@ -348,9 +351,13 @@ impl ControlMessage {
             } => {
                 valid_request_id(request_id)
                     && valid_text(action, 32)
-                    && *item_id > 0
-                    && (1..=100).contains(quantity)
-                    && valid_text(idempotency_key, 128)
+                    && if action == "snapshot" {
+                        *item_id == 0 && *quantity == 0 && idempotency_key.is_empty()
+                    } else {
+                        *item_id > 0
+                            && (1..=100).contains(quantity)
+                            && valid_text(idempotency_key, 128)
+                    }
             }
             Self::InventorySnapshot {
                 request_id, items, ..
