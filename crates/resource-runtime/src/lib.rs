@@ -124,7 +124,7 @@ impl ResourceHost {
                 }
                 Ok(VmState::Continue)
             },
-        )?;
+        );
         let outbound = Arc::new(Mutex::new(VecDeque::new()));
         let mut host = Self {
             lua,

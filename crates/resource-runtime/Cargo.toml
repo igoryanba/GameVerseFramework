@@ -8,7 +8,7 @@ anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 gameverse-compat-fivem = { path = "../compat-fivem" }
 gameverse-resource-manifest = { path = "../resource-manifest" }
-mlua = { version = "0.10", features = ["lua54", "vendored", "serialize"] }
+mlua = { version = "0.10", features = ["lua54", "vendored", "serialize", "send", "anyhow"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 globset = "0.4"
