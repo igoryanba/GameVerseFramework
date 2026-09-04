@@ -16,8 +16,8 @@ pub struct PlayerState {
     pub model_hash: u32,
     pub health: u16,
     pub armor: u16,
-    /// on_foot=1, running=2, sprinting=4, jumping=8, ragdoll=16, aiming=32.
-    /// Captured for diagnostics; advanced animation playback is outside M1.
+    /// on_foot=1, running=2, sprinting=4, jumping=8, ragdoll=16, aiming=32,
+    /// falling=64, shooting=128, reloading=256.
     pub movement: u16,
     pub weapon_hash: u32,
 }
@@ -36,7 +36,7 @@ impl PlayerState {
             && self.model_hash != 0
             && self.health <= 1000
             && self.armor <= 1000
-            && self.movement & !63 == 0
+            && self.movement & !511 == 0
     }
 }
 

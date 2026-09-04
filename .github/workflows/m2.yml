@@ -17,7 +17,9 @@ jobs:
       - name: Test Presence v2 and compatibility API
         run: cargo test --locked -p gameverse-protocol -p gameverse-runtime -p gameverse-transport -p gameverse-compat-fivem
       - name: Check formatting
-        run: cargo fmt --all -- --check
+        run: |
+          cargo fmt -p gameverse-protocol -p gameverse-runtime -p gameverse-transport -p gameverse-compat-fivem -- --check
+          cargo fmt --manifest-path tools/fivem-analyzer/Cargo.toml -- --check
       - name: Lint independent runtime
         run: cargo clippy --locked -p gameverse-protocol -p gameverse-runtime -p gameverse-transport -p gameverse-compat-fivem --all-targets -- -D warnings
       - name: Test static resource analyzer

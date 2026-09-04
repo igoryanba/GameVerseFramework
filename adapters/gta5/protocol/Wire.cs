@@ -32,7 +32,7 @@ namespace GameVerse.AdapterProtocol
         {
             if (!VectorIsValid(position, 3, 20000) || !VectorIsValid(velocity, 3, 500) || !VectorIsValid(rotation, 4, 1.01f)) return false;
             double norm = 0; foreach (float v in rotation) norm += v * v;
-            return Math.Abs(norm - 1) <= 0.02 && model_hash != 0 && health <= 1000 && armor <= 1000 && (movement & ~63) == 0;
+            return Math.Abs(norm - 1) <= 0.02 && model_hash != 0 && health <= 1000 && armor <= 1000 && (movement & ~511) == 0;
         }
         internal static bool VectorIsValid(float[] a, int n, float bound)
         {
@@ -55,7 +55,7 @@ namespace GameVerse.AdapterProtocol
             return true;
         }
     }
-    public enum LocomotionState { Idle, Walk, Run, Sprint, Jump, Ragdoll, Aim, Dead }
+    public enum LocomotionState { Idle, Walk, Run, Sprint, Jump, Fall, Ragdoll, Aim, Dead }
     public sealed class TransformV2
     {
         public float[] position;
@@ -103,6 +103,7 @@ namespace GameVerse.AdapterProtocol
             LocomotionState candidate;
             if (state.health == 0) candidate = LocomotionState.Dead;
             else if ((state.movement & 16) != 0) candidate = LocomotionState.Ragdoll;
+            else if ((state.movement & 64) != 0) candidate = LocomotionState.Fall;
             else if ((state.movement & 8) != 0) candidate = LocomotionState.Jump;
             else if ((state.movement & 32) != 0) candidate = LocomotionState.Aim;
             else if ((state.movement & 4) != 0 || speed >= 5.5) candidate = LocomotionState.Sprint;
@@ -111,7 +112,7 @@ namespace GameVerse.AdapterProtocol
             else candidate = LocomotionState.Idle;
 
             if (candidate == current) { stableFrames = 0; return false; }
-            if (candidate == LocomotionState.Jump || candidate == LocomotionState.Ragdoll || candidate == LocomotionState.Dead)
+            if (candidate == LocomotionState.Jump || candidate == LocomotionState.Fall || candidate == LocomotionState.Ragdoll || candidate == LocomotionState.Dead)
             { current = candidate; stableFrames = 0; return true; }
             if (++stableFrames < 2) return false;
             current = candidate; stableFrames = 0; return true;

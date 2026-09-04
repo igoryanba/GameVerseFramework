@@ -53,6 +53,9 @@ namespace GameVerse.GtaAdapter
                     if (player.IsJumping) movement |= 8;
                     if (player.IsRagdoll) movement |= 16;
                     if (Function.Call<bool>(Hash.IS_PLAYER_FREE_AIMING, Game.Player.Handle)) movement |= 32;
+                    if (player.IsFalling) movement |= 64;
+                    if (player.IsShooting) movement |= 128;
+                    if (Function.Call<bool>(Hash.IS_PED_RELOADING, player.Handle)) movement |= 256;
                     var state = new PlayerState { timestamp_ms = (ulong)elapsed.ElapsedMilliseconds, position = new[] { p.X, p.Y, p.Z }, rotation = new[] { q.X, q.Y, q.Z, q.W }, velocity = new[] { v.X, v.Y, v.Z }, model_hash = unchecked((uint)player.Model.Hash), health = (ushort)Math.Max(0, Math.Min(1000, player.Health)), armor = (ushort)Math.Max(0, Math.Min(1000, player.Armor)), movement = movement, weapon_hash = unchecked((uint)player.Weapons.Current.Hash) };
                     link.Publish(state.IsValid() ? state : null, true);
                 }

@@ -89,11 +89,18 @@ namespace GameVerse.GtaAdapter
                 case LocomotionState.Jump:
                     Function.Call(Hash.TASK_JUMP, ped.Handle, true);
                     return;
+                case LocomotionState.Fall:
+                    Function.Call(Hash.TASK_SKY_DIVE, ped.Handle, true);
+                    return;
                 case LocomotionState.Aim:
-                    Function.Call(Hash.TASK_AIM_GUN_AT_COORD, ped.Handle,
-                        predicted.X + state.velocity[0] * 5f,
-                        predicted.Y + state.velocity[1] * 5f,
-                        predicted.Z + 1f, 750, false, false);
+                    float aimX = predicted.X + state.velocity[0] * 5f;
+                    float aimY = predicted.Y + state.velocity[1] * 5f;
+                    float aimZ = predicted.Z + 1f;
+                    if ((state.movement & 128) != 0)
+                        Function.Call(Hash.TASK_SHOOT_AT_COORD, ped.Handle, aimX, aimY, aimZ, 750, 0);
+                    else
+                        Function.Call(Hash.TASK_AIM_GUN_AT_COORD, ped.Handle, aimX, aimY, aimZ, 750, false, false);
+                    if ((state.movement & 256) != 0) Function.Call(Hash.MAKE_PED_RELOAD, ped.Handle);
                     return;
                 case LocomotionState.Walk: Move(predicted, 1.0f); return;
                 case LocomotionState.Run: Move(predicted, 2.0f); return;

@@ -23,6 +23,7 @@ namespace GameVerse.GtaAdapter
         public bool Tick()
         {
             if (pending == null) return true;
+            Function.Call(Hash.HIDE_HUD_AND_RADAR_THIS_FRAME);
             Function.Call(Hash.SET_MAX_WANTED_LEVEL, 0);
             Function.Call(Hash.SET_PLAYER_WANTED_LEVEL, Game.Player.Handle, 0, false);
             Function.Call(Hash.SET_PLAYER_WANTED_LEVEL_NOW, Game.Player.Handle, false);

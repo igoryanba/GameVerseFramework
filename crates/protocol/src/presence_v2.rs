@@ -5,6 +5,19 @@ use serde::{Deserialize, Serialize};
 pub const VERSION: u16 = 2;
 pub const MAX_PLAYERS: usize = 32;
 pub const INTEREST_RADIUS: f32 = 400.0;
+pub const MAX_VEHICLES: usize = 128;
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClientHello {
+    pub supported_versions: Vec<u16>,
+}
+
+pub fn negotiate_version(hello: &ClientHello) -> Option<u16> {
+    [VERSION, crate::presence::VERSION]
+        .into_iter()
+        .find(|version| hello.supported_versions.contains(version))
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -53,6 +66,13 @@ pub struct Appearance {
     pub model_hash: u32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VehicleId {
+    pub slot: u32,
+    pub generation: u64,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CombatPresentation {
@@ -73,12 +93,41 @@ impl CombatPresentation {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct VehicleOccupancy {
-    pub vehicle: EntityId,
+    pub vehicle: VehicleId,
     pub seat: i8,
 }
 impl VehicleOccupancy {
     pub fn valid(&self) -> bool {
-        self.vehicle.generation > 0 && (-1..=15).contains(&self.seat)
+        self.vehicle.slot < MAX_VEHICLES as u32
+            && self.vehicle.generation > 0
+            && (-1..=15).contains(&self.seat)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VehicleFrame {
+    pub sequence: u64,
+    pub transform: Transform,
+    pub steering: f32,
+    pub throttle: f32,
+    pub brake: f32,
+    pub gear: i8,
+    pub engine_health: f32,
+    pub body_health: f32,
+}
+impl VehicleFrame {
+    pub fn valid(&self) -> bool {
+        self.sequence > 0
+            && self.transform.valid()
+            && [self.steering, self.throttle, self.brake]
+                .iter()
+                .all(|value| value.is_finite() && (-1.0..=1.0).contains(value))
+            && (-1..=10).contains(&self.gear)
+            && self.engine_health.is_finite()
+            && (-4_000.0..=1_000.0).contains(&self.engine_health)
+            && self.body_health.is_finite()
+            && (0.0..=1_000.0).contains(&self.body_health)
     }
 }
 
@@ -216,6 +265,27 @@ mod tests {
             rotation: [0.0, 0.0, 0.0, 1.0],
             velocity: [0.0; 3],
         }
+    }
+    #[test]
+    fn negotiates_highest_shared_version_and_keeps_v1() {
+        assert_eq!(
+            negotiate_version(&ClientHello {
+                supported_versions: vec![1, 2]
+            }),
+            Some(2)
+        );
+        assert_eq!(
+            negotiate_version(&ClientHello {
+                supported_versions: vec![1]
+            }),
+            Some(1)
+        );
+        assert_eq!(
+            negotiate_version(&ClientHello {
+                supported_versions: vec![99]
+            }),
+            None
+        );
     }
     #[test]
     fn validates_components_and_delta_lifecycle() {
