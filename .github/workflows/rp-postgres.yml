@@ -39,6 +39,16 @@ jobs:
         with:
           name: rp-postgres-acceptance-log
           path: rp-postgres-acceptance.log
+      - name: Publish acceptance failure diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          {
+            echo '### RP acceptance failure'
+            echo '```text'
+            tail -n 100 rp-postgres-acceptance.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Lint RP persistence
         run: cargo clippy --locked -p gameverse-rp --all-targets -- -D warnings
       - name: Check RP formatting
