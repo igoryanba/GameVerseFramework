@@ -448,7 +448,7 @@ fn default_route() -> String {
     "alpha-route".into()
 }
 fn default_shop() -> String {
-    "general".into()
+    "market".into()
 }
 fn one() -> u32 {
     1
@@ -504,10 +504,10 @@ async fn handle_active(client: &mut Client, request: &UiRequest) -> Result<UiRes
             ));
         }
         "shop.catalog" => {
-            let items = client.shop_catalog(&request.request_id, "general").await?;
+            let items = client.shop_catalog(&request.request_id, "market").await?;
             return Ok(UiResponse::success(
                 &request.request_id,
-                json!({"shop":"general","items":items}),
+                json!({"shop":"market","items":items}),
             ));
         }
         "shop.buy" => {

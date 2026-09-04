@@ -51,21 +51,25 @@ async fn persistent_single_player_vertical_slice() -> anyhow::Result<()> {
         .create_character(account, "Ivan", "Petrov", 0x705e61f2)
         .await?;
     sqlx::query(
-        "INSERT INTO item_definitions(id,name,unit_weight_grams,usable) VALUES(1,'Water',500,true)",
+        "INSERT INTO item_definitions(id,name,unit_weight_grams,usable) VALUES(1,'Water',500,true) ON CONFLICT(id) DO NOTHING",
     )
     .execute(store.pool())
     .await?;
-    sqlx::query("INSERT INTO shops(name) VALUES('market')")
+    sqlx::query("INSERT INTO shops(name) VALUES('market') ON CONFLICT(name) DO NOTHING")
         .execute(store.pool())
         .await?;
-    sqlx::query("INSERT INTO shop_items(shop_id,item_id,price) SELECT id,1,120 FROM shops WHERE name='market'")
+    sqlx::query("INSERT INTO shop_items(shop_id,item_id,price) SELECT id,1,120 FROM shops WHERE name='market' ON CONFLICT(shop_id,item_id) DO UPDATE SET price=EXCLUDED.price")
         .execute(store.pool())
         .await?;
-    sqlx::query("INSERT INTO jobs(code) VALUES('courier')")
+    sqlx::query("INSERT INTO jobs(code) VALUES('courier') ON CONFLICT(code) DO NOTHING")
         .execute(store.pool())
         .await?;
 
     store.start_delivery(character.id, "airport-a").await?;
+    let catalog = store.shop_catalog("market").await?;
+    assert!(catalog
+        .iter()
+        .any(|offer| offer.item_id == 1 && offer.price == 120));
     let paid = store
         .finish_delivery(character.id, "airport-a", "delivery-1")
         .await?;
