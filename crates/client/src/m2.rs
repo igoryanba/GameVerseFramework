@@ -618,6 +618,30 @@ impl Client {
             message => anyhow::bail!("unexpected shop catalog response: {message:?}"),
         }
     }
+    pub async fn logout(&mut self, request_id: &str) -> Result<()> {
+        let refresh_token = self
+            .refresh_token
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("session has no refresh token"))?;
+        write_control(
+            &mut self.send,
+            &ControlMessage::Logout {
+                request_id: request_id.into(),
+                refresh_token,
+            },
+        )
+        .await?;
+        anyhow::ensure!(
+            matches!(
+                read_control(&mut self.recv).await?,
+                ControlMessage::LogoutResult { request_id: response_id } if response_id == request_id
+            ),
+            "invalid logout response"
+        );
+        self.access_token = None;
+        self.refresh_token = None;
+        Ok(())
+    }
     pub async fn close(mut self) -> Result<()> {
         write_control(
             &mut self.send,

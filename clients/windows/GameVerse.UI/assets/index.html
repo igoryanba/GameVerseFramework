@@ -17,6 +17,7 @@
       <button class="nav" data-screen="inventory" data-i18n="nav.inventory">Инвентарь</button>
     </nav>
     <div class="server-state"><i></i><div><strong>Локальная среда</strong><small id="connection-text">Проверяем компоненты…</small></div></div>
+    <button class="link" type="button" id="logout" hidden>Выйти из аккаунта</button>
   </aside>
 
   <main>
@@ -60,13 +61,13 @@
     </section>
 
     <section class="screen" id="world">
-      <div class="grid three metrics"><div class="card"><small>Наличные</small><strong>$ 0</strong></div><div class="card"><small>Банк</small><strong>$ 0</strong></div><div class="card"><small>Текущая работа</small><strong>Нет</strong></div></div>
-      <div class="grid two"><div class="card"><h3>Курьерская работа</h3><p>Получите маршрут на сервере, доставьте посылку и получите безопасную выплату.</p><button class="primary" data-command="job.start">Начать смену</button></div><div class="card"><h3>Чат</h3><div class="chat"><p>Сообщения появятся после подключения.</p></div><form id="chat-form"><input name="message" maxlength="240" placeholder="Введите сообщение…"><button class="send" type="submit">→</button></form></div></div>
+      <div class="grid three metrics"><div class="card"><small>Наличные</small><strong id="cash">$ 0</strong></div><div class="card"><small>Банк</small><strong id="bank">$ 0</strong></div><div class="card"><small>Текущая работа</small><strong id="active-job">Нет</strong></div></div>
+      <div class="grid two"><div class="card"><h3>Курьерская работа</h3><p>Получите маршрут на сервере, доставьте посылку и получите безопасную выплату.</p><button class="primary" id="job-start" data-command="job.start">Начать смену</button><button id="job-finish" data-command="job.finish" hidden>Завершить доставку</button></div><div class="card"><h3>Чат</h3><div class="chat" id="chat-list"><p>Сообщения появятся после подключения.</p></div><form id="chat-form"><input name="message" maxlength="240" placeholder="Введите сообщение…"><button class="send" type="submit">→</button></form></div></div>
     </section>
 
     <section class="screen" id="inventory">
       <div class="section-title"><div><p class="eyebrow">ПРЕДМЕТЫ</p><h2>Инвентарь и магазин</h2></div><span>0 / 20 кг</span></div>
-      <div class="grid two"><div class="card empty small"><div class="avatar">□</div><h3>Инвентарь пуст</h3></div><div class="card"><h3>Магазин</h3><div id="shop-list" class="shop-list"><p>Загрузка каталога…</p></div></div></div>
+      <div class="grid two"><div class="card small"><div class="avatar">□</div><h3>Инвентарь</h3><div id="inventory-list"><p>Инвентарь пуст</p></div></div><div class="card"><h3>Магазин</h3><div id="shop-list" class="shop-list"><p>Загрузка каталога…</p></div></div></div>
     </section>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>

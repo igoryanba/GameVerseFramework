@@ -90,6 +90,9 @@ pub enum ControlMessage {
         request_id: String,
         refresh_token: String,
     },
+    LogoutResult {
+        request_id: String,
+    },
     AuthResult {
         request_id: String,
         account_id: u64,
@@ -429,6 +432,7 @@ impl ControlMessage {
             Self::SpawnReady { request_id } | Self::SpawnAck { request_id } => {
                 valid_request_id(request_id)
             }
+            Self::LogoutResult { request_id } => valid_request_id(request_id),
         };
         if valid {
             Ok(())

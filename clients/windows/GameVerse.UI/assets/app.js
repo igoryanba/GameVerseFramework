@@ -3,6 +3,7 @@
 const pending = new Map();
 const titles = { connection: "Подготовка к игре", character: "Выбор персонажа", world: "Мир и работа", inventory: "Ваши предметы" };
 let registration = false;
+let currentStage = "connecting";
 
 function request(command, payload = {}) {
   const requestId = crypto.randomUUID();
@@ -11,6 +12,13 @@ function request(command, payload = {}) {
     const timeout = setTimeout(() => { pending.delete(requestId); reject(new Error("Время ожидания истекло")); }, 5000);
     pending.set(requestId, { resolve, reject, timeout });
   });
+}
+
+async function busy(control, operation) {
+  if (control?.disabled) return;
+  if (control) control.disabled = true;
+  try { return await operation(); }
+  finally { if (control) control.disabled = false; }
 }
 
 function toast(message) {
@@ -40,22 +48,23 @@ document.querySelectorAll(".nav").forEach(button => button.addEventListener("cli
   button.classList.add("active");
   document.getElementById(button.dataset.screen).classList.add("active");
   document.getElementById("page-title").textContent = titles[button.dataset.screen];
-  if (button.dataset.screen === "inventory") loadShop();
+  if (button.dataset.screen === "inventory") { loadShop(); loadInventory().catch(error=>toast(error.message)); }
 }));
 
-document.getElementById("login-form").addEventListener("submit", async event => {
+document.getElementById("login-form").addEventListener("submit", async event => busy(event.submitter, async () => {
   event.preventDefault();
   const data = new FormData(event.currentTarget);
   const payload = { login: data.get("login"), password: data.get("password") };
   if (registration) payload.invite = data.get("invite");
   try {
     await request(registration ? "auth.register" : "auth.login", payload);
+    document.getElementById("logout").hidden=false;
     await loadCharacters();
     showScreen("character");
   }
   catch (error) { toast(error.message); }
-  data.delete("password");
-});
+  event.currentTarget.elements.password.value = "";
+}));
 
 document.getElementById("show-register").addEventListener("click", () => {
   registration = !registration;
@@ -65,22 +74,26 @@ document.getElementById("show-register").addEventListener("click", () => {
   document.getElementById("show-register").textContent = registration ? "Вернуться ко входу" : "У меня есть инвайт";
 });
 document.getElementById("resume-session").addEventListener("click", async () => {
-  try { await request("session.reconnect"); await loadCharacters(); showScreen("character"); } catch (error) { toast(error.message); }
+  try { await request("session.reconnect"); document.getElementById("logout").hidden=false; await loadCharacters(); showScreen("character"); } catch (error) { toast(error.message); }
 });
-document.getElementById("character-form").addEventListener("submit", async event => {
+document.getElementById("character-form").addEventListener("submit", async event => busy(event.submitter, async () => {
   event.preventDefault(); const data = new FormData(event.currentTarget);
   try {
     const result = await request("characters.create", { first_name:data.get("first_name"), last_name:data.get("last_name") });
     renderCharacters(result.characters); event.currentTarget.reset();
   } catch (error) { toast(error.message); }
-});
+}));
 document.getElementById("chat-form").addEventListener("submit", async event => {
   event.preventDefault(); const input = event.currentTarget.elements.message; if (!input.value.trim()) return;
-  try { await request("chat.send", { message: input.value.trim() }); } catch (error) { toast(error.message); }
+  try { const result=await request("chat.send", { message: input.value.trim() }); appendChat(result.message || input.value.trim()); } catch (error) { toast(error.message); }
   input.value = "";
 });
 document.querySelectorAll("[data-command]").forEach(button => button.addEventListener("click", async () => {
-  try { await request(button.dataset.command, {}); } catch (error) { toast(error.message); }
+  await busy(button, async()=>{ try {
+    const result=await request(button.dataset.command, {});
+    if(button.dataset.command==="job.start") setJob(result.active_route||"alpha-route");
+    if(button.dataset.command==="job.finish"){ setJob(null); updateWallet(result); }
+  } catch (error) { toast(error.message); } });
 }));
 
 async function loadShop() {
@@ -91,7 +104,7 @@ async function loadShop() {
       const row = document.createElement("div"); row.className = "shop-item";
       const label = document.createElement("span"); label.textContent = `${item.name} · $${item.price}`;
       const buy = document.createElement("button"); buy.textContent = "Купить";
-      buy.addEventListener("click", async () => { try { await request("shop.buy", { item_id: item.item_id, quantity: 1 }); } catch (error) { toast(error.message); } });
+      buy.addEventListener("click", async () => busy(buy,async()=>{ try { const result=await request("shop.buy", { item_id: item.item_id, quantity: 1 }); updateWallet(result); await loadInventory(); } catch (error) { toast(error.message); } }));
       row.append(label, buy); list.append(row);
     });
   } catch (error) { toast(error.message); }
@@ -125,11 +138,37 @@ function showScreen(name) {
 }
 
 function setStage(stage,message) {
+  currentStage=stage||currentStage;
   document.getElementById("connection-text").textContent=message||stage||"Подключение…";
   document.getElementById("reconnect").hidden=stage!=="reconnecting"&&stage!=="failed";
 }
 
+function updateWallet(result){
+  if(Number.isSafeInteger(result?.cash)) document.getElementById("cash").textContent=`$ ${result.cash}`;
+  if(Number.isSafeInteger(result?.bank)) document.getElementById("bank").textContent=`$ ${result.bank}`;
+}
+function setJob(route){
+  document.getElementById("active-job").textContent=route||"Нет";
+  document.getElementById("job-start").hidden=!!route;
+  document.getElementById("job-finish").hidden=!route;
+}
+function appendChat(message){
+  const list=document.getElementById("chat-list");
+  if(list.querySelector("p")) list.replaceChildren();
+  const row=document.createElement("p"); row.textContent=message; list.append(row);
+}
+async function loadInventory(){
+  const result=await request("inventory.request");
+  const list=document.getElementById("inventory-list"); list.replaceChildren();
+  if(!result.items?.length){ const empty=document.createElement("p"); empty.textContent="Инвентарь пуст"; list.append(empty); return; }
+  result.items.forEach(item=>{ const row=document.createElement("p"); row.textContent=`Предмет #${item.item_id}: ${item.quantity}`; list.append(row); });
+}
+
 document.getElementById("reconnect").addEventListener("click",async()=>{ try { await request("session.reconnect"); } catch(error){toast(error.message);} });
+document.getElementById("logout").addEventListener("click",async event=>busy(event.currentTarget,async()=>{
+  try { await request("auth.logout"); setStage("auth_required","Войдите в аккаунт"); showScreen("connection"); event.currentTarget.hidden=true; }
+  catch(error){toast(error.message);}
+}));
 
 fetch("locales/ru-RU.json").then(response=>response.json()).then(locale=>{
   document.querySelectorAll("[data-i18n]").forEach(node=>{ const value=node.dataset.i18n.split(".").reduce((current,key)=>current?.[key],locale); if(value)node.textContent=value; });

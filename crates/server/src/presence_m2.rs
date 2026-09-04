@@ -440,8 +440,12 @@ async fn alpha_session(
                 write_control(&mut send, &ControlMessage::SpawnAck { request_id }).await?;
                 break;
             }
-            ControlMessage::Logout { refresh_token, .. } => {
+            ControlMessage::Logout {
+                request_id,
+                refresh_token,
+            } => {
                 store.revoke_session(&refresh_token).await?;
+                write_control(&mut send, &ControlMessage::LogoutResult { request_id }).await?;
                 return Ok(());
             }
             _ => {
@@ -480,6 +484,11 @@ async fn alpha_session(
         tokio::select! {
             control = read_control(&mut recv) => match control? {
                 ControlMessage::Disconnect { .. } => break,
+                ControlMessage::Logout { request_id, refresh_token } => {
+                    store.revoke_session(&refresh_token).await?;
+                    write_control(&mut send, &ControlMessage::LogoutResult { request_id }).await?;
+                    break;
+                }
                 ControlMessage::ChatCommand { request_id, message } => {
                     write_control(&mut send, &ControlMessage::ChatMessage {
                         source: None,

@@ -368,10 +368,12 @@ async fn ui_bridge_adapter_quic_and_postgres_form_one_alpha_path() -> anyhow::Re
         .unwrap();
     assert_eq!(restored.position, [321.0, 654.0, 25.0]);
 
-    let resumed = Client::connect_alpha(
+    let mut resumed = Client::connect_alpha(
         address,
         &cert,
-        AlphaAuthentication::Resume { refresh_token },
+        AlphaAuthentication::Resume {
+            refresh_token: refresh_token.clone(),
+        },
         NewCharacter {
             first_name: "Unused".into(),
             last_name: "Character".into(),
@@ -381,7 +383,19 @@ async fn ui_bridge_adapter_quic_and_postgres_form_one_alpha_path() -> anyhow::Re
     .await?;
     assert!(resumed.entity.generation > first_generation);
     assert_eq!(resumed.config.spawn, [321.0, 654.0, 25.0]);
-    resumed.close().await?;
+    resumed.logout("logout-1").await?;
+    let rejected = Client::connect_alpha(
+        address,
+        &cert,
+        AlphaAuthentication::Resume { refresh_token },
+        NewCharacter {
+            first_name: "Unused".into(),
+            last_name: "Character".into(),
+            model_hash: 0x705e61f2,
+        },
+    )
+    .await;
+    assert!(rejected.is_err(), "revoked refresh token was accepted");
     stop.send(true)?;
     timeout(Duration::from_secs(5), server).await???;
     Ok(())

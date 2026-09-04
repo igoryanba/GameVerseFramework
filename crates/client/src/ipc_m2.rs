@@ -424,6 +424,10 @@ async fn serve_active(
                     Err(error)=>UiResponse::error(&request.request_id,"request_failed",public_error(&error)),
                 };
                 ui::write(&mut ui_tx,&response).await?;
+                if request.command == "auth.logout" && response.ok {
+                    ipc::write(&mut adapter_tx,&Message::SessionEnd { reason:"logout".into() }).await?;
+                    return Ok(());
+                }
             },
             network=client.read_frame()=>{replica.apply(network?)?;},
             _=frame.tick()=>{
@@ -557,6 +561,13 @@ async fn handle_active(client: &mut Client, request: &UiRequest) -> Result<UiRes
             return Ok(UiResponse::success(
                 &request.request_id,
                 json!({"transaction_id":transaction_id,"cash":cash,"bank":bank}),
+            ));
+        }
+        "auth.logout" => {
+            client.logout(&request.request_id).await?;
+            return Ok(UiResponse::success(
+                &request.request_id,
+                json!({"stage":"auth_required"}),
             ));
         }
         _ => {
