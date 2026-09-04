@@ -6,4 +6,4 @@ if [ ! -s "$cert" ] || [ ! -s "$key" ]; then
   rm -f "$cert" "$key"
   gameverse-presence-server-m2 --cert "$cert" --key "$key" --init-identity
 fi
-exec gameverse-presence-server-m2 --bind 0.0.0.0:30122 --cert "$cert" --key "$key"
+exec gameverse-presence-server-m2 --bind 0.0.0.0:30122 --http-bind 0.0.0.0:30123 --cert "$cert" --key "$key"

@@ -17,6 +17,8 @@ struct Args {
     duration: Option<u64>,
     #[arg(long, env = "DATABASE_URL")]
     database_url: Option<String>,
+    #[arg(long, default_value = "127.0.0.1:30123")]
+    http_bind: SocketAddr,
 }
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -30,6 +32,12 @@ async fn main() -> Result<()> {
         serde_json::json!({"event":"m2_ready","address":endpoint.local_addr()?.to_string()})
     );
     let (tx, rx) = tokio::sync::watch::channel(false);
+    let metrics = gameverse_server::presence_m2::MetricsHandle::default();
+    let health = tokio::spawn(gameverse_server::health::serve(
+        args.http_bind,
+        metrics.clone(),
+        rx.clone(),
+    ));
     tokio::spawn(async move {
         if let Some(seconds) = args.duration {
             tokio::select! { _=tokio::signal::ctrl_c()=>{}, _=tokio::time::sleep(Duration::from_secs(seconds))=>{} }
@@ -41,10 +49,11 @@ async fn main() -> Result<()> {
     let report = if let Some(database_url) = args.database_url {
         let store = gameverse_rp::persistence::PostgresStore::connect(&database_url, 16).await?;
         store.migrate().await?;
-        gameverse_server::presence_m2::run_alpha(endpoint, store, rx).await?
+        gameverse_server::presence_m2::run_alpha_with_metrics(endpoint, store, rx, metrics).await?
     } else {
         gameverse_server::presence_m2::run(endpoint, rx).await?
     };
+    health.abort();
     println!("{}", report);
     Ok(())
 }

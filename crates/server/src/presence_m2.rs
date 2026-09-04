@@ -47,6 +47,40 @@ struct State {
     sent_bytes: u64,
     max_tick_micros: u64,
 }
+
+#[derive(Clone, Debug, Default)]
+pub struct MetricsSnapshot {
+    pub players: usize,
+    pub accepted_sessions: u64,
+    pub disconnects: u64,
+    pub received_datagrams: u64,
+    pub sent_datagrams: u64,
+    pub dropped_datagrams: u64,
+    pub received_bytes: u64,
+    pub sent_bytes: u64,
+    pub max_tick_micros: u64,
+}
+
+#[derive(Clone, Default)]
+pub struct MetricsHandle(Arc<Mutex<MetricsSnapshot>>);
+impl MetricsHandle {
+    pub fn snapshot(&self) -> MetricsSnapshot {
+        self.0.lock().expect("metrics lock poisoned").clone()
+    }
+    fn update(&self, state: &State) {
+        *self.0.lock().expect("metrics lock poisoned") = MetricsSnapshot {
+            players: state.peers.len(),
+            accepted_sessions: state.accepted,
+            disconnects: state.disconnects,
+            received_datagrams: state.received_datagrams,
+            sent_datagrams: state.sent_datagrams,
+            dropped_datagrams: state.dropped_datagrams,
+            received_bytes: state.received_bytes,
+            sent_bytes: state.sent_bytes,
+            max_tick_micros: state.max_tick_micros,
+        };
+    }
+}
 struct Guard {
     state: Arc<Mutex<State>>,
     session: SessionId,
@@ -570,7 +604,7 @@ pub async fn run(
     endpoint: quinn::Endpoint,
     shutdown: watch::Receiver<bool>,
 ) -> Result<serde_json::Value> {
-    run_inner(endpoint, None, shutdown).await
+    run_inner(endpoint, None, shutdown, None).await
 }
 
 pub async fn run_alpha(
@@ -578,13 +612,23 @@ pub async fn run_alpha(
     store: PostgresStore,
     shutdown: watch::Receiver<bool>,
 ) -> Result<serde_json::Value> {
-    run_inner(endpoint, Some(store), shutdown).await
+    run_inner(endpoint, Some(store), shutdown, None).await
+}
+
+pub async fn run_alpha_with_metrics(
+    endpoint: quinn::Endpoint,
+    store: PostgresStore,
+    shutdown: watch::Receiver<bool>,
+    metrics: MetricsHandle,
+) -> Result<serde_json::Value> {
+    run_inner(endpoint, Some(store), shutdown, Some(metrics)).await
 }
 
 async fn run_inner(
     endpoint: quinn::Endpoint,
     store: Option<PostgresStore>,
     mut shutdown: watch::Receiver<bool>,
+    metrics: Option<MetricsHandle>,
 ) -> Result<serde_json::Value> {
     let state = Arc::new(Mutex::new(State::default()));
     let mut tasks = JoinSet::new();
@@ -624,6 +668,7 @@ async fn run_inner(
                     }
                 }
                 state.max_tick_micros = state.max_tick_micros.max(tick_started.elapsed().as_micros() as u64);
+                if let Some(metrics) = &metrics { metrics.update(&state); }
             }
         }
     }
@@ -632,6 +677,9 @@ async fn run_inner(
     while tasks.join_next().await.is_some() {}
     endpoint.wait_idle().await;
     let state = state.lock().unwrap();
+    if let Some(metrics) = &metrics {
+        metrics.update(&state);
+    }
     Ok(
         serde_json::json!({"event":"m2_shutdown","players":state.peers.len(),"accepted_sessions":state.accepted,"disconnects":state.disconnects,"received_datagrams":state.received_datagrams,"sent_datagrams":state.sent_datagrams,"dropped_datagrams":state.dropped_datagrams,"received_bytes":state.received_bytes,"sent_bytes":state.sent_bytes,"max_tick_micros":state.max_tick_micros}),
     )

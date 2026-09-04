@@ -30,7 +30,15 @@ jobs:
       - name: Test PostgreSQL vertical slice
         run: cargo test --locked -p gameverse-rp --test postgres -- --nocapture
       - name: Test QUIC auth, character and spawn path
-        run: cargo test --locked -p gameverse-client --test alpha_postgres -- --nocapture
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --locked -p gameverse-client --test alpha_postgres -- --nocapture 2>&1 | tee rp-postgres-acceptance.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rp-postgres-acceptance-log
+          path: rp-postgres-acceptance.log
       - name: Lint RP persistence
         run: cargo clippy --locked -p gameverse-rp --all-targets -- -D warnings
       - name: Check RP formatting
