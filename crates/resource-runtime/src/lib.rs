@@ -298,6 +298,10 @@ impl ResourceHost {
         name: &str,
         arguments: Vec<serde_json::Value>,
     ) -> Result<Vec<serde_json::Value>> {
+        anyhow::ensure!(
+            self.state == LifecycleState::Started,
+            "resource is not started"
+        );
         self.reset_budget();
         let args = self.lua.to_value(&arguments)?;
         let values: Value = self
@@ -313,6 +317,10 @@ impl ResourceHost {
         name: &str,
         arguments: Vec<serde_json::Value>,
     ) -> Result<Vec<serde_json::Value>> {
+        anyhow::ensure!(
+            self.state == LifecycleState::Started,
+            "resource is not started"
+        );
         self.reset_budget();
         let args = self.lua.to_value(&arguments)?;
         let values: Value = self
@@ -324,6 +332,10 @@ impl ResourceHost {
     }
 
     pub fn advance(&self, elapsed_ms: u64) -> Result<()> {
+        anyhow::ensure!(
+            self.state == LifecycleState::Started,
+            "resource is not started"
+        );
         self.reset_budget();
         self.lua
             .globals()
@@ -429,6 +441,38 @@ impl ResourceCluster {
             .ok_or_else(|| anyhow::anyhow!("unknown resource: {resource}"))?
             .call_export(export, arguments)
     }
+
+    /// Calls an export on behalf of another resource.
+    ///
+    /// The caller must declare the provider as a dependency. This keeps the
+    /// compatibility harness deterministic and prevents a resource from
+    /// reaching arbitrary peers in the cluster.
+    pub fn call_export_for(
+        &self,
+        caller: &str,
+        provider: &str,
+        export: &str,
+        arguments: Vec<serde_json::Value>,
+    ) -> Result<Vec<serde_json::Value>> {
+        let caller_host = self
+            .hosts
+            .get(caller)
+            .ok_or_else(|| anyhow::anyhow!("unknown resource: {caller}"))?;
+        anyhow::ensure!(
+            caller_host.state() == LifecycleState::Started,
+            "caller resource is not started: {caller}"
+        );
+        anyhow::ensure!(
+            caller_host
+                .manifest()
+                .dependencies
+                .iter()
+                .any(|dependency| dependency == provider),
+            "resource {caller} does not declare dependency {provider}"
+        );
+        self.call_export(provider, export, arguments)
+            .with_context(|| format!("resource {caller} call {provider}.{export}"))
+    }
 }
 
 fn dependency_order(hosts: &BTreeMap<String, ResourceHost>) -> Result<Vec<String>> {
@@ -517,9 +561,9 @@ mod tests {
         fs::write(dir.path().join("main.lua"), source).unwrap();
         let manifest = ResourceManifest {
             name: "fixture".into(),
-            client_scripts: vec!["main.lua".into()],
+            client_scripts: vec![],
             server_scripts: vec![],
-            shared_scripts: vec![],
+            shared_scripts: vec!["main.lua".into()],
             dependencies: vec![],
             files: vec![],
             exports: vec![],
@@ -643,10 +687,22 @@ mod tests {
         assert_eq!(cluster.start_order(), ["provider", "consumer"]);
         cluster.start_all().unwrap();
         assert_eq!(
-            cluster.call_export("provider", "answer", vec![]).unwrap(),
+            cluster
+                .call_export_for("consumer", "provider", "answer", vec![])
+                .unwrap(),
             [serde_json::json!(42)]
         );
+        assert!(cluster
+            .call_export_for("provider", "consumer", "answer", vec![])
+            .unwrap_err()
+            .to_string()
+            .contains("does not declare dependency"));
         cluster.stop_all().unwrap();
+        assert!(cluster
+            .call_export("provider", "answer", vec![])
+            .unwrap_err()
+            .to_string()
+            .contains("not started"));
         assert_eq!(
             cluster.host("provider").unwrap().state(),
             LifecycleState::Stopped

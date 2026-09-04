@@ -93,7 +93,7 @@ impl Client {
         }
     }
     pub async fn read_control(&mut self) -> Result<ControlMessage> {
-        Ok(read_control(&mut self.recv).await?)
+        read_control(&mut self.recv).await
     }
     pub async fn close(mut self) -> Result<()> {
         write_control(
