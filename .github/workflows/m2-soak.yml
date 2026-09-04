@@ -1,5 +1,10 @@
 name: M2 32 Player Release Soak
 on:
+  push:
+    branches:
+      - codex/independent-runtime-m2
+    paths:
+      - '.github/workflows/m2-soak.yml'
   workflow_dispatch:
     inputs:
       duration_seconds:
