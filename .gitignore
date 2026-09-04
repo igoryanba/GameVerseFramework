@@ -40,6 +40,9 @@ yarn-debug.log*
 yarn-error.log*
 deployment/alpha/.env
 clients/windows/GameVerse.Launcher/launcher.json
+.dotnet-home/
+clients/windows/**/bin/
+clients/windows/**/obj/
 
 # Native generator artifacts
 sdk/native-generator/**/.cache/
