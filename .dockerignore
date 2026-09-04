@@ -3,7 +3,6 @@
 .research
 target
 **/target
-**/bin
 **/obj
 node_modules
 admin-panel
