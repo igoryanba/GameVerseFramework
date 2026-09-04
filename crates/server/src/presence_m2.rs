@@ -209,7 +209,11 @@ async fn session(connecting: quinn::Connecting, state: Arc<Mutex<State>>) -> Res
     loop {
         tokio::select! {
             control = read_control(&mut recv) => match control? {
-                ControlMessage::Disconnect { .. } => break,
+                ControlMessage::Disconnect { .. } => {
+                    write_control(&mut send, &ControlMessage::DisconnectAck).await?;
+                    send.finish().await?;
+                    break;
+                }
                 _ => anyhow::bail!("unexpected control message after spawn"),
             },
             realtime = read_realtime_with_len(&connection) => {
@@ -518,7 +522,11 @@ async fn alpha_session(
     loop {
         tokio::select! {
             control = read_control(&mut recv) => match control? {
-                ControlMessage::Disconnect { .. } => break,
+                ControlMessage::Disconnect { .. } => {
+                    write_control(&mut send, &ControlMessage::DisconnectAck).await?;
+                    send.finish().await?;
+                    break;
+                }
                 ControlMessage::Logout { request_id, refresh_token } => {
                     store.revoke_session(&refresh_token).await?;
                     write_control(&mut send, &ControlMessage::LogoutResult { request_id }).await?;

@@ -192,6 +192,7 @@ pub enum ControlMessage {
     Disconnect {
         reason: String,
     },
+    DisconnectAck,
     Reject {
         code: String,
         reason: String,
@@ -426,6 +427,7 @@ impl ControlMessage {
                     && valid_text(idempotency_key, 128)
             }
             Self::Disconnect { reason } => !reason.is_empty() && reason.len() <= 256,
+            Self::DisconnectAck => true,
             Self::Reject { code, reason } => {
                 !code.is_empty() && code.len() <= 64 && !reason.is_empty() && reason.len() <= 256
             }

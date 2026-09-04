@@ -651,6 +651,13 @@ impl Client {
         )
         .await?;
         self.send.finish().await?;
+        anyhow::ensure!(
+            matches!(
+                read_control(&mut self.recv).await?,
+                ControlMessage::DisconnectAck
+            ),
+            "invalid disconnect acknowledgement"
+        );
         self.connection.close(0_u32.into(), b"client shutdown");
         self.endpoint.wait_idle().await;
         Ok(())
