@@ -54,8 +54,8 @@ jobs:
           kill -INT "$server_pid"
           wait "$server_pid"
           trap - EXIT
-          jq -e '.clients == 32 and .completed == 32 and .clean_shutdown and .errors == 0 and .published >= 30000' m2-load-report/clients.json
-          jq -s -e 'last | .event == "m2_shutdown" and .players == 0 and .accepted_sessions == 32 and .disconnects == 32 and .max_tick_micros > 0' m2-load-report/server.jsonl
+          jq -e '.clients == 32 and .completed == 32 and .clean_shutdown and .errors == 0 and .published >= 30000 and .received > 0' m2-load-report/clients.json
+          jq -s -e 'last | .event == "m2_shutdown" and .players == 0 and .accepted_sessions == 32 and .disconnects == 32 and .sent_datagrams > 0 and .dropped_datagrams < .sent_datagrams and .max_tick_micros > 0' m2-load-report/server.jsonl
       - uses: actions/upload-artifact@v4
         if: always()
         with:

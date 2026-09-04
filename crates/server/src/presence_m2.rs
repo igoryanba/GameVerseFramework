@@ -33,6 +33,7 @@ use crate::session_m2::SessionMachine;
 
 struct Peer {
     connection: quinn::Connection,
+    outbound_baseline: u64,
 }
 #[derive(Default)]
 struct State {
@@ -157,6 +158,7 @@ async fn session(connecting: quinn::Connecting, state: Arc<Mutex<State>>) -> Res
                         session,
                         Peer {
                             connection: connection.clone(),
+                            outbound_baseline: 0,
                         },
                     );
                     state.accepted += 1;
@@ -452,6 +454,7 @@ async fn alpha_session(
                         session,
                         Peer {
                             connection: connection.clone(),
+                            outbound_baseline: 0,
                         },
                     );
                     state.accepted += 1;
@@ -672,9 +675,16 @@ async fn run_inner(
                     let frame = state.world.delta(session)?;
                     if frame.deltas.is_empty() { continue; }
                     let connection = state.peers[&session].connection.clone();
-                    match send_frame(&connection, &frame) {
-                        Ok(bytes) => { state.sent_datagrams += 1; state.sent_bytes += bytes as u64; },
-                        Err(_) => state.dropped_datagrams += 1,
+                    let maximum = connection.max_datagram_size().unwrap_or(1_200).min(gameverse_transport::presence_v2::MAX_DATAGRAM);
+                    let chunks = split_frame(frame, maximum)?;
+                    for mut chunk in chunks {
+                        let peer = state.peers.get_mut(&session).expect("session collected from peers");
+                        peer.outbound_baseline = peer.outbound_baseline.saturating_add(1);
+                        chunk.baseline = peer.outbound_baseline;
+                        match send_frame(&connection, &chunk) {
+                            Ok(bytes) => { state.sent_datagrams += 1; state.sent_bytes += bytes as u64; },
+                            Err(_) => state.dropped_datagrams += 1,
+                        }
                     }
                 }
                 state.max_tick_micros = state.max_tick_micros.max(tick_started.elapsed().as_micros() as u64);
@@ -693,4 +703,108 @@ async fn run_inner(
     Ok(
         serde_json::json!({"event":"m2_shutdown","players":state.peers.len(),"accepted_sessions":state.accepted,"disconnects":state.disconnects,"received_datagrams":state.received_datagrams,"sent_datagrams":state.sent_datagrams,"dropped_datagrams":state.dropped_datagrams,"received_bytes":state.received_bytes,"sent_bytes":state.sent_bytes,"max_tick_micros":state.max_tick_micros}),
     )
+}
+
+fn split_frame(frame: p::ServerFrame, maximum: usize) -> Result<Vec<p::ServerFrame>> {
+    let mut chunks = Vec::new();
+    let mut current = p::ServerFrame {
+        server_tick: frame.server_tick,
+        baseline: 1,
+        deltas: Vec::new(),
+    };
+    for delta in frame.deltas {
+        current.deltas.push(delta);
+        let encoded = gameverse_protocol::control_v2::encode_realtime(&RealtimeMessage::Server {
+            frame: current.clone(),
+        })?;
+        if encoded.len() > maximum {
+            let last = current.deltas.pop().expect("delta was just pushed");
+            anyhow::ensure!(
+                !current.deltas.is_empty(),
+                "single entity delta exceeds negotiated QUIC datagram size"
+            );
+            chunks.push(current);
+            current = p::ServerFrame {
+                server_tick: frame.server_tick,
+                baseline: 1,
+                deltas: vec![last],
+            };
+            let single = gameverse_protocol::control_v2::encode_realtime(
+                &RealtimeMessage::Server {
+                    frame: current.clone(),
+                },
+            )?;
+            anyhow::ensure!(
+                single.len() <= maximum,
+                "single entity delta exceeds negotiated QUIC datagram size"
+            );
+        }
+    }
+    if !current.deltas.is_empty() {
+        chunks.push(current);
+    }
+    Ok(chunks)
+}
+
+#[cfg(test)]
+mod frame_chunk_tests {
+    use super::*;
+
+    #[test]
+    fn chunks_large_frames_below_the_quic_limit() {
+        let delta = p::EntityDelta {
+            id: gameverse_protocol::EntityId {
+                slot: 0,
+                generation: 1,
+            },
+            kind: p::DeltaKind::Upsert,
+            transform: Some(p::Transform {
+                position: [0.0; 3],
+                rotation: [0.0, 0.0, 0.0, 1.0],
+                velocity: [0.0; 3],
+            }),
+            appearance: Some(p::Appearance { model_hash: 1 }),
+            locomotion: Some(p::Locomotion::Idle),
+            combat: Some(p::CombatPresentation {
+                aiming: false,
+                shooting: false,
+                reloading: false,
+                dead: false,
+                weapon_hash: 0,
+                aim_target: None,
+            }),
+            vehicle: None,
+            cleared: Vec::new(),
+        };
+        let mut deltas = Vec::new();
+        for slot in 0..31 {
+            let mut value = delta.clone();
+            value.id.slot = slot;
+            deltas.push(value);
+        }
+        let chunks = split_frame(
+            p::ServerFrame {
+                server_tick: 1,
+                baseline: 1,
+                deltas,
+            },
+            1_200,
+        )
+        .unwrap();
+        assert!(chunks.len() > 1);
+        assert_eq!(
+            chunks.iter().map(|chunk| chunk.deltas.len()).sum::<usize>(),
+            31
+        );
+        assert!(chunks
+            .iter()
+            .all(|chunk| gameverse_protocol::control_v2::encode_realtime(
+                &RealtimeMessage::Server {
+                    frame: chunk.clone()
+                }
+            )
+            .unwrap()
+            .len()
+                <= 1_200));
+    }
 }
