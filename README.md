@@ -1,304 +1,94 @@
-# 🎮 GameVerse Framework
+# GameVerse Framework
 
-## Independent Multiplayer Runtime M0
+GameVerse is an experimental independent multiplayer runtime for a locally installed GTA V Enhanced client. The active implementation is a closed-alpha prototype for up to 32 players. It does not modify GTA DRM, entitlement, GTA Online, or anti-cheat components.
 
-The new headless server and standalone test clients build independently of the
-legacy core and FiveM compatibility. See [M0 build, protocol and validation](docs/M0_RUNTIME.md).
-`cargo build` / `cargo test` select the new runtime packages; legacy workspace
-checks remain separate and currently report existing core compilation failures.
+## What works in this branch
 
-> Next-generation modding platform designed to outperform FiveM and bring GTA V & Red Dead Redemption 2 multiplayer to the WebAssembly era.
+- Independent Rust M0/M1 protocol, runtime, QUIC transport, headless server, and clients.
+- Presence v2 component model, spatial interest management, baselines, deltas, stream-out, destroy, reconnect generations, and bounded frames.
+- Separate M2 server and client entrypoints with version/capability negotiation, reliable session bootstrap, and realtime QUIC datagrams.
+- Windows M2 bridge that translates the current GTA adapter IPC into Presence v2 while the tested v1 path remains available.
+- GTA Enhanced adapter prototype with session bootstrap and remote ped locomotion states. The adapter supports up to 31 remote players; two-client GTA and vehicle acceptance are still pending.
+- Static FiveM resource analyzer, safe manifest conversion, sandboxed Lua host, dependency ordering, exports, callbacks, timers, rollback, and two MIT acceptance resources.
+- Server-authoritative closed-alpha RP domain for invites, characters, positions, wallets, immutable ledger entries, inventory, shops, courier work, and moderation.
+- PostgreSQL schema for the RP vertical slice and a minimal Docker Compose deployment for the M2 server plus PostgreSQL.
+- First Windows launcher shell for installation checks, ordered bridge/game startup, logs, and a redacted diagnostics archive.
 
-[![Stars](https://img.shields.io/github/stars/igoryanba/GameVerseFramework)](https://github.com/igoryanba/GameVerseFramework/stargazers)  
-[![Forks](https://img.shields.io/github/forks/igoryanba/GameVerseFramework)](https://github.com/igoryanba/GameVerseFramework/network)  
-[![Issues](https://img.shields.io/github/issues/igoryanba/GameVerseFramework)](https://github.com/igoryanba/GameVerseFramework/issues)  
-[![License](https://img.shields.io/github/license/igoryanba/GameVerseFramework)](LICENSE)
+The legacy `core`, old services, admin panel, Kubernetes/Terraform files, and historical performance claims are retained as research material. They are not part of the supported alpha runtime or its CI gate.
 
-**English | [Русский version](README_ru.md)**
+## Repository map
 
----
+| Path | Purpose |
+|---|---|
+| `crates/protocol` | Versioned control, Presence v1/v2, adapter, and vehicle messages |
+| `crates/runtime` | Server identity, replication, interest grid, baselines, ownership |
+| `crates/transport` | QUIC endpoints, certificate trust, bounded streams/datagrams |
+| `crates/server` | M1 and separate M2 headless server binaries |
+| `crates/client` | Test clients, M2 bot, and Windows GTA bridge |
+| `crates/resource-manifest` | Safe FiveM manifest parsing and `gameverse.toml` generation |
+| `crates/resource-runtime` | Sandboxed per-resource Lua runtime and resource graph |
+| `crates/gameverse-rp` | Closed-alpha gameplay rules and PostgreSQL migration |
+| `tools/fivem-analyzer` | Static compatibility report CLI |
+| `adapters/gta5` | GTA V Enhanced ScriptHookVDotNet adapter and protocol harness |
+| `clients/windows/GameVerse.Launcher` | Windows launcher shell |
+| `deployment/alpha` | Supported alpha Docker Compose stack |
 
-## ✅ Current State
+## Build and test
 
-### Production-ready components
-- **GameVerse CLI Tools v0.2.0** – template system, hot-reload, multi-game support
-- **Inventory service** – PostgreSQL + Redis, REST & gRPC APIs
-- **Chat service** – event-driven, Telegram bot integration
-- **Logging service** – Elastic/Kibana pipeline, gRPC ingestion
-- **Player Data service**
+The workspace toolchain is pinned in `rust-toolchain.toml`.
 
-### In Development
-- Authentication service (95 %)
-- Player-data service (phase 1 done)
-- Native generator RDR2 support
-- WebAssembly UI runtime (design)
-- FiveM Compatibility Layer MVP (active)
-
-## 🛠️ Technology Stack
-
-| Layer      | Tech                                                |
-|------------|-----------------------------------------------------|
-| Core       | **Rust**, Tokio, Axum, Tonic (gRPC)                 |
-| Databases  | PostgreSQL, Redis                                   |
-| Networking | HTTP/3, QUIC, WebSocket, WebRTC                     |
-| UI         | WGPU, Wasmtime, EGUI, React-like renderer           |
-| Tooling    | Rust-based CLI, VS Code extension                   |
-| DevOps     | Docker, GitHub Actions, Terraform (optional)        |
-| Monitoring | Prometheus, Grafana, Elastic Stack                  |
-
-## Why GameVerse?
-
-* **Micro-service architecture** – resilient & horizontally scalable
-* **WebAssembly UI runtime** – 5× less memory, 10× lower latency than CEF
-* **Dynamic plugin loading** – C++, Rust, Go, Zig with hot-reload
-* **HTTP/3 + QUIC network stack** for ultra-low latency
-* **FiveM compatibility layer** – run existing QBCore / ESX resources
-* **Powerful CLI** with JWT-secured admin API
-
-## At a Glance
-
-| Metric               | FiveM          | GameVerse       | Improvement |
-|----------------------|----------------|-----------------|-------------|
-| UI memory footprint  | ~2 GB          | **400 MB**      | **5×**      |
-| UI latency           | 50-100 ms      | **5-15 ms**     | **10×**     |
-| Script performance   | 1× (V8)        | **10-50× (WASM)**| Up to 50×   |
-| Hot-reload time      | 30-60 s        | **< 0.2 s**     | **150×**    |
-
-## 🚀 Быстрый старт
-
-### Установка и настройка
-
-```bash
-# Клонирование репозитория
-git clone https://github.com/gameverse/GameVerseFramework.git
-cd GameVerseFramework
-
-# Сборка CLI инструментов
-cargo build -p gameverse --release
-
-# Создание нового сервера (one-liner setup!)
-cargo run -p gameverse -- server init MyGameServer
-cd MyGameServer
-
-# Сборка серверного бинаря
-cargo build -p gameverse-core --bin gameverse_server --release
-
-# Запуск в dev-режиме
-../target/release/gameverse_server config/server-config.toml --dev
+```sh
+cargo test --locked
+cargo clippy --locked --workspace --all-targets -- -D warnings
+cargo fmt --all -- --check
 ```
 
-### Автозапуск сервера
+Build the M2 binaries:
 
-**Linux (systemd) - One-liner:**
-```bash
-sudo cp systemd/gameverse.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now gameverse
+```sh
+cargo build --locked --release -p gameverse-server --bin gameverse-presence-server-m2
+cargo build --locked --release -p gameverse-client --bin gameverse-presence-bot-m2
 ```
 
-**Windows (NSSM) - One-liner:**
+Analyze and validate a resource without executing its manifest:
+
+```sh
+cargo run --manifest-path tools/fivem-analyzer/Cargo.toml -- --path fixtures/resources/compat-basic --format json
+cargo run -p gameverse-resource-runtime --bin gameverse-resource-host -- validate --manifest fixtures/resources/compat-basic/gameverse.toml
+```
+
+Build the Windows adapter and protocol harness:
+
 ```powershell
-.\install_nssm.ps1  # Запуск от имени администратора
+./adapters/gta5/setup.ps1
+dotnet build clients/windows/GameVerse.Launcher -c Release
 ```
 
-**Docker - One-liner:**
-```bash
-docker-compose up -d
+Run the development server and PostgreSQL on Linux:
+
+```sh
+cd deployment/alpha
+cp .env.example .env
+# set a private database password
+docker compose up --build -d
 ```
 
-## 📚 Документация / Documentation
+## Alpha release gate
 
-> **Русская версия** — основная и наиболее полная. Перевод на английский ведётся постепенно.
+The branch is ready for a closed alpha only after all of these pass:
 
-### 📖 Структура разделов
+1. Windows/Linux resource import and sandbox security tests.
+2. Presence v2 two-client integration plus 32-bot, 20 Hz, 30-minute soak test.
+3. One GTA client plus bot movement/combat presentation acceptance.
+4. Two real GTA clients and one shared vehicle with ownership migration.
+5. PostgreSQL-backed invite → account → character → delivery → purchase → reconnect acceptance.
+6. Clean launcher install, signed update/rollback, and diagnostic package acceptance.
+7. Protected admin API with audit log and reproducible Linux deployment.
 
-| Раздел | Описание | Путь |
-|--------|----------|------|
-| Getting Started | Быстрый старт: установка зависимостей, запуск первого сервера | `docs/ru/getting-started.md` |
-| Architecture Overview | Высокоуровневый обзор: ядро, микросервисы, UI-рантайм, сетевой стек | `docs/ru/architecture.md` |
-| Developer Guides | Практические руководства: разработка сервисов, создание плагинов, интеграция UI | `docs/ru/guides/` |
-| API Reference | Спецификации REST, gRPC, CLI; схемы БД | `docs/ru/api/` |
-| Advanced Topics | Глубокие темы: горячая перезагрузка, трассировка, безопасность, FCL | `docs/ru/advanced/` |
-| RFC & Roadmaps | Дизайн-документы и планы развития | `docs/ru/rfcs/` |
+Position-based voice is the next required milestone after the base alpha.
 
-> Аналогичная иерархия готовится в `docs/en`.
+## External code policy
 
-### 🛠️ Сборка статического сайта документации
+FiveM is treated as an API compatibility specification. FiveM runtime code and GPL/AGPL RP resources are not linked into GameVerse Core. External canary resources remain in ignored research storage. Any imported code must have a compatible license, a pinned revision, and preserved attribution.
 
-```bash
-# Установить mdBook (Rust-бинарник < 5 МБ)
-cargo install mdbook
-
-# Сгенерировать сайт (по умолчанию в ./book)
-mdbook build docs/ru
-
-# Локальный сервер с hot-reload (http://localhost:3000)
-mdbook serve docs/ru -p 3000
-```
-
-Документация автоматически публикуется на GitHub Pages при пуше в `main`.
-
-### 🤝 Вклад в документацию
-
-1. Пишите в Markdown, используйте `#`-заголовки и встроенные диаграммы Mermaid.
-2. Сохраняйте паритет между RU и EN версиями — если добавляете новый файл в `docs/ru`, создайте черновик-заглушку в `docs/en`.
-3. Запускайте проверку стиля и орфографии:
-
-```bash
-npm run lint:docs   # vale + markdownlint
-```
-
-4. Для технических диаграмм предпочитайте Mermaid (`.md`) либо PlantUML (`.puml`).
-5. Делайте PR в ветку `docs/*` или с меткой `documentation`.
-
-### 🔗 Быстрые ссылки
-
-- Полный список CLI команд: [`docs/ru/api/cli.md`](docs/ru/api/cli.md)
-- Таблица сервисов и портов: [`docs/ru/reference/ports.md`](docs/ru/reference/ports.md)
-- Руководство по миграции с FiveM: [`docs/ru/guides/fivem-migration.md`](docs/ru/guides/fivem-migration.md)
-
----
-
-_For quick English references see the WIP tree in `docs/en`. Help translating is welcome!_
-
-## Contributing
-
-We ♥ contributions!  Please read the [contributing guide](.github/CONTRIBUTING.md) and look for issues labelled `good first issue`.
-
-## License
-
-GameVerse Framework is released under the MIT License. See the [LICENSE](LICENSE) file for details.
-
-## 🚀 Strategic Roadmap
-
-| Phase | Goal | Status |
-|-------|------|--------|
-| 1. Technical Superiority | Micro-services, QUIC networking, WebAssembly UI | **Almost done** |
-| 2. Developer Experience | TypeScript + hot-reload, modern CLI & IDE tooling | In progress |
-| 3. Community Migration  | FiveM compatibility layer, QBCore converter, incentives | Planned |
-| 4. Market Dominance     | Plugin marketplace, enterprise hosting, AI tooling | Planned |
-
-### FiveM Migration Strategy
-```bash
-# Automatic QBCore conversion example
-gameverse convert --from qbcore --resource ./qb-banking
-gameverse migrate --lua-to-typescript ./server.lua
-gameverse validate --fivem-compat ./converted/
-```
-The **FiveM Compatibility Layer (FCL)** lets existing scripts run unmodified while the converter upgrades resources to GameVerse standards.
-
-### Latest Achievements (Feb 2025)
-- **Admin Web-API**: real-time SSE logs + JWT auth (production-ready)
-- **CLI Tools v0.2**: template engine, hot-reload, cross-compile
-- **Logging / Inventory / Chat services**: deployed & battle-tested
-- **Native Generator**: type-safe Rust bindings for GTA V **and** RDR2
-
-### Near-Term Priorities
-1. Finish authentication micro-service
-2. Public performance demo vs FiveM (WebAssembly UI)
-3. Release CLI v0.3 with hot-reload debugger
-
-## 🏆 Competitive Edge Recap
-1. **5× less memory** than CEF UI
-2. **10× faster scripting** via WebAssembly
-3. **HTTP/3 + QUIC** → 3× lower latency
-4. **Type-safe dev-experience** (Rust/TS) versus Lua runtime errors
-5. **Scalable micro-services** instead of monolith
-
-## 🌟 Key Innovations
-
-### 1. WebAssembly UI Runtime
-```rust
-pub struct GameVerseUI {
-    wasm_runtime: WasmRuntime,      // Native-like performance
-    react_renderer: ReactRenderer,  // Modern component model
-    vulkan_backend: VulkanBackend,  // DirectX 12 / Vulkan abstraction
-}
-```
-*Replaces heavyweight CEF with an **ultra-light WebAssembly stack** that consumes < 400 MB and renders frames in 5-15 ms.*
-
-### 2. Modern Network Stack
-```rust
-pub struct NetworkStack {
-    quic_transport: QuicTransport,   // HTTP/3 + QUIC
-    grpc_services: GrpcServiceMesh,  // Micro-service RPC layer
-    websocket_hub: WebSocketHub,     // Real-time events
-    webrtc_mesh: WebRTCMesh,         // P2P voice
-}
-```
-*Designed for low latency & fault-tolerance – a huge leap over TCP-only FiveM.*
-
-### 3. Multi-Runtime Scripting
-```rust
-pub enum ScriptRuntime {
-    WebAssembly(WasmRuntime), // Max perf
-    TypeScript(TSRuntime),    // Type safety + DX
-    LuaJIT(LuaJITRuntime),    // Legacy compatibility
-    Python(PyRuntime),        // AI/ML integrations
-}
-```
-*Choose the right tool for the job – or mix them!*
-
-### 4. Dynamic Plugin Loading
-```rust
-pub struct PluginManager {
-    loaded: HashMap<String, LoadedLibrary>, // .dll/.so/.dylib
-    abi_check: ABICompatibilityChecker,
-    memory_mgr: ThreadSafeMemoryManager,
-}
-
-#[no_mangle]
-pub extern "C" fn create_plugin() -> *mut dyn GameVersePlugin {
-    // C++, Rust, Go, Zig – any language with a C ABI
-}
-```
-*Native performance, hot-reload compatible, multi-language – completely impossible in classic FiveM.*
-
-### 5. Server Management & Admin API
-```bash
-# CLI examples
-gameverse server start --token
-gameverse server status
-
-# REST (port 30121)
-GET  /api/server/status      # JSON metrics
-POST /api/server/reload      # Hot-reload
-```
-*Token-secured CLI + REST endpoints, SSE log streaming, graceful shutdown – out of the box.*
-
-## 📂 Project Structure (High-level)
-
-```
-core/               # Rust core kernel
-services/           # Auth, inventory, chat, logging, … (micro-services)
-networking/         # QUIC transport, protocols, routing
-scripting/          # Lua, TypeScript, WebAssembly runtimes
-ui-runtime/         # WebAssembly UI engine
-fivem-bridge/       # Compatibility layer (active dev)
-sdk/                # CLI tools, native generator, VS Code ext
-examples/           # Living code samples
-```
-
----
-*For a deep-dive into architecture, tech stack, project structure and progress see `DEVELOPMENT_RULES.md`, `TECHNICAL_STACK.md`, `STRUCTURE.md` and `PROGRESS.md`.*
-
-### Milestones
-
-- ✅ Server Bootstrap v0.1 (CLI `server init`, systemd/NSSM) — **DONE**
-- 🐳 **Server Bootstrap v0.2 (Docker + Kubernetes + Terraform)** — *in progress*
-  - [Deployment guide](deployment/README.md)
-
-### API Reference (добавлено)
-
-#### Player Data REST API
-- `GET    /api/v1/players/:id`           — Получить игрока по ID
-- `POST   /api/v1/players`               — Создать нового игрока
-- `PUT    /api/v1/players/:id`           — Обновить профиль игрока
-- `PATCH  /api/v1/players/:id/currency`  — Обновить валюту
-- `POST   /api/v1/players/:id/experience`— Добавить опыт
-- `GET    /api/v1/public/leaderboards`   — Получить лидерборды
-- `GET    /api/v1/public/players/search` — Поиск игроков
-
-## Roadmap Highlights
-
-* Performance Demonstration v0.1 (nightly automated benchmark reports)
-* ✅ Player Data Microservice & migrations — **ЗАВЕРШЕНО**
-* ⏳ Security audit & vulnerability scanning — **NEXT**
+See `docs/M0_RUNTIME.md`, `docs/M1_GTA_PRESENCE.md`, and `docs/UPSTREAM_PROVENANCE.md` for implementation notes and recorded external research.

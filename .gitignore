@@ -38,6 +38,8 @@ admin-panel/dist/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+deployment/alpha/.env
+clients/windows/GameVerse.Launcher/launcher.json
 
 # Native generator artifacts
 sdk/native-generator/**/.cache/

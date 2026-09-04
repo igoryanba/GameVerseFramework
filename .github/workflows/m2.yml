@@ -37,3 +37,5 @@ jobs:
       - name: Compile adapter and run protocol tests
         shell: pwsh
         run: ./adapters/gta5/setup.ps1
+      - name: Compile Windows launcher
+        run: dotnet build clients/windows/GameVerse.Launcher -c Release --nologo

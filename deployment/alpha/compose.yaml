@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gameverse
+      POSTGRES_USER: gameverse
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gameverse -d gameverse"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    image: postgres:17-alpine
+    restart: "no"
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - ../../crates/gameverse-rp/migrations:/migrations:ro
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        if psql -h postgres -U gameverse -d gameverse -tAc "SELECT to_regclass('public.accounts') IS NOT NULL" | grep -q t; then
+          echo "closed-alpha schema already present"
+        else
+          psql -v ON_ERROR_STOP=1 -h postgres -U gameverse -d gameverse -f /migrations/0001_closed_alpha.sql
+        fi
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  server:
+    build:
+      context: ../..
+      dockerfile: deployment/alpha/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "30122:30122/udp"
+    volumes:
+      - server-identity:/var/lib/gameverse/identity
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  postgres-data:
+  server-identity:

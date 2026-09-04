@@ -1,0 +1,14 @@
+.git
+.github
+.research
+target
+**/target
+**/bin
+**/obj
+node_modules
+admin-panel
+ui
+Research
+benchmarks
+deployment/kubernetes
+deployment/terraform
