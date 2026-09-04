@@ -84,7 +84,7 @@ impl Client {
         })
     }
     pub fn publish(&self, frame: PlayerFrame) -> Result<()> {
-        send_realtime(&self.connection, &RealtimeMessage::Player { frame })
+        send_realtime(&self.connection, &RealtimeMessage::Player { frame }).map(|_| ())
     }
     pub async fn read_frame(&self) -> Result<ServerFrame> {
         match read_realtime(&self.connection).await? {

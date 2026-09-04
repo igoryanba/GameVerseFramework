@@ -50,6 +50,12 @@ cargo build --locked --release -p gameverse-server --bin gameverse-presence-serv
 cargo build --locked --release -p gameverse-client --bin gameverse-presence-bot-m2
 ```
 
+Against a running M2 server, the same bot binary provides a short smoke test or the release soak test:
+
+```sh
+gameverse-presence-bot-m2 --server 127.0.0.1:30122 --cert server-cert.der --clients 32 --duration 1800 --report soak.json
+```
+
 Analyze and validate a resource without executing its manifest:
 
 ```sh

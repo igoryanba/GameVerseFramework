@@ -8,7 +8,7 @@ use gameverse_protocol::{
 };
 use gameverse_runtime::{replication::World, STEP_MS};
 use gameverse_transport::{
-    presence_v2::{read_realtime, send_frame},
+    presence_v2::{read_realtime_with_len, send_frame},
     quinn, read_control, write_control, HANDSHAKE_TIMEOUT,
 };
 use std::{
@@ -34,6 +34,9 @@ struct State {
     received_datagrams: u64,
     sent_datagrams: u64,
     dropped_datagrams: u64,
+    received_bytes: u64,
+    sent_bytes: u64,
+    max_tick_micros: u64,
 }
 struct Guard {
     state: Arc<Mutex<State>>,
@@ -157,7 +160,9 @@ async fn session(connecting: quinn::Connecting, state: Arc<Mutex<State>>) -> Res
                 ControlMessage::Disconnect { .. } => break,
                 _ => anyhow::bail!("unexpected control message after spawn"),
             },
-            realtime = read_realtime(&connection) => match realtime? {
+            realtime = read_realtime_with_len(&connection) => {
+                let (message, bytes) = realtime?;
+                match message {
                 RealtimeMessage::Player { frame } => {
                     let now = tokio::time::Instant::now();
                     if now.duration_since(realtime_window) >= Duration::from_secs(1) {
@@ -172,9 +177,10 @@ async fn session(connecting: quinn::Connecting, state: Arc<Mutex<State>>) -> Res
                     let mut state = state.lock().unwrap();
                     state.world.publish(session, frame)?;
                     state.received_datagrams += 1;
+                    state.received_bytes += bytes as u64;
                 }
                 _ => anyhow::bail!("client sent a server-only realtime message"),
-            },
+            }},
             _ = connection.closed() => break,
         }
     }
@@ -203,6 +209,7 @@ pub async fn run(
             },
             Some(result) = tasks.join_next(), if !tasks.is_empty() => { result?; },
             _ = ticker.tick() => {
+                let tick_started = std::time::Instant::now();
                 let mut state = state.lock().unwrap();
                 state.world.step();
                 let sessions: Vec<_> = state.peers.keys().copied().collect();
@@ -210,8 +217,12 @@ pub async fn run(
                     let frame = state.world.delta(session)?;
                     if frame.deltas.is_empty() { continue; }
                     let connection = state.peers[&session].connection.clone();
-                    if send_frame(&connection, &frame).is_ok() { state.sent_datagrams += 1; } else { state.dropped_datagrams += 1; }
+                    match send_frame(&connection, &frame) {
+                        Ok(bytes) => { state.sent_datagrams += 1; state.sent_bytes += bytes as u64; },
+                        Err(_) => state.dropped_datagrams += 1,
+                    }
                 }
+                state.max_tick_micros = state.max_tick_micros.max(tick_started.elapsed().as_micros() as u64);
             }
         }
     }
@@ -221,6 +232,6 @@ pub async fn run(
     endpoint.wait_idle().await;
     let state = state.lock().unwrap();
     Ok(
-        serde_json::json!({"event":"m2_shutdown","players":state.peers.len(),"accepted_sessions":state.accepted,"disconnects":state.disconnects,"received_datagrams":state.received_datagrams,"sent_datagrams":state.sent_datagrams,"dropped_datagrams":state.dropped_datagrams}),
+        serde_json::json!({"event":"m2_shutdown","players":state.peers.len(),"accepted_sessions":state.accepted,"disconnects":state.disconnects,"received_datagrams":state.received_datagrams,"sent_datagrams":state.sent_datagrams,"dropped_datagrams":state.dropped_datagrams,"received_bytes":state.received_bytes,"sent_bytes":state.sent_bytes,"max_tick_micros":state.max_tick_micros}),
     )
 }
