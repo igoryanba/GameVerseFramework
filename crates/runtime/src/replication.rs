@@ -323,7 +323,7 @@ mod tests {
             world.step();
             let delta = world.delta(sessions[0]).unwrap();
             assert!(delta.valid());
-            assert!(delta.deltas.len() <= p::MAX_PLAYERS - 1);
+            assert!(delta.deltas.len() < p::MAX_PLAYERS);
         }
     }
 }
