@@ -1,38 +1,45 @@
 //! Server-authoritative domain rules for the closed-alpha RP vertical slice.
 //! Persistence adapters hash credentials and execute the bundled PostgreSQL migration.
-use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub type AccountId = u64;
 pub type CharacterId = u64;
 pub type ItemId = u32;
 
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Error {
-    #[error("not found")]
     NotFound,
-    #[error("access denied")]
     Forbidden,
-    #[error("duplicate value")]
     Duplicate,
-    #[error("invalid value")]
     Invalid,
-    #[error("insufficient funds")]
     InsufficientFunds,
-    #[error("inventory capacity exceeded")]
     Capacity,
-    #[error("transaction conflict")]
     TransactionConflict,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+impl std::fmt::Display for Error {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::NotFound => "not found",
+            Self::Forbidden => "access denied",
+            Self::Duplicate => "duplicate value",
+            Self::Invalid => "invalid value",
+            Self::InsufficientFunds => "insufficient funds",
+            Self::Capacity => "capacity exceeded",
+            Self::TransactionConflict => "transaction conflict",
+        })
+    }
+}
+impl std::error::Error for Error {}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Role {
     Player,
     Moderator,
     Administrator,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct Account {
     pub id: AccountId,
     pub login: String,
@@ -42,7 +49,7 @@ pub struct Account {
     pub banned: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Character {
     pub id: CharacterId,
     pub account_id: AccountId,
@@ -55,7 +62,7 @@ pub struct Character {
     pub instance_id: u32,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LedgerEntry {
     pub transaction_id: u64,
     pub character_id: CharacterId,
@@ -65,13 +72,13 @@ pub struct LedgerEntry {
     pub idempotency_key: String,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Wallet {
     pub cash: i64,
     pub bank: i64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct ItemDefinition {
     pub id: ItemId,
     pub name: String,
@@ -79,13 +86,13 @@ pub struct ItemDefinition {
     pub usable: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct ShopItem {
     pub item_id: ItemId,
     pub price: i64,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Receipt {
     pub transaction_id: u64,
     pub cash: i64,
@@ -98,7 +105,7 @@ struct AppliedTransaction {
     fingerprint: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct AuditEvent {
     pub sequence: u64,
     pub actor: AccountId,
