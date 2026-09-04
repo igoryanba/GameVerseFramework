@@ -19,6 +19,8 @@ services:
       context: ../..
       dockerfile: deployment/alpha/Dockerfile
     restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://gameverse:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/gameverse
     ports:
       - "30122:30122/udp"
       - "127.0.0.1:30123:30123/tcp"

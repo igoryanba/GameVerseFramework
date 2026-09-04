@@ -37,7 +37,13 @@ jobs:
           test "$(docker compose -f deployment/alpha/compose.yaml exec -T postgres psql -U gameverse -d gameverse -tAc "SELECT count(*) FROM shop_items")" -ge 2
       - name: Capture deployment logs
         if: failure()
-        run: docker compose -f deployment/alpha/compose.yaml logs --no-color > alpha-deployment.log
+        run: |
+          docker compose -f deployment/alpha/compose.yaml logs --no-color > alpha-deployment.log
+          diagnostics="$(tail -n 80 alpha-deployment.log)"
+          diagnostics="${diagnostics//'%'/'%25'}"
+          diagnostics="${diagnostics//$'\r'/'%0D'}"
+          diagnostics="${diagnostics//$'\n'/'%0A'}"
+          echo "::error title=Closed alpha deployment diagnostics::$diagnostics"
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

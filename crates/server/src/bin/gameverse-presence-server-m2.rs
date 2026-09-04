@@ -26,6 +26,13 @@ async fn main() -> Result<()> {
     if args.init_identity {
         return generate_identity(&args.cert, &args.key);
     }
+    let store = if let Some(database_url) = args.database_url.as_deref() {
+        let store = gameverse_rp::persistence::PostgresStore::connect(database_url, 16).await?;
+        store.migrate().await?;
+        Some(store)
+    } else {
+        None
+    };
     let endpoint = server_endpoint(args.bind, &args.cert, &args.key)?;
     println!(
         "{}",
@@ -46,9 +53,7 @@ async fn main() -> Result<()> {
         }
         let _ = tx.send(true);
     });
-    let report = if let Some(database_url) = args.database_url {
-        let store = gameverse_rp::persistence::PostgresStore::connect(&database_url, 16).await?;
-        store.migrate().await?;
+    let report = if let Some(store) = store {
         gameverse_server::presence_m2::run_alpha_with_metrics(endpoint, store, rx, metrics).await?
     } else {
         gameverse_server::presence_m2::run(endpoint, rx).await?
