@@ -692,6 +692,9 @@ dependencies = [
  "gameverse-runtime",
  "gameverse-transport",
  "serde_json",
+ "sha2",
+ "sqlx",
+ "subtle",
  "tempfile",
  "tokio",
 ]

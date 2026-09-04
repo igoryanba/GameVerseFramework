@@ -1,4 +1,5 @@
 //! Dedicated M0 server. All game state is owned here, never by clients.
+pub mod admin;
 pub mod health;
 pub mod presence;
 pub mod presence_m2;

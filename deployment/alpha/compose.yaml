@@ -21,9 +21,13 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://gameverse:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/gameverse
+      GAMEVERSE_ADMIN_BIND: ${GAMEVERSE_ADMIN_BIND:-}
+      GAMEVERSE_ADMIN_TOKEN: ${GAMEVERSE_ADMIN_TOKEN:-}
+      GAMEVERSE_ADMIN_ACTOR_ID: ${GAMEVERSE_ADMIN_ACTOR_ID:-}
     ports:
       - "30122:30122/udp"
       - "127.0.0.1:30123:30123/tcp"
+      - "127.0.0.1:30124:30124/tcp"
     volumes:
       - server-identity:/var/lib/gameverse/identity
     depends_on:

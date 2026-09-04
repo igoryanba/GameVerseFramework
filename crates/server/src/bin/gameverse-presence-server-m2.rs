@@ -19,6 +19,12 @@ struct Args {
     database_url: Option<String>,
     #[arg(long, default_value = "127.0.0.1:30123")]
     http_bind: SocketAddr,
+    #[arg(long, env = "GAMEVERSE_ADMIN_BIND")]
+    admin_bind: Option<String>,
+    #[arg(long, env = "GAMEVERSE_ADMIN_TOKEN", hide_env_values = true)]
+    admin_token: Option<String>,
+    #[arg(long, env = "GAMEVERSE_ADMIN_ACTOR_ID")]
+    admin_actor_id: Option<String>,
 }
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -45,6 +51,37 @@ async fn main() -> Result<()> {
         metrics.clone(),
         rx.clone(),
     ));
+    let admin_bind = args
+        .admin_bind
+        .as_deref()
+        .filter(|value| !value.is_empty())
+        .map(str::parse)
+        .transpose()?;
+    let admin_token = args
+        .admin_token
+        .as_deref()
+        .filter(|value| !value.is_empty());
+    let admin_actor_id = args
+        .admin_actor_id
+        .as_deref()
+        .filter(|value| !value.is_empty())
+        .map(str::parse)
+        .transpose()?;
+    let admin = match (admin_bind, admin_token, admin_actor_id, store.as_ref()) {
+        (Some(address), Some(token), Some(actor), Some(store)) => {
+            let config = gameverse_server::admin::AdminConfig::new(address, token, actor)?;
+            Some(tokio::spawn(gameverse_server::admin::serve(
+                config,
+                store.pool().clone(),
+                metrics.clone(),
+                rx.clone(),
+            )))
+        }
+        (None, None, None, _) => None,
+        _ => anyhow::bail!(
+            "admin API requires database, bind address, token and actor account ID together"
+        ),
+    };
     tokio::spawn(async move {
         if let Some(seconds) = args.duration {
             tokio::select! { _=tokio::signal::ctrl_c()=>{}, _=tokio::time::sleep(Duration::from_secs(seconds))=>{} }
@@ -59,6 +96,9 @@ async fn main() -> Result<()> {
         gameverse_server::presence_m2::run(endpoint, rx).await?
     };
     health.abort();
+    if let Some(admin) = admin {
+        admin.abort();
+    }
     println!("{}", report);
     Ok(())
 }

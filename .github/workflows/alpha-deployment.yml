@@ -22,6 +22,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       POSTGRES_PASSWORD: gameverse-deployment-ci
+      GAMEVERSE_ADMIN_BIND: 0.0.0.0:30124
+      GAMEVERSE_ADMIN_TOKEN: gameverse-ci-admin-token-32-characters
+      GAMEVERSE_ADMIN_ACTOR_ID: '1'
     steps:
       - uses: actions/checkout@v4
       - name: Validate Compose configuration
@@ -37,6 +40,26 @@ jobs:
           curl --fail http://127.0.0.1:30123/v1/metrics | grep gameverse_players
           test "$(docker compose -f deployment/alpha/compose.yaml exec -T postgres psql -U gameverse -d gameverse -tAc "SELECT count(*) FROM _sqlx_migrations WHERE success")" -eq 2
           test "$(docker compose -f deployment/alpha/compose.yaml exec -T postgres psql -U gameverse -d gameverse -tAc "SELECT count(*) FROM shop_items")" -ge 2
+      - name: Verify protected admin API and audit
+        run: |
+          docker compose -f deployment/alpha/compose.yaml exec -T postgres psql -U gameverse -d gameverse -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO accounts(login,password_hash,role) VALUES
+            ('ci-admin','$argon2id$ci','administrator'),
+            ('ci-player','$argon2id$ci','player');
+          SQL
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:30124/v1/admin/sessions)" -eq 401
+          curl --fail -H "Authorization: Bearer $GAMEVERSE_ADMIN_TOKEN" http://127.0.0.1:30124/v1/admin/sessions
+          curl --fail -X POST -H "Authorization: Bearer $GAMEVERSE_ADMIN_TOKEN" -H 'Content-Type: application/json' --data '{"reason":"CI moderation acceptance"}' http://127.0.0.1:30124/v1/admin/accounts/2/ban
+          test "$(docker compose -f deployment/alpha/compose.yaml exec -T postgres psql -U gameverse -d gameverse -tAc "SELECT count(*) FROM bans WHERE account_id=2 AND revoked_at IS NULL")" -eq 1
+          test "$(docker compose -f deployment/alpha/compose.yaml exec -T postgres psql -U gameverse -d gameverse -tAc "SELECT count(*) FROM audit_events WHERE action='ban' AND target_id='2'")" -eq 1
+      - name: Verify PostgreSQL backup and restoration
+        run: |
+          mkdir -p deployment/alpha/backups
+          deployment/alpha/backup.sh deployment/alpha/backups/ci.dump
+          deployment/alpha/restore.sh deployment/alpha/backups/ci.dump gameverse_restore_ci
+          primary=$(docker compose -f deployment/alpha/compose.yaml exec -T postgres psql -U gameverse -d gameverse -tAc "SELECT count(*) FROM shop_items")
+          restored=$(docker compose -f deployment/alpha/compose.yaml exec -T postgres psql -U gameverse -d gameverse_restore_ci -tAc "SELECT count(*) FROM shop_items")
+          test "$primary" -eq "$restored"
       - name: Capture deployment logs
         if: failure()
         run: |
