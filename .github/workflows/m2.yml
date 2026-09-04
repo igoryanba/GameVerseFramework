@@ -21,7 +21,12 @@ jobs:
           cargo fmt -p gameverse-protocol -p gameverse-runtime -p gameverse-transport -p gameverse-compat-fivem -- --check
           cargo fmt --manifest-path tools/fivem-analyzer/Cargo.toml -- --check
       - name: Lint independent runtime
-        run: cargo clippy --locked -p gameverse-protocol -p gameverse-runtime -p gameverse-transport -p gameverse-compat-fivem --all-targets -- -D warnings
+        shell: pwsh
+        run: |
+          $output = cargo clippy --locked -p gameverse-protocol -p gameverse-runtime -p gameverse-transport -p gameverse-compat-fivem --all-targets -- -D warnings 2>&1 | Out-String
+          $output
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "``````text`n$output`n``````"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Test static resource analyzer
         run: cargo test --manifest-path tools/fivem-analyzer/Cargo.toml
       - name: Compile adapter and run protocol tests
