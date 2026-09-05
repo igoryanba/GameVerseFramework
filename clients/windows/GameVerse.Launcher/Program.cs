@@ -262,9 +262,31 @@ internal static class Launcher
         bool updateSecurity = UpdateSecuritySelfTest();
         bool atomicUpdate = AtomicUpdateSelfTest();
         bool terminalUi = TerminalLauncherForm.SelfTest();
-        passed = passed && updateSecurity && atomicUpdate && terminalUi;
-        Console.WriteLine(JsonSerializer.Serialize(new { status = passed ? "passed" : "failed", readiness_event = child.ExitCode == 0, child_cleaned_up = child.HasExited, update_signature = updateSecurity, atomic_update_rollback = atomicUpdate, terminal_ui = terminalUi }));
+        bool bootstrapGate = BootstrapCompatibilitySelfTest();
+        passed = passed && updateSecurity && atomicUpdate && terminalUi && bootstrapGate;
+        Console.WriteLine(JsonSerializer.Serialize(new { status = passed ? "passed" : "failed", readiness_event = child.ExitCode == 0, child_cleaned_up = child.HasExited, update_signature = updateSecurity, atomic_update_rollback = atomicUpdate, terminal_ui = terminalUi, bootstrap_gate = bootstrapGate }));
         return passed ? 0 : 1;
+    }
+
+    private static bool BootstrapCompatibilitySelfTest()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "gameverse-bootstrap-gate-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string manifest = Path.Combine(directory, "compatibility.json");
+        string signature = Path.Combine(directory, "compatibility.sig");
+        File.WriteAllBytes(signature, new byte[] { 1 });
+        try
+        {
+            LauncherConfig production = new("game", "bridge", @"\\.\pipe\ui", @"\\.\pipe\adapter", @"\\.\pipe\bootstrap",
+                "127.0.0.1:30122", null, "cert", new string('0', 64), "alpha", "info", false, false, false, null, null, null, null);
+            File.WriteAllText(manifest, "{\"mode\":\"telemetry_only\",\"signatures\":[]}");
+            if (CheckBootstrapCompatibility(production, manifest, signature).Passed) return false;
+            LauncherConfig telemetry = production with { DeveloperTelemetryStory = true };
+            if (!CheckBootstrapCompatibility(telemetry, manifest, signature).Passed) return false;
+            File.WriteAllText(manifest, "{\"mode\":\"world_loader\",\"signatures\":[{\"name\":\"world_request\"}]}");
+            return CheckBootstrapCompatibility(production, manifest, signature).Passed;
+        }
+        finally { Directory.Delete(directory, true); }
     }
 
     private static int VerifyUpdate(string[] args)
