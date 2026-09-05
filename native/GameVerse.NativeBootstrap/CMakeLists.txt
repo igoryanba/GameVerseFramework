@@ -65,6 +65,8 @@ target_link_libraries(gameverse-native-inspector PRIVATE gameverse_bootstrap_cor
 target_compile_definitions(gameverse-native-inspector PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
 add_test(NAME native_inspector_self_scan COMMAND gameverse-native-inspector
   --image $<TARGET_FILE:gameverse-native-inspector> --string schema_version)
+add_test(NAME native_inspector_reference_scan COMMAND gameverse-native-inspector
+  --image $<TARGET_FILE:gameverse-native-inspector> --reference-page-rva 0)
 
 foreach(target gameverse_bootstrap_core GameVerse.NativeBootstrap gameverse_native_bootstrap_tests gameverse-native-inspector)
   if(MSVC)
