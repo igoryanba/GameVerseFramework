@@ -149,8 +149,11 @@ internal sealed class TerminalLauncherForm : Form
         if (InvokeRequired) { BeginInvoke(RestoreWindow); return; }
         Show();
         WindowState = FormWindowState.Normal;
+        TopMost = true;
+        BringToFront();
         Activate();
         input.Focus();
+        BeginInvoke(() => TopMost = false);
     }
 
     private async Task InitializeAsync()

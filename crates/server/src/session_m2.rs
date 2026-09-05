@@ -117,8 +117,9 @@ impl SessionMachine {
 
     pub fn timeout(&self) -> Duration {
         match self.phase {
-            Phase::Connected | Phase::Negotiated => Duration::from_secs(15),
-            Phase::Authenticated | Phase::CharacterSelected => Duration::from_secs(60),
+            Phase::Connected => Duration::from_secs(15),
+            Phase::Negotiated | Phase::Authenticated => Duration::from_secs(10 * 60),
+            Phase::CharacterSelected => Duration::from_secs(2 * 60),
             Phase::SpawnPending => Duration::from_secs(30),
             Phase::Active => Duration::from_secs(120),
             Phase::Closing => Duration::from_secs(5),
@@ -175,5 +176,15 @@ mod tests {
             Err(TransitionError::InvalidState)
         );
         assert_eq!(session.negotiated(15_001), Err(TransitionError::TimedOut));
+    }
+
+    #[test]
+    fn allows_interactive_authentication_and_character_selection() {
+        let mut session = SessionMachine::new(0);
+        session.negotiated(1).unwrap();
+        session.authenticated(7, 599_999).unwrap();
+        session.select_character(9, 7, 1_199_998).unwrap();
+        assert_eq!(session.phase(), Phase::CharacterSelected);
+        assert_eq!(session.timeout(), Duration::from_secs(2 * 60));
     }
 }
