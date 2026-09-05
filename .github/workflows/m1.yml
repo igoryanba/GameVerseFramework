@@ -27,4 +27,8 @@ jobs:
         if: always()
         with:
           name: m1-synthetic-evidence
-          path: .m1/ci-report/
+          path: |
+            .m1/ci-report/
+            target/debug/gameverse-presence-server.exe
+            target/debug/gameverse-gta-bridge.exe
+            target/debug/gameverse-presence-bot.exe

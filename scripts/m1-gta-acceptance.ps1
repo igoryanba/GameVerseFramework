@@ -52,7 +52,10 @@ New-Item -ItemType Directory -Path $identity -Force | Out-Null
 $cert = Join-Path $identity 'cert.der'
 $key = Join-Path $identity 'key.der'
 $address = '127.0.0.1:' + $Port
-$adapterLog = Join-Path $GamePath 'GameVerse.GtaAdapter.log'
+$adapterLogs = @(
+    (Join-Path $GamePath 'scripts/GameVerse.GtaAdapter.log'),
+    (Join-Path $GamePath 'GameVerse.GtaAdapter.log')
+)
 $startedUtc = [DateTime]::UtcNow
 $children = [Collections.Generic.List[Diagnostics.Process]]::new()
 $game = $null
@@ -69,10 +72,11 @@ function Start-LoggedProcess([string]$Name, [string]$FilePath, [string[]]$Argume
 }
 
 function Read-NewAdapterLog {
-    if (-not (Test-Path -LiteralPath $adapterLog)) { return @() }
-    return @(Get-Content -LiteralPath $adapterLog | Where-Object {
-        if ($_ -notmatch '^(?<stamp>\S+) ') { return $false }
-        try { [DateTime]::Parse($Matches.stamp).ToUniversalTime() -ge $startedUtc } catch { $false }
+    return @($adapterLogs | Where-Object { Test-Path -LiteralPath $_ } | ForEach-Object {
+        Get-Content -LiteralPath $_ | Where-Object {
+            if ($_ -notmatch '^(?<stamp>\S+) ') { return $false }
+            try { [DateTime]::Parse($Matches.stamp).ToUniversalTime() -ge $startedUtc } catch { $false }
+        }
     })
 }
 
@@ -118,16 +122,21 @@ finally {
     if ($newLog.Count -gt 0) { $newLog | Set-Content -LiteralPath (Join-Path $Output 'adapter.log') -Encoding utf8 }
     foreach ($process in $children) {
         $process.Refresh()
-        if (-not $process.HasExited) { Stop-Process -Id $process.Id }
+        if (-not $process.HasExited) { Stop-Process -Id $process.Id -ErrorAction SilentlyContinue }
         $process.WaitForExit()
     }
     if ($game) {
         $game.Refresh()
-        if (-not $LeaveGameRunning -and -not $game.HasExited) { Stop-Process -Id $game.Id; $game.WaitForExit() }
+        if (-not $LeaveGameRunning -and -not $game.HasExited) {
+            Stop-Process -Id $game.Id -ErrorAction SilentlyContinue
+            try { $game.WaitForExit() } catch [System.InvalidOperationException] { }
+        }
     }
     if ($launcherProcess) {
         $launcherProcess.Refresh()
-        if (-not $LeaveGameRunning -and -not $launcherProcess.HasExited) { Stop-Process -Id $launcherProcess.Id }
+        if (-not $LeaveGameRunning -and -not $launcherProcess.HasExited) {
+            Stop-Process -Id $launcherProcess.Id -ErrorAction SilentlyContinue
+        }
     }
 }
 
