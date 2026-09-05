@@ -382,7 +382,7 @@ where
     bootstrap_gate_inner(bootstrap_stream, &mut ui_tx, automatic_world).await
 }
 
-#[cfg(any(windows, test))]
+#[cfg(windows)]
 async fn bootstrap_gate_after_handshake<B, U>(
     bootstrap_stream: &mut B,
     ui_stream: &mut U,
