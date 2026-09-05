@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -56,6 +57,7 @@ struct SignatureSpec {
   std::vector<PatternByte> pattern;
   std::vector<std::uint8_t> prologue;
   std::string entry_sha256;
+  std::optional<std::uint32_t> rva;
 };
 
 struct CompatibilityManifest {

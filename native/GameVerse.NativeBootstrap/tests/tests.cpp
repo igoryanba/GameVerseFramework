@@ -70,6 +70,20 @@ int main() {
     Require(with_signature.signatures.size() == 1 &&
                 with_signature.signatures[0].prologue.size() == 2,
             "signature manifest parse failed");
+    const auto with_hash_signature = gameverse::ParseManifest(
+        R"({"schema_version":1,"edition":"enhanced","build":"1.0.1158.13","pe_size":56064632,"pe_sha256":"0C52864D4521D9C9D441348AA1156958792DDE8825D0297C851753F167336401","mode":"observe_only","signatures":[{"name":"caller","section":".text","rva":4096,"entry_sha256":"1111111111111111111111111111111111111111111111111111111111111111"}]})");
+    Require(with_hash_signature.signatures.size() == 1 &&
+                with_hash_signature.signatures[0].pattern.empty() &&
+                with_hash_signature.signatures[0].rva == std::uint32_t{4096},
+            "hash-only signature manifest parse failed");
+    bool incomplete_hash_signature = false;
+    try {
+      static_cast<void>(gameverse::ParseManifest(
+          R"({"schema_version":1,"edition":"enhanced","build":"1.0.1158.13","pe_size":56064632,"pe_sha256":"0C52864D4521D9C9D441348AA1156958792DDE8825D0297C851753F167336401","mode":"observe_only","signatures":[{"name":"caller","section":".text","rva":4096}]})"));
+    } catch (const std::invalid_argument&) {
+      incomplete_hash_signature = true;
+    }
+    Require(incomplete_hash_signature, "hash-only signature without digest accepted");
     bool unsafe_prologue = false;
     try {
       static_cast<void>(gameverse::ParseManifest(
@@ -104,12 +118,13 @@ int main() {
     const auto candidate_manifest = gameverse::ParseManifest(
         std::string(candidate_manifest_bytes.begin(), candidate_manifest_bytes.end()));
     Require(candidate_manifest.mode == "observe_only" &&
-                candidate_manifest.signatures.size() == 1 &&
+                candidate_manifest.signatures.size() == 2 &&
                 candidate_manifest.signatures[0].entry_sha256.size() == 64,
             "research candidate manifest was not parsed");
     const auto candidates = gameverse::InspectImageCandidates(
         GetModuleHandleW(nullptr), candidate_manifest);
-    Require(candidates.size() == 1, "research candidates were not inspected");
+    Require(candidates.size() == candidate_manifest.signatures.size(),
+            "research candidates were not inspected");
     const auto candidates_json = gameverse::SerializeTelemetryCandidates(candidates);
     Require(candidates_json.find("telemetry_candidates_v1") != std::string::npos,
             "candidate telemetry serialization failed");

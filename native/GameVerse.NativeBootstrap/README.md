@@ -84,6 +84,10 @@ call sites in the loaded executable and reports only owning-function RVAs,
 call-site counts and entry hashes. This read-only caller inventory narrows the
 one-shot transition initiator without exposing process addresses or code bytes
 and without installing additional hooks.
+Stable caller entries can then be attested by a signed RVA plus the SHA-256 of
+their first 32 bytes. The probe verifies that the bytes occur exactly once in
+the loaded executable section before an observe-only hook is allowed; this
+supports unpacked runtime code without writing those bytes to a report.
 
 `world_loader` mode is rejected until independently verified patterns for this
 exact executable are recorded, signed, uniquely matched, checked against the PE

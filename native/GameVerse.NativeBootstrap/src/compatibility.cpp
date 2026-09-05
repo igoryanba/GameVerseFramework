@@ -46,6 +46,14 @@ std::uint64_t IntegerField(std::string_view json, std::string_view name) {
   return result;
 }
 
+std::optional<std::uint64_t> OptionalIntegerField(std::string_view json,
+                                                  std::string_view name) {
+  const std::string key = "\"" + std::string(name) + "\"";
+  return json.find(key) == std::string_view::npos
+             ? std::nullopt
+             : std::optional<std::uint64_t>(IntegerField(json, name));
+}
+
 bool ConstantTimeEqual(std::string_view left, std::string_view right) noexcept {
   if (left.size() != right.size()) return false;
   unsigned difference = 0;
@@ -84,15 +92,26 @@ CompatibilityManifest ParseManifest(std::string_view json) {
     SignatureSpec spec;
     spec.name = StringField(object, "name");
     spec.section = StringField(object, "section");
-    spec.pattern = ParsePattern(StringField(object, "pattern"));
-    const auto prologue = ParsePattern(StringField(object, "prologue"));
-    if (prologue.size() > spec.pattern.size() ||
-        std::any_of(prologue.begin(), prologue.end(),
-                    [](const PatternByte& value) { return value.wildcard; }))
-      throw std::invalid_argument("invalid signature prologue");
-    for (const auto value : prologue) spec.prologue.push_back(value.value);
+    const auto pattern_text = OptionalStringField(object, "pattern");
+    const auto prologue_text = OptionalStringField(object, "prologue");
+    if (!pattern_text.empty()) {
+      spec.pattern = ParsePattern(pattern_text);
+      const auto prologue = ParsePattern(prologue_text);
+      if (prologue.size() > spec.pattern.size() ||
+          std::any_of(prologue.begin(), prologue.end(),
+                      [](const PatternByte& value) { return value.wildcard; }))
+        throw std::invalid_argument("invalid signature prologue");
+      for (const auto value : prologue) spec.prologue.push_back(value.value);
+    }
     spec.entry_sha256 = OptionalStringField(object, "entry_sha256");
+    const auto rva = OptionalIntegerField(object, "rva");
+    if (rva) {
+      if (*rva > 0xffff'ffffULL) throw std::invalid_argument("invalid signature rva");
+      spec.rva = static_cast<std::uint32_t>(*rva);
+    }
     if (spec.name.empty() || spec.name.size() > 64 || spec.section != ".text" ||
+        (spec.pattern.empty() != spec.rva.has_value()) ||
+        (spec.rva.has_value() && spec.entry_sha256.empty()) ||
         (!spec.entry_sha256.empty() &&
          (spec.entry_sha256.size() != 64 ||
           !std::all_of(spec.entry_sha256.begin(), spec.entry_sha256.end(),

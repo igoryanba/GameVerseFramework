@@ -39,6 +39,41 @@ bool VerifyImageSignatures(void* image, const CompatibilityManifest& manifest,
   }
   const auto first = IMAGE_FIRST_SECTION(nt);
   for (const auto& spec : manifest.signatures) {
+    if (spec.rva) {
+      const IMAGE_SECTION_HEADER* selected = nullptr;
+      for (unsigned index = 0; index < nt->FileHeader.NumberOfSections; ++index) {
+        const auto& section = first[index];
+        const auto begin = section.VirtualAddress;
+        const auto end = static_cast<std::uint64_t>(begin) + section.Misc.VirtualSize;
+        if (spec.section == SectionName(section) && *spec.rva >= begin &&
+            static_cast<std::uint64_t>(*spec.rva) + 32 <= end)
+          selected = &section;
+      }
+      if (!selected || (selected->Characteristics & IMAGE_SCN_MEM_EXECUTE) == 0) {
+        error = "signature_rva_not_executable";
+        return false;
+      }
+      const auto candidate = base + *spec.rva;
+      if (Sha256Bytes(std::span(candidate, std::size_t{32})) !=
+          spec.entry_sha256) {
+        error = "signature_entry_hash_mismatch";
+        return false;
+      }
+      std::uint32_t matches = 0;
+      const auto section_bytes = base + selected->VirtualAddress;
+      const auto section_size = static_cast<std::size_t>(selected->Misc.VirtualSize);
+      if (section_size < 32) {
+        error = "signature_section_too_small";
+        return false;
+      }
+      for (std::size_t offset = 0; offset <= section_size - 32; ++offset)
+        if (std::memcmp(section_bytes + offset, candidate, 32) == 0) ++matches;
+      if (matches != 1) {
+        error = "signature_hash_not_unique";
+        return false;
+      }
+      continue;
+    }
     std::vector<std::size_t> matches;
     const IMAGE_SECTION_HEADER* matched_section = nullptr;
     for (unsigned index = 0; index < nt->FileHeader.NumberOfSections; ++index) {
@@ -82,6 +117,35 @@ std::vector<TelemetryCandidate> InspectImageCandidates(
   const auto first = IMAGE_FIRST_SECTION(nt);
   for (const auto& spec : manifest.signatures) {
     TelemetryCandidate candidate{spec.name, 0, spec.section, 0, 0, {}};
+    if (spec.rva) {
+      const IMAGE_SECTION_HEADER* selected = nullptr;
+      for (unsigned index = 0; index < nt->FileHeader.NumberOfSections; ++index) {
+        const auto& section = first[index];
+        const auto begin = section.VirtualAddress;
+        const auto end = static_cast<std::uint64_t>(begin) + section.Misc.VirtualSize;
+        if (spec.section == SectionName(section) && *spec.rva >= begin &&
+            static_cast<std::uint64_t>(*spec.rva) + 32 <= end &&
+            (section.Characteristics & IMAGE_SCN_MEM_EXECUTE) != 0)
+          selected = &section;
+      }
+      if (selected) {
+        const auto entry = base + *spec.rva;
+        const auto section_bytes = base + selected->VirtualAddress;
+        const auto section_size = static_cast<std::size_t>(selected->Misc.VirtualSize);
+        if (section_size < 32) {
+          result.push_back(std::move(candidate));
+          continue;
+        }
+        for (std::size_t offset = 0; offset <= section_size - 32; ++offset)
+          if (std::memcmp(section_bytes + offset, entry, 32) == 0)
+            ++candidate.unique_match_count;
+        candidate.rva = *spec.rva;
+        candidate.entry_sha256 =
+            Sha256Bytes(std::span(entry, std::size_t{32}));
+      }
+      result.push_back(std::move(candidate));
+      continue;
+    }
     std::uint32_t matched_rva = 0;
     for (unsigned index = 0; index < nt->FileHeader.NumberOfSections; ++index) {
       const auto& section = first[index];
