@@ -85,12 +85,39 @@ std::string Failure(std::string_view code, std::string_view message) {
 
 }  // namespace
 
+void AppendStartupDiagnostic(std::string_view event) noexcept {
+  try {
+    std::wstring local_app_data(32768, L'\0');
+    const auto length = GetEnvironmentVariableW(
+        L"LOCALAPPDATA", local_app_data.data(),
+        static_cast<DWORD>(local_app_data.size()));
+    if (length == 0 || length >= local_app_data.size()) return;
+    local_app_data.resize(length);
+    const auto directory = std::filesystem::path(local_app_data) / L"GameVerse" /
+                           L"telemetry";
+    std::filesystem::create_directories(directory);
+    const auto path = directory / L"bootstrap-startup.log";
+    std::error_code error;
+    if (std::filesystem::exists(path, error) &&
+        std::filesystem::file_size(path, error) > 64 * 1024)
+      std::filesystem::resize_file(path, 0, error);
+    std::ofstream output(path, std::ios::binary | std::ios::app);
+    output << MonotonicMilliseconds() << ' ' << event << '\n';
+  } catch (...) {
+  }
+}
+
 void RunBootstrap(void* module) noexcept {
   PipeClient pipe;
   StateMachine state;
   bool minhook_initialized = false;
   try {
-    if (!pipe.Connect(kBootstrapPipe, 60'000)) return;
+    AppendStartupDiagnostic("bootstrap_entered");
+    if (!pipe.Connect(kBootstrapPipe, 60'000)) {
+      AppendStartupDiagnostic("pipe_unavailable");
+      return;
+    }
+    AppendStartupDiagnostic("pipe_connected");
     pipe.Send(Stage(state.state()));
     if (UnsafeRuntimeDetected()) {
       state.Fail();
@@ -215,9 +242,11 @@ void RunBootstrap(void* module) noexcept {
     minhook_initialized = true;
     throw std::runtime_error("world_loader_not_implemented");
   } catch (const std::exception& error) {
+    AppendStartupDiagnostic(error.what());
     state.Fail();
     pipe.Send(Failure(error.what(), "Native bootstrap stopped safely"));
   } catch (...) {
+    AppendStartupDiagnostic("bootstrap_internal_error");
     state.Fail();
     pipe.Send(Failure("bootstrap_internal_error", "Native bootstrap stopped safely"));
   }

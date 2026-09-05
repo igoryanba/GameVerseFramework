@@ -4,7 +4,9 @@
 
 namespace {
 DWORD WINAPI BootstrapThread(void* module) {
+  gameverse::AppendStartupDiagnostic("thread_started");
   gameverse::RunBootstrap(module);
+  gameverse::AppendStartupDiagnostic("thread_finished");
   FreeLibraryAndExitThread(static_cast<HMODULE>(module), 0);
 }
 }  // namespace

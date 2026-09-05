@@ -169,5 +169,6 @@ class PipeClient {
 std::string JsonEscape(std::string_view value);
 std::uint64_t MonotonicMilliseconds() noexcept;
 void RunBootstrap(void* module) noexcept;
+void AppendStartupDiagnostic(std::string_view event) noexcept;
 
 }  // namespace gameverse
