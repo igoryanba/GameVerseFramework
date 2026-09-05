@@ -61,10 +61,38 @@ CompatibilityManifest ParseManifest(std::string_view json) {
       manifest.pe_sha256.size() != 64 ||
       (manifest.mode != "telemetry_only" && manifest.mode != "world_loader"))
     throw std::invalid_argument("unsupported compatibility manifest");
-  // Signatures intentionally remain empty until independently verified patterns for
-  // this exact executable fingerprint are recorded. An empty list can only run telemetry.
-  if (manifest.mode == "world_loader")
-    throw std::invalid_argument("world loader signature parser is not enabled");
+  const auto signatures_key = json.find("\"signatures\"");
+  if (signatures_key == std::string_view::npos) throw std::invalid_argument("missing signatures");
+  const auto array_begin = json.find('[', signatures_key);
+  const auto array_end = json.find(']', array_begin);
+  if (array_begin == std::string_view::npos || array_end == std::string_view::npos)
+    throw std::invalid_argument("invalid signatures array");
+  auto cursor = array_begin + 1;
+  while ((cursor = json.find('{', cursor)) != std::string_view::npos && cursor < array_end) {
+    const auto object_end = json.find('}', cursor);
+    if (object_end == std::string_view::npos || object_end > array_end)
+      throw std::invalid_argument("invalid signature object");
+    const auto object = json.substr(cursor, object_end - cursor + 1);
+    SignatureSpec spec;
+    spec.name = StringField(object, "name");
+    spec.section = StringField(object, "section");
+    spec.pattern = ParsePattern(StringField(object, "pattern"));
+    const auto prologue = ParsePattern(StringField(object, "prologue"));
+    if (prologue.size() > spec.pattern.size() ||
+        std::any_of(prologue.begin(), prologue.end(),
+                    [](const PatternByte& value) { return value.wildcard; }))
+      throw std::invalid_argument("invalid signature prologue");
+    for (const auto value : prologue) spec.prologue.push_back(value.value);
+    if (spec.name.empty() || spec.name.size() > 64 || spec.section != ".text" ||
+        std::any_of(manifest.signatures.begin(), manifest.signatures.end(),
+                    [&](const SignatureSpec& existing) { return existing.name == spec.name; }))
+      throw std::invalid_argument("invalid signature identity");
+    manifest.signatures.push_back(std::move(spec));
+    cursor = object_end + 1;
+  }
+  if (manifest.signatures.size() > 16 ||
+      (manifest.mode == "world_loader" && manifest.signatures.empty()))
+    throw std::invalid_argument("world loader requires verified signatures");
   return manifest;
 }
 

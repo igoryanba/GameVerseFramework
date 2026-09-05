@@ -102,6 +102,8 @@ void RunBootstrap(void* module) noexcept {
     std::string validation_error;
     const auto executable = ProcessPath();
     if (!ValidateExecutable(executable, manifest, validation_error)) throw std::runtime_error(validation_error);
+    if (!VerifyImageSignatures(GetModuleHandleW(nullptr), manifest, validation_error))
+      throw std::runtime_error(validation_error);
     if (!state.Advance(BootstrapState::verified)) throw std::runtime_error("invalid_bootstrap_state");
     pipe.Send("{\"type\":\"bootstrap_hello\",\"schema_version\":1,\"bootstrap_build\":\"0.1.0\",\"gta_edition\":\"enhanced\",\"gta_build\":\"" +
               JsonEscape(manifest.build) + "\",\"fingerprint\":\"" + JsonEscape(manifest.pe_sha256) + "\",\"capabilities\":[\"telemetry\"]}");

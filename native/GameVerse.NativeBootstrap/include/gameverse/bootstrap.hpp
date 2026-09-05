@@ -74,6 +74,8 @@ std::string FileVersion(const std::filesystem::path& path);
 bool ValidateExecutable(const std::filesystem::path& path,
                         const CompatibilityManifest& manifest,
                         std::string& error);
+bool VerifyImageSignatures(void* image, const CompatibilityManifest& manifest,
+                           std::string& error);
 
 class PipeClient {
  public:

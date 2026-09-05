@@ -35,6 +35,19 @@ int main() {
     const auto manifest = gameverse::ParseManifest(
         R"({"schema_version":1,"edition":"enhanced","build":"1.0.1158.13","pe_size":56064632,"pe_sha256":"0C52864D4521D9C9D441348AA1156958792DDE8825D0297C851753F167336401","mode":"telemetry_only","signatures":[]})");
     Require(manifest.schema_version == 1 && manifest.signatures.empty(), "manifest parse failed");
+    const auto with_signature = gameverse::ParseManifest(
+        R"({"schema_version":1,"edition":"enhanced","build":"1.0.1158.13","pe_size":56064632,"pe_sha256":"0C52864D4521D9C9D441348AA1156958792DDE8825D0297C851753F167336401","mode":"world_loader","signatures":[{"name":"world_request","section":".text","pattern":"48 8B ?? 90","prologue":"48 8B"}]})");
+    Require(with_signature.signatures.size() == 1 &&
+                with_signature.signatures[0].prologue.size() == 2,
+            "signature manifest parse failed");
+    bool unsafe_prologue = false;
+    try {
+      static_cast<void>(gameverse::ParseManifest(
+          R"({"schema_version":1,"edition":"enhanced","build":"1.0.1158.13","pe_size":56064632,"pe_sha256":"0C52864D4521D9C9D441348AA1156958792DDE8825D0297C851753F167336401","mode":"world_loader","signatures":[{"name":"world_request","section":".text","pattern":"48 8B ?? 90","prologue":"48 ??"}]})"));
+    } catch (const std::invalid_argument&) {
+      unsafe_prologue = true;
+    }
+    Require(unsafe_prologue, "wildcard prologue accepted");
     const auto read = [](const wchar_t* path) {
       std::ifstream input(std::filesystem::path(path), std::ios::binary);
       return std::vector<std::uint8_t>(std::istreambuf_iterator<char>(input), {});

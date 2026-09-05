@@ -21,6 +21,7 @@ FetchContent_MakeAvailable(minhook)
 add_library(gameverse_bootstrap_core STATIC
   src/compatibility.cpp
   src/fingerprint.cpp
+  src/pe_image.cpp
   src/signature_scanner.cpp
   src/state_machine.cpp
 )
