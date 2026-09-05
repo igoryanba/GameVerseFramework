@@ -359,12 +359,18 @@ int wmain(int argc, wchar_t** argv) {
         hook_safe_function_entry = false;
         pattern = BuildPattern(image, signature_rva, length);
       }
+      auto first_wildcard = std::find_if(pattern.begin(), pattern.end(),
+                                         [](const auto& value) { return value.wildcard; });
+      auto stable_prefix = static_cast<std::size_t>(first_wildcard - pattern.begin());
+      if (stable_prefix < 2 && hook_safe_function_entry) {
+        signature_rva = *candidate;
+        hook_safe_function_entry = false;
+        pattern = BuildPattern(image, signature_rva, length);
+        first_wildcard = std::find_if(pattern.begin(), pattern.end(),
+                                      [](const auto& value) { return value.wildcard; });
+        stable_prefix = static_cast<std::size_t>(first_wildcard - pattern.begin());
+      }
       const auto matches = UniqueMatches(image, pattern);
-      const auto first_wildcard = std::find_if(pattern.begin(), pattern.end(),
-                                               [](const auto& value) { return value.wildcard; });
-      const auto stable_prefix = static_cast<std::size_t>(first_wildcard - pattern.begin());
-      if (stable_prefix < 2 && hook_safe_function_entry)
-        throw std::runtime_error("candidate_has_no_stable_prologue");
       std::vector<gameverse::PatternByte> prologue;
       if (stable_prefix >= 2)
         prologue.assign(

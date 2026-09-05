@@ -104,11 +104,12 @@ int main() {
     const auto candidate_manifest = gameverse::ParseManifest(
         std::string(candidate_manifest_bytes.begin(), candidate_manifest_bytes.end()));
     Require(candidate_manifest.mode == "observe_only" &&
+                candidate_manifest.signatures.size() == 1 &&
                 candidate_manifest.signatures[0].entry_sha256.size() == 64,
-            "observe-only attestation was not parsed");
+            "research candidate manifest was not parsed");
     const auto candidates = gameverse::InspectImageCandidates(
         GetModuleHandleW(nullptr), candidate_manifest);
-    Require(candidates.size() == 2, "research candidates were not inspected");
+    Require(candidates.size() == 1, "research candidates were not inspected");
     const auto candidates_json = gameverse::SerializeTelemetryCandidates(candidates);
     Require(candidates_json.find("telemetry_candidates_v1") != std::string::npos,
             "candidate telemetry serialization failed");

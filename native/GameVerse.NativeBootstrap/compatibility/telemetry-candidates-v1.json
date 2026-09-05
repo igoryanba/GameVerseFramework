@@ -7,18 +7,11 @@
   "mode": "observe_only",
   "signatures": [
     {
-      "name": "transition_ref_a",
+      "name": "transition_ref_c",
       "section": ".text",
-      "pattern": "48 8D 05 ?? ?? ?? ?? 48 89 07 48 8D 4F 28 BA E8 03 00 00 E8 ?? ?? ?? ?? C7 87 50 01 00 00 FF FF FF FF 48 C7 87 58 01 00 00 00 00 00 00",
+      "pattern": "48 8D 05 ?? ?? ?? ?? 48 89 44 24 28 48 8D B4 24 9C 00 00 00 89 9C 24 44 01 00 00 89 BC 24 48 01 00 00 48 B8 00 00 00 00 01 00 00 00 48 89 84 24 4C 01 00 00 0F B6 84 24 54 01 00 00 24 FE",
       "prologue": "48 8D 05",
-      "entry_sha256": "63DB8C92F47207E6D264A89DF58BA4EF7042B31DA2D049694484860629725EC8"
-    },
-    {
-      "name": "transition_ref_b",
-      "section": ".text",
-      "pattern": "0F 28 05 ?? ?? ?? ?? 0F 11 84 24 98 00 00 00 66 C7 84 24 88 00 00 00 62 00 48 C7 44 24 68 00 00 00 00 0F 11 44 24 78 66 C7 44 24 68 61 00",
-      "prologue": "0F 28 05",
-      "entry_sha256": "7F54EE81A005DE9C5BC77E3CD2B0A44875102702BB764CA40EDF3ECA6D50793F"
+      "entry_sha256": "F5C4BB1A0C1ED3E2AE27033CAC8BF1754C32E83D00BE9C90DEA49DD786BEB5CB"
     }
   ]
 }
