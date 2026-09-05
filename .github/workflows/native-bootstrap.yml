@@ -40,6 +40,8 @@ jobs:
           name: native-bootstrap-win-x64
           path: |
             .build/native-bootstrap/Release/GameVerse.NativeBootstrap.asi
+            .build/native-bootstrap/Release/gameverse-native-inspector.exe
             native/GameVerse.NativeBootstrap/compatibility/enhanced-1.0.1158.13.json
             native/GameVerse.NativeBootstrap/compatibility/enhanced-1.0.1158.13.sig
             native/GameVerse.NativeBootstrap/THIRD_PARTY_MINHOOK.txt
+            native/GameVerse.NativeBootstrap/THIRD_PARTY_ZYDIS.txt

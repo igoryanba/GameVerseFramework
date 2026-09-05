@@ -18,6 +18,17 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(minhook)
 
+set(ZYDIS_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(ZYDIS_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+set(ZYDIS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+  zydis
+  GIT_REPOSITORY https://github.com/zyantific/zydis.git
+  GIT_TAG a2278f1d254e492f6a6b39f6cb5d1f5d515659dc
+  GIT_SHALLOW FALSE
+)
+FetchContent_MakeAvailable(zydis)
+
 add_library(gameverse_bootstrap_core STATIC
   src/compatibility.cpp
   src/fingerprint.cpp
@@ -49,15 +60,23 @@ target_compile_definitions(gameverse_native_bootstrap_tests PRIVATE
 enable_testing()
 add_test(NAME native_bootstrap_tests COMMAND gameverse_native_bootstrap_tests)
 
-foreach(target gameverse_bootstrap_core GameVerse.NativeBootstrap gameverse_native_bootstrap_tests)
+add_executable(gameverse-native-inspector tools/native-inspector.cpp)
+target_link_libraries(gameverse-native-inspector PRIVATE gameverse_bootstrap_core Zydis)
+target_compile_definitions(gameverse-native-inspector PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+add_test(NAME native_inspector_self_scan COMMAND gameverse-native-inspector
+  --image $<TARGET_FILE:gameverse-native-inspector> --string schema_version)
+
+foreach(target gameverse_bootstrap_core GameVerse.NativeBootstrap gameverse_native_bootstrap_tests gameverse-native-inspector)
   if(MSVC)
     target_compile_options(${target} PRIVATE /W4 /WX /permissive- /EHsc /utf-8)
   endif()
 endforeach()
 
-install(TARGETS GameVerse.NativeBootstrap RUNTIME DESTINATION . LIBRARY DESTINATION .)
+install(TARGETS GameVerse.NativeBootstrap gameverse-native-inspector
+  RUNTIME DESTINATION . LIBRARY DESTINATION .)
 install(FILES
   compatibility/enhanced-1.0.1158.13.json
   compatibility/enhanced-1.0.1158.13.sig
   DESTINATION .
 )
+install(FILES THIRD_PARTY_MINHOOK.txt THIRD_PARTY_ZYDIS.txt DESTINATION licenses)

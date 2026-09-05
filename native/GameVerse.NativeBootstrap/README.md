@@ -6,6 +6,23 @@ Enhanced executable, a signed compatibility manifest, and safe runtime state.
 It refuses to install hooks when the executable is unknown, Online/BattlEye is
 active, or world-loader signatures are absent or ambiguous.
 
+## Offline inspector
+
+`gameverse-native-inspector` reads an executable from disk and never loads it.
+It can inventory string locations by their query hash or generate a wildcard
+signature from an independently selected RVA. RIP-relative displacements and
+relative immediates are masked and the resulting pattern is counted across all
+executable sections.
+
+```text
+gameverse-native-inspector --image GTA5_Enhanced.exe --string frontend
+gameverse-native-inspector --image GTA5_Enhanced.exe --candidate-rva 0x1234 --length 32
+```
+
+Generated patterns are research candidates only. They cannot be added to the
+signed compatibility manifest until two matching dynamic traces and an
+observe-only call count confirm the same non-online initialization behavior.
+
 Supported executable:
 
 - edition/build: `Enhanced 1.0.1158.13`
