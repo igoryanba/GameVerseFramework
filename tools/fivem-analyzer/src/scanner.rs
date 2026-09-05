@@ -121,7 +121,7 @@ pub fn analyze(root: &Path) -> Result<ResourceReport> {
     missing_patterns.extend(missing_client);
     missing_patterns.extend(missing_server);
     let mut declared_files = manifest.files.clone();
-    declared_files.extend(manifest.data_files.iter().map(|value| value.file.clone()));
+    declared_files.extend(manifest.data_files.iter().map(|value| value.path.clone()));
     if let Some(page) = &manifest.ui_page {
         declared_files.push(page.clone());
     }
@@ -418,7 +418,7 @@ fn validate_declared_patterns(manifest: &ResourceManifest) -> Result<()> {
         .chain(&manifest.client_scripts)
         .chain(&manifest.server_scripts)
         .chain(&manifest.files)
-        .chain(manifest.data_files.iter().map(|value| &value.file))
+        .chain(manifest.data_files.iter().map(|value| &value.path))
         .chain(manifest.ui_page.iter());
     for pattern in patterns {
         let normalized = pattern.replace('\\', "/");
