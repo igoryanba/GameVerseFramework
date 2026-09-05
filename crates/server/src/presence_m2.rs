@@ -274,20 +274,9 @@ async fn alpha_session(
         .await?;
         return Ok(());
     }
-    // Diagnostic clients already attest their installed build in ClientHello.
-    // The interactive launcher deliberately omits it until the GTA adapter has
-    // reported GameInfo after process startup.
-    let mut build_attested = matches!(
-        &hello,
-        ControlMessage::ClientHello {
-            capabilities: Capabilities {
-                gta_edition: Some(edition),
-                gta_build: Some(build),
-                ..
-            },
-            ..
-        } if supported_game_build(edition, build)
-    );
+    // ClientHello is preflight metadata. Only a distinct message sent after
+    // SessionBegin can attest the adapter that actually started with GTA.
+    let mut build_attested = false;
     let mut machine = SessionMachine::new(0);
     machine.negotiated(1)?;
     write_control(

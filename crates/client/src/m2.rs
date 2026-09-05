@@ -476,6 +476,17 @@ impl Client {
                 } => (session, entity, config),
                 _ => anyhow::bail!("missing alpha session configuration"),
             };
+        // The headless alpha client represents a verified adapter in protocol
+        // acceptance tests, so it must follow the same post-launch attestation
+        // step as the interactive bridge before requesting spawn.
+        write_control(
+            &mut send,
+            &ControlMessage::GameBuildAttestation {
+                edition: "enhanced".into(),
+                build: gameverse_protocol::adapter::GAME_VERSION.into(),
+            },
+        )
+        .await?;
         write_control(
             &mut send,
             &ControlMessage::SpawnReady {
