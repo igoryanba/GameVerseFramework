@@ -29,7 +29,17 @@ use tokio::{
     time::{timeout, MissedTickBehavior},
 };
 
-use crate::session_m2::SessionMachine;
+use crate::session_m2::{Phase, SessionMachine};
+
+fn supported_game_build(edition: &str, build: &str) -> bool {
+    edition == "enhanced" && build == gameverse_protocol::adapter::GAME_VERSION
+}
+
+fn require_game_build_attestation(attested: bool) -> std::result::Result<(), &'static str> {
+    attested
+        .then_some(())
+        .ok_or("the GTA adapter must attest the running build before spawn")
+}
 
 struct Peer {
     connection: quinn::Connection,
@@ -264,6 +274,20 @@ async fn alpha_session(
         .await?;
         return Ok(());
     }
+    // Diagnostic clients already attest their installed build in ClientHello.
+    // The interactive launcher deliberately omits it until the GTA adapter has
+    // reported GameInfo after process startup.
+    let mut build_attested = matches!(
+        &hello,
+        ControlMessage::ClientHello {
+            capabilities: Capabilities {
+                gta_edition: Some(edition),
+                gta_build: Some(build),
+                ..
+            },
+            ..
+        } if supported_game_build(edition, build)
+    );
     let mut machine = SessionMachine::new(0);
     machine.negotiated(1)?;
     write_control(
@@ -476,7 +500,25 @@ async fn alpha_session(
                     session: created.0,
                 });
             }
+            ControlMessage::GameBuildAttestation { edition, build }
+                if machine.phase() == Phase::SpawnPending =>
+            {
+                if !supported_game_build(&edition, &build) {
+                    reject(
+                        &mut send,
+                        "unsupported_gta_build",
+                        "the running GTA edition or build is not supported",
+                    )
+                    .await?;
+                    return Ok(());
+                }
+                build_attested = true;
+            }
             ControlMessage::SpawnReady { request_id } => {
+                if let Err(reason) = require_game_build_attestation(build_attested) {
+                    reject(&mut send, "gta_build_not_attested", reason).await?;
+                    return Ok(());
+                }
                 machine.spawn_ready(now_ms)?;
                 write_control(&mut send, &ControlMessage::SpawnAck { request_id }).await?;
                 break;
@@ -756,6 +798,21 @@ fn split_frame(frame: p::ServerFrame, maximum: usize) -> Result<Vec<p::ServerFra
 #[cfg(test)]
 mod frame_chunk_tests {
     use super::*;
+
+    #[test]
+    fn spawn_requires_the_running_adapter_to_attest_a_supported_build() {
+        assert!(require_game_build_attestation(false).is_err());
+        assert!(require_game_build_attestation(true).is_ok());
+        assert!(supported_game_build(
+            "enhanced",
+            gameverse_protocol::adapter::GAME_VERSION
+        ));
+        assert!(!supported_game_build(
+            "legacy",
+            gameverse_protocol::adapter::GAME_VERSION
+        ));
+        assert!(!supported_game_build("enhanced", "unknown"));
+    }
 
     #[test]
     fn chunks_large_frames_below_the_quic_limit() {

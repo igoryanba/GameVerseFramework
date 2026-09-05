@@ -215,7 +215,7 @@ where
 async fn activate_reserved_session<A, U>(
     adapter_stream: A,
     ui_stream: U,
-    pending: crate::m2::PendingClient,
+    mut pending: crate::m2::PendingClient,
     reservation_request_id: &str,
     finish: Instant,
 ) -> Result<()>
@@ -238,7 +238,10 @@ where
     );
     match timeout(DEADLINE, ipc::read(&mut adapter_rx)).await?? {
         Message::GameInfo { edition, build }
-            if edition == "enhanced" && build == adapter::GAME_VERSION => {}
+            if edition == "enhanced" && build == adapter::GAME_VERSION =>
+        {
+            pending.attest_game_build(&edition, &build).await?;
+        }
         _ => anyhow::bail!("unsupported GTA edition or build"),
     }
     ipc::write(

@@ -69,6 +69,10 @@ pub enum ControlMessage {
         entity: EntityId,
         config: SessionConfig,
     },
+    GameBuildAttestation {
+        edition: String,
+        build: String,
+    },
     SpawnReady {
         request_id: String,
     },
@@ -252,6 +256,9 @@ impl ControlMessage {
                 entity,
                 config,
             } => *session > 0 && valid_entity(entity) && config.valid(),
+            Self::GameBuildAttestation { edition, build } => {
+                valid_text(edition, 32) && valid_text(build, 64)
+            }
             Self::AuthRequest {
                 request_id,
                 mode,
@@ -580,6 +587,20 @@ mod tests {
 
     #[test]
     fn alpha_commands_are_bounded_before_transport() {
+        let attestation = ControlMessage::GameBuildAttestation {
+            edition: "enhanced".into(),
+            build: crate::adapter::GAME_VERSION.into(),
+        };
+        assert_eq!(
+            decode(&encode(&attestation).unwrap()[4..]).unwrap(),
+            attestation
+        );
+        assert!(encode(&ControlMessage::GameBuildAttestation {
+            edition: String::new(),
+            build: crate::adapter::GAME_VERSION.into(),
+        })
+        .is_err());
+
         let event = ControlMessage::ResourceEvent {
             event: ResourceEvent {
                 resource: "alpha".into(),

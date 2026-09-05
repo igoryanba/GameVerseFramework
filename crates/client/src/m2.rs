@@ -218,6 +218,17 @@ pub struct PendingClient {
 }
 
 impl PendingClient {
+    pub async fn attest_game_build(&mut self, edition: &str, build: &str) -> Result<()> {
+        write_control(
+            &mut self.send,
+            &ControlMessage::GameBuildAttestation {
+                edition: edition.into(),
+                build: build.into(),
+            },
+        )
+        .await
+    }
+
     pub async fn spawn_ready(mut self, request_id: &str) -> Result<Client> {
         write_control(
             &mut self.send,
