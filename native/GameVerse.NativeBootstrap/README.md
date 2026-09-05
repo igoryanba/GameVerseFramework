@@ -90,6 +90,16 @@ Stable caller entries can then be attested by a signed RVA plus the SHA-256 of
 their first 32 bytes. The probe verifies that the bytes occur exactly once in
 the loaded executable section before an observe-only hook is allowed; this
 supports unpacked runtime code without writing those bytes to a report.
+Observe counters are sampled every five seconds, so a frontend-only control
+records a real zero or nonzero delta rather than only the installation value.
+
+Research result for Enhanced `1.0.1158.13` on 2026-09-05: the candidate rooted
+at RVA `0x11D12D0` and its active caller chain were rejected. Periodic control
+samples proved that the chain already runs in the stable frontend; the only
+inactive sibling remained unused after Story loaded. The signed candidate file
+therefore remains `telemetry_only` and installs no observe hooks. The next
+search must correlate state writes or one-shot transition commands rather than
+follow this general update loop.
 
 `world_loader` mode is rejected until independently verified patterns for this
 exact executable are recorded, signed, uniquely matched, checked against the PE

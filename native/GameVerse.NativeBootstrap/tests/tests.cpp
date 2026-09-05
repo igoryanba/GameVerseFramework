@@ -117,8 +117,8 @@ int main() {
             "observe-only manifest signature rejected");
     const auto candidate_manifest = gameverse::ParseManifest(
         std::string(candidate_manifest_bytes.begin(), candidate_manifest_bytes.end()));
-    Require(candidate_manifest.mode == "observe_only" &&
-                candidate_manifest.signatures.size() == 2 &&
+    Require(candidate_manifest.mode == "telemetry_only" &&
+                candidate_manifest.signatures.size() == 8 &&
                 candidate_manifest.signatures[0].entry_sha256.size() == 64,
             "research candidate manifest was not parsed");
     const auto candidates = gameverse::InspectImageCandidates(

@@ -212,9 +212,19 @@ void RunBootstrap(void* module) noexcept {
           throw std::runtime_error("telemetry_candidates_frame_rejected");
       }
       auto previous = telemetry.ObserveReadiness();
+      auto next_candidate_sample =
+          std::chrono::steady_clock::now() + std::chrono::seconds(5);
       const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(15);
       while (std::chrono::steady_clock::now() < deadline) {
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        if (!observed_candidates.empty() &&
+            std::chrono::steady_clock::now() >= next_candidate_sample) {
+          observe_hooks.Refresh(observed_candidates);
+          if (!pipe.Send(SerializeTelemetryCandidates(observed_candidates)))
+            return;
+          next_candidate_sample =
+              std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        }
         const auto current = telemetry.ObserveReadiness();
         const bool runtime_changed =
             current.scripthook_loaded != previous.scripthook_loaded ||
