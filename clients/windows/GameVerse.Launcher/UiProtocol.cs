@@ -65,7 +65,10 @@ internal sealed class UiBridgeClient : IAsyncDisposable
         throw new TimeoutException("Не удалось подключиться к GameVerse bridge", last);
     }
 
-    internal async Task<UiResponse> SendAsync(UiRequest request, CancellationToken cancellationToken = default)
+    internal async Task<UiResponse> SendAsync(
+        UiRequest request,
+        CancellationToken cancellationToken = default,
+        TimeSpan? responseTimeout = null)
     {
         NamedPipeClientStream target = stream is { IsConnected: true } value
             ? value
@@ -86,7 +89,7 @@ internal sealed class UiBridgeClient : IAsyncDisposable
                 await target.FlushAsync(cancellationToken);
             }
             finally { writeLock.Release(); }
-            return await completion.Task.WaitAsync(TimeSpan.FromSeconds(8), cancellationToken);
+            return await completion.Task.WaitAsync(responseTimeout ?? TimeSpan.FromSeconds(8), cancellationToken);
         }
         finally { pending.TryRemove(request.RequestId, out _); }
     }
