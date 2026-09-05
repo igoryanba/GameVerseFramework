@@ -29,6 +29,7 @@ struct Section {
 struct Image {
   std::vector<std::uint8_t> bytes;
   std::vector<Section> sections;
+  std::vector<RUNTIME_FUNCTION> runtime_functions;
 
   std::optional<std::size_t> FileOffset(std::uint32_t rva) const {
     for (const auto& section : sections) {
@@ -40,6 +41,14 @@ struct Image {
     }
     return std::nullopt;
   }
+
+  std::optional<std::uint32_t> FunctionStart(std::uint32_t rva) const {
+    for (const auto& function : runtime_functions) {
+      if (rva >= function.BeginAddress && rva < function.EndAddress)
+        return function.BeginAddress;
+    }
+    return std::nullopt;
+  }
 };
 
 Image LoadImage(const std::filesystem::path& path) {
@@ -47,7 +56,7 @@ Image LoadImage(const std::filesystem::path& path) {
   if (!input) throw std::runtime_error("image_unavailable");
   std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(input)),
                                   std::istreambuf_iterator<char>());
-  Image image{std::move(bytes), {}};
+  Image image{std::move(bytes), {}, {}};
   if (image.bytes.size() < sizeof(IMAGE_DOS_HEADER))
     throw std::runtime_error("invalid_pe_image");
   const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(image.bytes.data());
@@ -66,6 +75,17 @@ Image LoadImage(const std::filesystem::path& path) {
     image.sections.push_back(Section{name, source.VirtualAddress, source.Misc.VirtualSize,
                                      source.PointerToRawData, source.SizeOfRawData,
                                      source.Characteristics});
+  }
+  const auto& exceptions =
+      nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION];
+  if (exceptions.VirtualAddress != 0 && exceptions.Size >= sizeof(RUNTIME_FUNCTION)) {
+    const auto table_offset = image.FileOffset(exceptions.VirtualAddress);
+    if (!table_offset || *table_offset + exceptions.Size > image.bytes.size())
+      throw std::runtime_error("invalid_exception_directory");
+    const auto count = exceptions.Size / sizeof(RUNTIME_FUNCTION);
+    const auto* functions = reinterpret_cast<const RUNTIME_FUNCTION*>(
+        image.bytes.data() + *table_offset);
+    image.runtime_functions.assign(functions, functions + count);
   }
   return image;
 }
@@ -327,16 +347,35 @@ int wmain(int argc, wchar_t** argv) {
     std::cout << "{\"schema_version\":1,\"image_sha256\":\""
               << gameverse::Sha256File(image_path) << "\"";
     if (candidate) {
-      const auto pattern = BuildPattern(image, *candidate, length);
+      const auto function_rva = image.FunctionStart(*candidate);
+      auto signature_rva = function_rva.value_or(*candidate);
+      bool hook_safe_function_entry = function_rva.has_value();
+      std::vector<gameverse::PatternByte> pattern;
+      try {
+        pattern = BuildPattern(image, signature_rva, length);
+      } catch (const std::runtime_error&) {
+        if (!function_rva) throw;
+        signature_rva = *candidate;
+        hook_safe_function_entry = false;
+        pattern = BuildPattern(image, signature_rva, length);
+      }
       const auto matches = UniqueMatches(image, pattern);
       const auto first_wildcard = std::find_if(pattern.begin(), pattern.end(),
                                                [](const auto& value) { return value.wildcard; });
       const auto stable_prefix = static_cast<std::size_t>(first_wildcard - pattern.begin());
-      if (stable_prefix < 2) throw std::runtime_error("candidate_has_no_stable_prologue");
-      std::vector<gameverse::PatternByte> prologue(
-          pattern.begin(), pattern.begin() + std::min<std::size_t>(stable_prefix, 8));
-      std::cout << ",\"candidate\":{\"rva\":\"" << Hex(*candidate)
-                << "\",\"pattern\":\"" << PatternText(pattern)
+      if (stable_prefix < 2 && hook_safe_function_entry)
+        throw std::runtime_error("candidate_has_no_stable_prologue");
+      std::vector<gameverse::PatternByte> prologue;
+      if (stable_prefix >= 2)
+        prologue.assign(
+            pattern.begin(), pattern.begin() + std::min<std::size_t>(stable_prefix, 8));
+      std::cout << ",\"candidate\":{\"instruction_rva\":\"" << Hex(*candidate)
+                << "\",\"function_rva\":\""
+                << (function_rva ? Hex(*function_rva) : std::string())
+                << "\",\"signature_rva\":\"" << Hex(signature_rva)
+                << "\",\"hook_safe_function_entry\":"
+                << (hook_safe_function_entry ? "true" : "false")
+                << ",\"pattern\":\"" << PatternText(pattern)
                 << "\",\"prologue\":\"" << PatternText(prologue)
                 << "\",\"unique_match_count\":" << matches << '}';
     }

@@ -80,6 +80,7 @@ def summarize(path: Path) -> dict[str, Any]:
 
     latest = snapshots[-1] if snapshots else {}
     changed_by_section: dict[str, set[int]] = {}
+    transition_changed_by_section: dict[str, set[int]] = {}
     for snapshot in snapshots:
         raw_sections = snapshot.get("sections", [])
         if not isinstance(raw_sections, list):
@@ -95,6 +96,8 @@ def summarize(path: Path) -> dict[str, Any]:
             ):
                 raise ValueError(f"{path}: malformed changed page RVA")
             changed_by_section.setdefault(identity, set()).update(raw_rvas)
+            if snapshot.get("stage") in {"world_transition", "adapter_loaded"}:
+                transition_changed_by_section.setdefault(identity, set()).update(raw_rvas)
 
     sections = []
     for index, section in enumerate(latest.get("sections", [])):
@@ -104,6 +107,9 @@ def summarize(path: Path) -> dict[str, Any]:
                 "identity": identity,
                 "changed_pages": section.get("changed_pages", 0),
                 "changed_page_rvas": sorted(changed_by_section.get(identity, set())),
+                "transition_changed_page_rvas": sorted(
+                    transition_changed_by_section.get(identity, set())
+                ),
                 "aggregate_sha256": section.get("aggregate_sha256", ""),
             }
         )
@@ -128,7 +134,12 @@ def build_report(paths: list[Path]) -> dict[str, Any]:
     page_hits: dict[tuple[str, int], list[int]] = {}
     for trace_index, trace in enumerate(traces):
         for section in trace["sections"]:
-            for rva in section["changed_page_rvas"]:
+            field = (
+                "transition_changed_page_rvas"
+                if trace["classification"] == "adapter_ready"
+                else "changed_page_rvas"
+            )
+            for rva in section[field]:
                 page_hits.setdefault((section["identity"], rva), []).append(trace_index)
     manual_indexes = {
         index
