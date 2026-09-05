@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <chrono>
 #include <filesystem>
 #include <span>
 #include <string>
@@ -116,9 +115,8 @@ struct TelemetrySnapshot {
 std::string TelemetryPageKey(std::size_t section_index,
                              std::string_view section_name,
                              std::size_t page_index);
-bool AdapterLogIsCurrent(
-    const std::filesystem::path& path,
-    std::filesystem::file_time_type probe_started_at) noexcept;
+bool AdapterLogContainsMarkerAfter(const std::filesystem::path& path,
+                                   std::uintmax_t initial_size) noexcept;
 
 class TelemetryRecorder {
  public:
@@ -133,7 +131,7 @@ class TelemetryRecorder {
   std::unordered_map<std::string, std::string> page_hashes_;
   std::filesystem::path report_path_;
   std::filesystem::path adapter_log_path_;
-  std::filesystem::file_time_type started_at_;
+  std::uintmax_t adapter_log_initial_size_{};
   std::uint32_t snapshots_{};
 };
 

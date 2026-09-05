@@ -89,13 +89,19 @@ std::filesystem::path AdapterLogPath() {
          L"GameVerse.GtaAdapter.log";
 }
 
+std::uintmax_t ExistingFileSize(const std::filesystem::path& path) noexcept {
+  std::error_code error;
+  const auto size = std::filesystem::file_size(path, error);
+  return error ? 0 : size;
+}
+
 }  // namespace
 
 TelemetryRecorder::TelemetryRecorder(void* image)
     : image_(image),
       report_path_(ReportPath()),
       adapter_log_path_(AdapterLogPath()),
-      started_at_(std::filesystem::file_time_type::clock::now()) {}
+      adapter_log_initial_size_(ExistingFileSize(adapter_log_path_)) {}
 
 std::string TelemetryPageKey(std::size_t section_index,
                              std::string_view section_name,
@@ -104,21 +110,20 @@ std::string TelemetryPageKey(std::size_t section_index,
          ":" + std::to_string(page_index);
 }
 
-bool AdapterLogIsCurrent(
-    const std::filesystem::path& path,
-    std::filesystem::file_time_type probe_started_at) noexcept {
+bool AdapterLogContainsMarkerAfter(const std::filesystem::path& path,
+                                   std::uintmax_t initial_size) noexcept {
   try {
     std::error_code error;
-    if (!std::filesystem::is_regular_file(path, error) || error ||
-        std::filesystem::last_write_time(path, error) < probe_started_at || error)
-      return false;
+    if (!std::filesystem::is_regular_file(path, error) || error) return false;
     const auto size = std::filesystem::file_size(path, error);
-    if (error || size == 0) return false;
+    if (error || size <= initial_size) return false;
     std::ifstream input(path, std::ios::binary);
     if (!input) return false;
     constexpr std::streamoff kTailBytes = 4096;
-    if (size > static_cast<std::uintmax_t>(kTailBytes))
-      input.seekg(static_cast<std::streamoff>(size) - kTailBytes);
+    const auto first_new_byte = std::max(
+        initial_size,
+        size > static_cast<std::uintmax_t>(kTailBytes) ? size - kTailBytes : 0);
+    input.seekg(static_cast<std::streamoff>(first_new_byte));
     const std::string tail(std::istreambuf_iterator<char>(input), {});
     return tail.find("GTA_ADAPTER_LOADED=true") != std::string::npos;
   } catch (...) {
@@ -137,7 +142,8 @@ TelemetryReadiness TelemetryRecorder::ObserveReadiness() const noexcept {
   result.adapter_loaded =
       GetModuleHandleW(L"GameVerse.GtaAdapter.dll") != nullptr ||
       GetModuleHandleW(L"GameVerse.GtaAdapter.asi") != nullptr ||
-      AdapterLogIsCurrent(adapter_log_path_, started_at_);
+      AdapterLogContainsMarkerAfter(adapter_log_path_,
+                                    adapter_log_initial_size_);
   return result;
 }
 
