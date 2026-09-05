@@ -60,13 +60,24 @@ pub struct ResourceEvent {
     pub source: Option<u64>,
     pub target: Option<u64>,
     pub arguments: Vec<serde_json::Value>,
-    pub correlation_id: Option<u64>,
+    pub correlation_id: Option<String>,
 }
 impl ResourceEvent {
     pub fn validate(&self, limits: &Limits) -> Result<()> {
         anyhow::ensure!(
             !self.resource.is_empty() && !self.name.is_empty(),
             "resource and event name are required"
+        );
+        anyhow::ensure!(
+            self.resource.len() <= 128 && self.name.len() <= 128,
+            "resource or event name exceeds 128 bytes"
+        );
+        anyhow::ensure!(self.arguments.len() <= 64, "event has too many arguments");
+        anyhow::ensure!(
+            self.correlation_id
+                .as_ref()
+                .is_none_or(|value| !value.is_empty() && value.len() <= 128),
+            "invalid correlation ID"
         );
         anyhow::ensure!(
             serde_json::to_vec(self)?.len() <= limits.event_payload_bytes,
@@ -607,6 +618,51 @@ impl ResourceCluster {
     pub fn host(&self, resource: &str) -> Option<&ResourceHost> {
         self.hosts.get(resource)
     }
+
+    pub fn dispatch(&self, event: &ResourceEvent) -> Result<()> {
+        self.hosts
+            .get(&event.resource)
+            .ok_or_else(|| anyhow::anyhow!("unknown resource: {}", event.resource))?
+            .dispatch(event)
+    }
+
+    pub fn advance_all(&self, elapsed_ms: u64) -> Result<()> {
+        for name in &self.start_order {
+            self.hosts
+                .get(name)
+                .expect("ordered host exists")
+                .advance(elapsed_ms)
+                .with_context(|| format!("advance resource {name}"))?;
+        }
+        Ok(())
+    }
+
+    pub fn drain_outbound(&self) -> Vec<ResourceEvent> {
+        let mut events = Vec::new();
+        for name in &self.start_order {
+            events.extend(
+                self.hosts
+                    .get(name)
+                    .expect("ordered host exists")
+                    .drain_outbound(),
+            );
+        }
+        events
+    }
+
+    pub fn restart(&mut self, resource: &str) -> Result<u64> {
+        let host = self
+            .hosts
+            .get_mut(resource)
+            .ok_or_else(|| anyhow::anyhow!("unknown resource: {resource}"))?;
+        if host.state() == LifecycleState::Started {
+            host.stop()
+                .with_context(|| format!("stop resource {resource}"))?;
+        }
+        host.start()
+            .with_context(|| format!("start resource {resource}"))?;
+        Ok(host.generation())
+    }
     pub fn call_export(
         &self,
         resource: &str,
@@ -946,6 +1002,43 @@ mod tests {
         })
         .unwrap();
         assert_eq!(host.drain_outbound().len(), 1);
+    }
+
+    #[test]
+    fn cluster_routes_events_drains_outputs_and_restarts_generation() {
+        let (dir, manifest) = fixture(
+            "RegisterNetEvent('ping', function(value) TriggerServerEvent('pong', value) end)",
+        );
+        let host =
+            ResourceHost::new(dir.path(), manifest, HostSide::Server, Limits::default()).unwrap();
+        let mut cluster = ResourceCluster::new(vec![host]).unwrap();
+        cluster.start_all().unwrap();
+        cluster
+            .dispatch(&ResourceEvent {
+                resource: "fixture".into(),
+                name: "ping".into(),
+                source: Some(7),
+                target: None,
+                arguments: vec![serde_json::json!(42)],
+                correlation_id: Some("request-1".into()),
+            })
+            .unwrap();
+        let output = cluster.drain_outbound();
+        assert_eq!(output.len(), 1);
+        assert_eq!(output[0].name, "pong");
+        assert_eq!(output[0].arguments, [serde_json::json!(42)]);
+        assert_eq!(cluster.restart("fixture").unwrap(), 2);
+        cluster
+            .dispatch(&ResourceEvent {
+                resource: "fixture".into(),
+                name: "ping".into(),
+                source: Some(7),
+                target: None,
+                arguments: vec![serde_json::json!(43)],
+                correlation_id: None,
+            })
+            .unwrap();
+        assert_eq!(cluster.drain_outbound().len(), 1);
     }
 
     #[test]
