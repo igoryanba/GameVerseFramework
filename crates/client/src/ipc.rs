@@ -152,7 +152,14 @@ pub mod bridge {
                         }
                         Message::AdapterHeartbeat{game_ready:false}=>anyhow::bail!("game unavailable; resetting session"),
                         Message::AdapterHeartbeat{game_ready:true}=>{client.heartbeat().await?;},
-                        Message::AdapterStatus{..}|Message::AdapterError{..}=>println!("{}",serde_json::json!({"event":"adapter_report","report":message})),
+                        Message::AdapterStatus{event,id}=>{
+                            println!("{}",serde_json::json!({"event":"adapter_report","report":Message::AdapterStatus{event:event.clone(),id}}));
+                            if event=="session_ready" {
+                                timeout(DEADLINE,write(&mut tx,&Message::SessionActive{session:client.session})).await??;
+                                println!("{}",serde_json::json!({"event":"session_active","session":client.session}));
+                            }
+                        }
+                        Message::AdapterError{..}=>println!("{}",serde_json::json!({"event":"adapter_report","report":message})),
                         _=>anyhow::bail!("unexpected adapter message"),
                     }
                 }
