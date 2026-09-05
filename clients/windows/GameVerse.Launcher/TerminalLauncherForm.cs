@@ -198,7 +198,9 @@ internal sealed class TerminalLauncherForm : Form
             UiResponse ready = await bridge.SendAsync(
                 UiBridgeClient.Request("ui.ready"),
                 stopping.Token,
-                TimeSpan.FromMinutes(3));
+                config.DeveloperTelemetryStory || config.DeveloperManualStory
+                    ? TimeSpan.FromMinutes(16)
+                    : TimeSpan.FromMinutes(3));
             ShowResponse(ready);
         }
         catch (Exception error)

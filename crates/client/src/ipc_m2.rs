@@ -410,9 +410,14 @@ where
     let mut hello_seen = false;
     let mut world_loader_capable = false;
     let mut last_time = 0_u64;
+    let stage_timeout = if automatic_world {
+        Duration::from_secs(100)
+    } else {
+        Duration::from_secs(15 * 60)
+    };
     loop {
         let message: bootstrap::Message =
-            timeout(Duration::from_secs(100), ui::read(&mut bootstrap_rx)).await??;
+            timeout(stage_timeout, ui::read(&mut bootstrap_rx)).await??;
         anyhow::ensure!(message.valid(), "invalid native bootstrap message");
         match message {
             bootstrap::Message::BootstrapHello {
