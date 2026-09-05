@@ -112,7 +112,9 @@ try {
     $telemetryStarted = $false
     while ($pipe.IsConnected -and -not $cancellation.IsCancellationRequested) {
         $json = Read-Frame -Stream $pipe -CancellationToken $cancellation.Token
-        $message = $json | ConvertFrom-Json -Depth 32
+        # Windows PowerShell 5.1 has no -Depth parameter on ConvertFrom-Json.
+        # The frame is already bounded to 64 KiB before parsing.
+        $message = $json | ConvertFrom-Json
         $writer.WriteLine($json)
 
         if ($message.type -eq 'bootstrap_hello' -and -not $telemetryStarted) {
