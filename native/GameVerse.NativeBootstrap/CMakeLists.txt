@@ -33,6 +33,7 @@ add_library(gameverse_bootstrap_core STATIC
   src/compatibility.cpp
   src/fingerprint.cpp
   src/pe_image.cpp
+  src/pipe_client.cpp
   src/signature_scanner.cpp
   src/state_machine.cpp
   src/telemetry.cpp
@@ -44,7 +45,6 @@ target_link_libraries(gameverse_bootstrap_core PUBLIC bcrypt user32 version)
 add_library(GameVerse.NativeBootstrap SHARED
   src/bootstrap.cpp
   src/dllmain.cpp
-  src/pipe_client.cpp
 )
 set_target_properties(GameVerse.NativeBootstrap PROPERTIES PREFIX "" SUFFIX ".asi")
 target_include_directories(GameVerse.NativeBootstrap PRIVATE include)

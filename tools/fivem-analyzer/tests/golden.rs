@@ -75,7 +75,7 @@ fn dynamic_manifest_is_blocked_without_execution() {
 #[test]
 fn external_corpus_is_pinned_and_copyleft_is_analysis_only() {
     let path =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../research/resource-corpus.lock.json");
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../Research/resource-corpus.lock.json");
     let value: serde_json::Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
     let resources = value["resources"].as_array().unwrap();
     assert!(resources.len() >= 7);
