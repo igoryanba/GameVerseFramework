@@ -70,6 +70,7 @@ $example = [ordered]@{
     UpdateChannel = 'alpha'
     LogLevel = 'info'
     RequireInstallManifest = $true
+    DeveloperManualStory = $false
     LogDirectory = '%LOCALAPPDATA%\GameVerse\logs'
     UpdateManifestUrl = ''
     UpdateSignatureUrl = ''

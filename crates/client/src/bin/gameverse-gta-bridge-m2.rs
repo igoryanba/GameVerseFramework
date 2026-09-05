@@ -12,6 +12,8 @@ struct Args {
     ui_pipe: String,
     #[arg(long,default_value=gameverse_protocol::bootstrap::DEFAULT_PIPE)]
     bootstrap_pipe: String,
+    #[arg(long, default_value_t = false)]
+    manual_story: bool,
     #[arg(long, default_value_t = 86400)]
     duration: u64,
 }
@@ -20,15 +22,26 @@ async fn main() -> Result<()> {
     let args = Args::parse();
     #[cfg(windows)]
     {
-        gameverse_client::ipc_m2::run(
-            &args.pipe,
-            &args.ui_pipe,
-            &args.bootstrap_pipe,
-            args.server,
-            &args.cert,
-            std::time::Duration::from_secs(args.duration),
-        )
-        .await
+        if args.manual_story {
+            gameverse_client::ipc_m2::run_manual(
+                &args.pipe,
+                &args.ui_pipe,
+                args.server,
+                &args.cert,
+                std::time::Duration::from_secs(args.duration),
+            )
+            .await
+        } else {
+            gameverse_client::ipc_m2::run(
+                &args.pipe,
+                &args.ui_pipe,
+                &args.bootstrap_pipe,
+                args.server,
+                &args.cert,
+                std::time::Duration::from_secs(args.duration),
+            )
+            .await
+        }
     }
     #[cfg(not(windows))]
     {

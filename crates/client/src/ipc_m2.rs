@@ -101,6 +101,55 @@ pub async fn run(
     }
 }
 
+/// Developer-only fallback for diagnosing the managed adapter after manually
+/// entering Story Mode. Production launchers must use `run` and native bootstrap.
+#[cfg(windows)]
+pub async fn run_manual(
+    adapter_pipe: &str,
+    ui_pipe: &str,
+    server: SocketAddr,
+    cert: &Path,
+    duration: Duration,
+) -> Result<()> {
+    anyhow::ensure!(
+        valid_pipe(adapter_pipe)
+            && valid_pipe(ui_pipe)
+            && adapter_pipe != ui_pipe
+            && !duration.is_zero(),
+        "invalid pipe or duration"
+    );
+    let finish = Instant::now() + duration;
+    let mut adapter_listener = listener(adapter_pipe, true)?;
+    let mut ui_listener = listener(ui_pipe, true)?;
+    println!(
+        "{}",
+        json!({"event":"m2_pipe_ready","adapter_pipe":adapter_pipe,"ui_pipe":ui_pipe,"mode":"developer_manual_story"})
+    );
+    loop {
+        let left = finish.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return Ok(());
+        }
+        let (adapter_result, ui_result) = tokio::join!(
+            timeout(left, adapter_listener.connect()),
+            timeout(left, ui_listener.connect())
+        );
+        if adapter_result.is_err() || ui_result.is_err() {
+            return Ok(());
+        }
+        adapter_result??;
+        ui_result??;
+        let adapter = std::mem::replace(&mut adapter_listener, listener(adapter_pipe, false)?);
+        let ui_stream = std::mem::replace(&mut ui_listener, listener(ui_pipe, false)?);
+        if let Err(error) = serve_streams(adapter, ui_stream, server, cert, finish).await {
+            eprintln!(
+                "{}",
+                json!({"event":"m2_session_disconnected","error":error.to_string(),"mode":"developer_manual_story"})
+            );
+        }
+    }
+}
+
 #[cfg(windows)]
 fn valid_pipe(pipe: &str) -> bool {
     pipe.starts_with(r"\\.\pipe\") && pipe.len() <= 240

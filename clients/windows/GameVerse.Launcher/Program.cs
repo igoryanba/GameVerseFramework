@@ -21,6 +21,7 @@ internal sealed record LauncherConfig(
     string UpdateChannel,
     string LogLevel,
     bool RequireInstallManifest,
+    bool DeveloperManualStory,
     string? LogDirectory,
     string? UpdateManifestUrl,
     string? UpdateSignatureUrl,
@@ -113,6 +114,7 @@ internal static class Launcher
             "alpha",
             "info",
             false,
+            false,
             @"%LOCALAPPDATA%\GameVerse\logs",
             null,
             null,
@@ -153,8 +155,8 @@ internal static class Launcher
                         ? $"{freeGiB} GiB available; explicit low-memory override enabled"
                         : $"{freeGiB} GiB available; 4 GiB recommended (start with --allow-low-memory to continue at your own risk)"),
             new("adapter", File.Exists(Path.Combine(game, "scripts", "GameVerse.GtaAdapter.dll")), Path.Combine(game, "scripts", "GameVerse.GtaAdapter.dll")),
-            new("native_bootstrap", File.Exists(Path.Combine(game, "GameVerse.NativeBootstrap.asi")), Path.Combine(game, "GameVerse.NativeBootstrap.asi")),
-            new("bootstrap_compatibility", File.Exists(Path.Combine(game, "enhanced-1.0.1158.13.json")) && File.Exists(Path.Combine(game, "enhanced-1.0.1158.13.sig")), Path.Combine(game, "enhanced-1.0.1158.13.json")),
+            new("native_bootstrap", config.DeveloperManualStory || File.Exists(Path.Combine(game, "GameVerse.NativeBootstrap.asi")), config.DeveloperManualStory ? "developer manual Story diagnostic" : Path.Combine(game, "GameVerse.NativeBootstrap.asi")),
+            new("bootstrap_compatibility", config.DeveloperManualStory || (File.Exists(Path.Combine(game, "enhanced-1.0.1158.13.json")) && File.Exists(Path.Combine(game, "enhanced-1.0.1158.13.sig"))), config.DeveloperManualStory ? "developer manual Story diagnostic" : Path.Combine(game, "enhanced-1.0.1158.13.json")),
             new("scripthook", File.Exists(Path.Combine(game, "ScriptHookV.dll")), Path.Combine(game, "ScriptHookV.dll")),
             new("scripthookdotnet", File.Exists(Path.Combine(game, "ScriptHookVDotNet.asi")), Path.Combine(game, "ScriptHookVDotNet.asi"))
         };
@@ -214,6 +216,7 @@ internal static class Launcher
         bridgeInfo.ArgumentList.Add(config.AdapterPipe);
         bridgeInfo.ArgumentList.Add("--bootstrap-pipe");
         bridgeInfo.ArgumentList.Add(config.BootstrapPipe);
+        if (config.DeveloperManualStory) bridgeInfo.ArgumentList.Add("--manual-story");
         using Process bridgeProcess = Process.Start(bridgeInfo) ?? throw new InvalidOperationException("Bridge did not start");
         try { await WaitForReadyEventAsync(bridgeProcess, "m2_pipe_ready", TimeSpan.FromSeconds(15), "Bridge"); }
         catch
