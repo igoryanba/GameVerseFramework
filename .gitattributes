@@ -1,1 +1,3 @@
-*.sh text eol=lf
+# Cryptographic signatures cover exact bytes; never rewrite these files on checkout.
+native/GameVerse.NativeBootstrap/compatibility/*.json -text
+native/GameVerse.NativeBootstrap/compatibility/*.sig -text

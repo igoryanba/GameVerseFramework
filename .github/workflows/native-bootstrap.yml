@@ -18,7 +18,7 @@ jobs:
       - name: Build native bootstrap with warnings as errors
         run: cmake --build .build/native-bootstrap --config Release
       - name: Test scanner, manifest and state machine
-        run: ctest --test-dir .build/native-bootstrap -C Release --output-on-failure
+        run: ctest --test-dir .build/native-bootstrap -C Release --output-on-failure -V
       - name: Test Rust bootstrap and bridge protocol
         run: cargo test --locked -p gameverse-protocol -p gameverse-client
       - name: Build Windows UI and launcher
