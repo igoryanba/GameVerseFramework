@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-09-05",
+  "storage": ".research/resources",
+  "resources": [
+    {
+      "name": "bob74_ipl",
+      "url": "https://github.com/Bob74/bob74_ipl.git",
+      "commit": "831e3c9f0da79106465031cbb6981e4ea5804354",
+      "license": "MIT",
+      "archive_sha256": "3EB72347D75690F52569A2EF31C20508281DB8C39E29438BBCB6E178761B7E58",
+      "mode": "executable_canary",
+      "purpose": "standalone Lua, IPL and native coverage"
+    },
+    {
+      "name": "fivem-appearence",
+      "url": "https://github.com/THELOLAN/fivem-appearence.git",
+      "commit": "a93aa25832b2854fb32d8b80e643489c099780ab",
+      "license": "MIT",
+      "archive_sha256": "839CE8B0A8A01E454DA8CFE38753667458B20A34A257DBF84C680886F8ED9B04",
+      "mode": "executable_canary",
+      "purpose": "appearance exports and NUI inventory"
+    },
+    {
+      "name": "ox_lib",
+      "url": "https://github.com/overextended/ox_lib.git",
+      "commit": "b8f5a04351b1d427e0e112150d36094e9889ec7b",
+      "license": "LGPL-3.0",
+      "archive_sha256": "4DEEF0BA83298AD64D419DD0F8D13B6370E73A1349DEC88891703E1D9A60EC7C",
+      "mode": "analysis_only",
+      "purpose": "callbacks, modules, convars and NUI API inventory"
+    },
+    {
+      "name": "cfx-server-data",
+      "url": "https://github.com/citizenfx/cfx-server-data.git",
+      "commit": "32d98e7524b952faf8b220d719615b0346b0a6cc",
+      "license": "unknown",
+      "archive_sha256": "A534A86D633A34F9A2D4D452178C7D3BD9C4B483D00F403AD3EA81CC9C82205E",
+      "mode": "specification_only",
+      "purpose": "base resource API behavior; repository has no root license file"
+    },
+    {
+      "name": "qb-core",
+      "url": "https://github.com/qbcore-framework/qb-core.git",
+      "commit": "9b3cddcce93e5e12cbcf6b47b866b687d32ac7bf",
+      "license": "GPL-3.0",
+      "archive_sha256": "93A3D6CA8908BBBD176776CDF2FB9831C4F53C1B4013112185C82D33FEAB0B61",
+      "mode": "analysis_only",
+      "purpose": "QBCore compatibility inventory"
+    },
+    {
+      "name": "qbx_core",
+      "url": "https://github.com/Qbox-project/qbx_core.git",
+      "commit": "c1c3ca16721cd14eb814cfb95e8f8631690d247d",
+      "license": "GPL-3.0",
+      "archive_sha256": "296818F088B290B3E38E35D6D6613AD448759A1735042FFEC37597BC68C5A7D8",
+      "mode": "analysis_only",
+      "purpose": "Qbox compatibility inventory"
+    },
+    {
+      "name": "esx_core",
+      "url": "https://github.com/esx-framework/esx_core.git",
+      "commit": "93f3a722d5854dbbe592cc71232eb11ccdaa5177",
+      "license": "mixed-per-resource",
+      "archive_sha256": "F07F47A71DA1312CE9F7F29B51C2BFA065CE9B1E9E9CFBDD29CE64B9A8AE75E1",
+      "mode": "analysis_only",
+      "purpose": "ESX compatibility inventory; each resource license must be checked separately"
+    }
+  ]
+}

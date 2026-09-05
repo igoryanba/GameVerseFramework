@@ -15,6 +15,12 @@ struct Cli {
     format: String,
     #[arg(long)]
     gameverse_manifest: Option<PathBuf>,
+    #[arg(long)]
+    required_capabilities: Option<PathBuf>,
+    #[arg(long)]
+    unknown_natives: Option<PathBuf>,
+    #[arg(long)]
+    license_report: Option<PathBuf>,
 }
 
 fn main() -> Result<()> {
@@ -22,6 +28,32 @@ fn main() -> Result<()> {
     let report = fivem_analyzer::analyze(&cli.path)?;
     if let Some(path) = cli.gameverse_manifest {
         std::fs::write(path, fivem_analyzer::to_gameverse_toml(&report)?)?;
+    }
+    if let Some(path) = cli.required_capabilities {
+        std::fs::write(
+            path,
+            serde_json::to_vec_pretty(&report.required_capabilities)?,
+        )?;
+    }
+    if let Some(path) = cli.unknown_natives {
+        std::fs::write(path, serde_json::to_vec_pretty(&report.natives)?)?;
+    }
+    if let Some(path) = cli.license_report {
+        let classification = report
+            .findings
+            .iter()
+            .find(|finding| finding.feature == "license")
+            .map(|finding| finding.category.clone())
+            .unwrap_or(fivem_analyzer::CompatibilityCategory::Supported);
+        std::fs::write(
+            path,
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "resource": &report.resource_name,
+                "license": &report.source.license,
+                "repository": &report.metadata.repository,
+                "classification": classification,
+            }))?,
+        )?;
     }
     match cli.format.as_str() {
         "json" => println!("{}", serde_json::to_string_pretty(&report)?),

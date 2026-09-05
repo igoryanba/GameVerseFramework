@@ -21,9 +21,9 @@ jobs:
       - name: Check resource component formatting
         run: cargo fmt -p gameverse-resource-manifest -p gameverse-resource-runtime -- --check
       - name: Test analyzer
-        run: cargo test --manifest-path tools/fivem-analyzer/Cargo.toml
+        run: cargo test --locked --manifest-path tools/fivem-analyzer/Cargo.toml
       - name: Analyze and convert MIT acceptance resource
-        run: cargo run --manifest-path tools/fivem-analyzer/Cargo.toml -- --path fixtures/resources/compat-basic --format json --gameverse-manifest fixtures/resources/compat-basic/gameverse.generated.toml
+        run: cargo run --locked --manifest-path tools/fivem-analyzer/Cargo.toml -- --path fixtures/resources/compat-basic --format json --gameverse-manifest fixtures/resources/compat-basic/gameverse.generated.toml --required-capabilities required-capabilities.json --unknown-natives unknown-natives.json --license-report license-report.json
       - name: Validate generated resource manifest
         run: cargo run --locked -p gameverse-resource-runtime --bin gameverse-resource-host -- validate --manifest fixtures/resources/compat-basic/gameverse.generated.toml
       - name: Run paired acceptance
@@ -32,5 +32,9 @@ jobs:
         if: always()
         with:
           name: resource-acceptance-${{ matrix.os }}
-          path: resource-acceptance.json
+          path: |
+            resource-acceptance.json
+            required-capabilities.json
+            unknown-natives.json
+            license-report.json
           if-no-files-found: ignore

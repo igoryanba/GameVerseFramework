@@ -24,9 +24,24 @@ pub struct SourceMetadata {
     pub license: Option<String>,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ManifestMetadata {
+    pub fx_version: Option<String>,
+    #[serde(default)]
+    pub games: Vec<String>,
+    pub lua54: Option<String>,
+    pub author: Option<String>,
+    pub version: Option<String>,
+    pub repository: Option<String>,
+    #[serde(default)]
+    pub provides: Vec<String>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResourceManifest {
     pub name: String,
+    #[serde(default)]
+    pub metadata: ManifestMetadata,
     #[serde(default)]
     pub client_scripts: Vec<String>,
     #[serde(default)]
@@ -82,6 +97,15 @@ pub fn parse_fivem(root: &Path) -> Result<ParsedManifest> {
             .and_then(|v| v.to_str())
             .unwrap_or("resource")
             .to_string(),
+        metadata: ManifestMetadata {
+            fx_version: single(&text, "fx_version"),
+            games: directives(&text, &["game", "games"]),
+            lua54: single(&text, "lua54"),
+            author: single(&text, "author"),
+            version: single(&text, "version"),
+            repository: single(&text, "repository"),
+            provides: directives(&text, &["provide", "provides"]),
+        },
         client_scripts: directives(&text, &["client_script", "client_scripts"]),
         server_scripts: directives(&text, &["server_script", "server_scripts"]),
         shared_scripts: directives(&text, &["shared_script", "shared_scripts"]),
@@ -282,12 +306,22 @@ fn detect_license(root: &Path) -> Option<String> {
     Some(
         if text.contains("gnu affero") {
             "AGPL-3.0"
+        } else if text.contains("gnu lesser general public license") {
+            "LGPL-3.0"
         } else if text.contains("gnu general public license") {
             "GPL-3.0"
         } else if text.contains("mit license") || text.contains("permission is hereby granted") {
             "MIT"
         } else if text.contains("apache license") {
             "Apache-2.0"
+        } else if text.contains("bsd 2-clause") || text.contains("simplified bsd") {
+            "BSD-2-Clause"
+        } else if text.contains("bsd 3-clause") || text.contains("new bsd") {
+            "BSD-3-Clause"
+        } else if text.contains("mozilla public license") {
+            "MPL-2.0"
+        } else if text.contains("the unlicense") || text.contains("public domain") {
+            "Unlicense"
         } else {
             "unknown"
         }
@@ -308,9 +342,15 @@ mod tests {
             "MIT License\nPermission is hereby granted",
         )
         .unwrap();
-        fs::write(dir.path().join("fxmanifest.lua"), "-- ignored\nclient_scripts {'client/*.lua'}\ndata_file 'TEST' 'client/main.lua'\nexport 'ready'").unwrap();
+        fs::write(dir.path().join("fxmanifest.lua"), "-- ignored\nfx_version 'cerulean'\ngames {'gta5'}\nlua54 'yes'\nauthor 'GameVerse'\nversion '1.2.3'\nrepository 'https://example.invalid/resource'\nprovides {'legacy-name'}\nclient_scripts {'client/*.lua'}\ndata_file 'TEST' 'client/main.lua'\nexport 'ready'").unwrap();
         let parsed = parse_fivem(dir.path()).unwrap();
         assert_eq!(parsed.manifest.source.license.as_deref(), Some("MIT"));
+        assert_eq!(
+            parsed.manifest.metadata.fx_version.as_deref(),
+            Some("cerulean")
+        );
+        assert_eq!(parsed.manifest.metadata.games, ["gta5"]);
+        assert_eq!(parsed.manifest.metadata.provides, ["legacy-name"]);
         assert!(resolve_and_validate(dir.path(), &parsed.manifest)
             .unwrap()
             .contains(&PathBuf::from("client/main.lua")));

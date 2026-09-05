@@ -87,6 +87,8 @@ pub struct ResourceHost {
     outbound: Arc<Mutex<VecDeque<ResourceEvent>>>,
     instruction_count: Arc<AtomicUsize>,
     dispatch_started: Arc<Mutex<Instant>>,
+    convars: Arc<Mutex<BTreeMap<String, String>>>,
+    generation: u64,
 }
 
 impl ResourceHost {
@@ -136,6 +138,8 @@ impl ResourceHost {
             outbound,
             instruction_count,
             dispatch_started,
+            convars: Arc::new(Mutex::new(BTreeMap::new())),
+            generation: 0,
         };
         host.install_sandbox()?;
         Ok(host)
@@ -146,6 +150,19 @@ impl ResourceHost {
     }
     pub fn manifest(&self) -> &ResourceManifest {
         &self.manifest
+    }
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    pub fn set_convar(&self, name: &str, value: &str) -> Result<()> {
+        validate_identifier(name, "convar")?;
+        anyhow::ensure!(value.len() <= 4096, "convar value is too long");
+        self.convars
+            .lock()
+            .map_err(|_| anyhow::anyhow!("convar registry lock poisoned"))?
+            .insert(name.to_string(), value.to_string());
+        Ok(())
     }
 
     fn reset_budget(&self) {
@@ -198,6 +215,117 @@ impl ResourceHost {
                 },
             )?,
         )?;
+        let current_resource = self.manifest.name.clone();
+        globals.set(
+            "GetCurrentResourceName",
+            self.lua
+                .create_function(move |_, ()| Ok(current_resource.clone()))?,
+        )?;
+        let resource_states = self
+            .manifest
+            .dependencies
+            .iter()
+            .cloned()
+            .chain(std::iter::once(self.manifest.name.clone()))
+            .collect::<BTreeSet<_>>();
+        globals.set(
+            "GetResourceState",
+            self.lua.create_function(move |_, name: String| {
+                Ok(if resource_states.contains(&name) {
+                    "started"
+                } else {
+                    "missing"
+                })
+            })?,
+        )?;
+        let metadata_resource = self.manifest.name.clone();
+        let metadata = Arc::new(manifest_metadata(&self.manifest));
+        let metadata_count = metadata.clone();
+        let count_resource = metadata_resource.clone();
+        globals.set(
+            "GetNumResourceMetadata",
+            self.lua
+                .create_function(move |_, (resource, key): (String, String)| {
+                    if resource != count_resource {
+                        return Ok(0_i64);
+                    }
+                    Ok(metadata_count
+                        .get(&key)
+                        .map_or(0, |values| values.len() as i64))
+                })?,
+        )?;
+        globals.set(
+            "GetResourceMetadata",
+            self.lua.create_function(
+                move |_, (resource, key, index): (String, String, Option<usize>)| {
+                    if resource != metadata_resource {
+                        return Ok(None::<String>);
+                    }
+                    Ok(metadata
+                        .get(&key)
+                        .and_then(|values| values.get(index.unwrap_or(0)))
+                        .cloned())
+                },
+            )?,
+        )?;
+        let convars = self.convars.clone();
+        let writable_prefix = format!("{}:", self.manifest.name);
+        globals.set(
+            "GetConvar",
+            self.lua.create_function(
+                move |_, (name, fallback): (String, String)| -> mlua::Result<String> {
+                    validate_identifier(&name, "convar").map_err(mlua::Error::external)?;
+                    Ok(convars
+                        .lock()
+                        .map_err(|_| mlua::Error::runtime("convar registry lock poisoned"))?
+                        .get(&name)
+                        .cloned()
+                        .unwrap_or(fallback))
+                },
+            )?,
+        )?;
+        let convars = self.convars.clone();
+        globals.set(
+            "GetConvarInt",
+            self.lua.create_function(
+                move |_, (name, fallback): (String, i64)| -> mlua::Result<i64> {
+                    validate_identifier(&name, "convar").map_err(mlua::Error::external)?;
+                    Ok(convars
+                        .lock()
+                        .map_err(|_| mlua::Error::runtime("convar registry lock poisoned"))?
+                        .get(&name)
+                        .and_then(|value| value.parse().ok())
+                        .unwrap_or(fallback))
+                },
+            )?,
+        )?;
+        let convars = self.convars.clone();
+        globals.set(
+            "SetConvar",
+            self.lua
+                .create_function(move |_, (name, value): (String, String)| {
+                    validate_identifier(&name, "convar").map_err(mlua::Error::external)?;
+                    if !name.starts_with(&writable_prefix) {
+                        return Err(mlua::Error::runtime(
+                            "resource may only write namespaced convars",
+                        ));
+                    }
+                    if value.len() > 4096 {
+                        return Err(mlua::Error::runtime("convar value is too long"));
+                    }
+                    convars
+                        .lock()
+                        .map_err(|_| mlua::Error::runtime("convar registry lock poisoned"))?
+                        .insert(name, value);
+                    Ok(())
+                })?,
+        )?;
+        globals.set(
+            "joaat",
+            self.lua
+                .create_function(|_, value: String| Ok(joaat(&value)))?,
+        )?;
+        globals.set("GetHashKey", globals.get::<mlua::Function>("joaat")?)?;
         globals.set(
             "InvokeNative",
             self.lua
@@ -233,6 +361,7 @@ impl ResourceHost {
             self.state = LifecycleState::Stopped;
             return Err(error);
         }
+        self.generation = self.generation.saturating_add(1);
         self.state = LifecycleState::Started;
         Ok(())
     }
@@ -289,7 +418,7 @@ impl ResourceHost {
         self.lua
             .globals()
             .get::<mlua::Function>("__gv_dispatch")?
-            .call::<()>((event.name.clone(), args))?;
+            .call::<()>((event.name.clone(), args, event.source.unwrap_or(0)))?;
         Ok(())
     }
 
@@ -373,6 +502,54 @@ impl ResourceHost {
             .call::<()>(())?;
         Ok(())
     }
+}
+
+fn validate_identifier(value: &str, kind: &str) -> Result<()> {
+    anyhow::ensure!(
+        !value.is_empty() && value.len() <= 128,
+        "invalid {kind} name"
+    );
+    anyhow::ensure!(
+        value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"_:-.".contains(&byte)),
+        "invalid {kind} name"
+    );
+    Ok(())
+}
+
+fn manifest_metadata(manifest: &ResourceManifest) -> BTreeMap<String, Vec<String>> {
+    let mut output = BTreeMap::new();
+    let mut insert = |key: &str, value: &Option<String>| {
+        if let Some(value) = value {
+            output.insert(key.to_string(), vec![value.clone()]);
+        }
+    };
+    insert("fx_version", &manifest.metadata.fx_version);
+    insert("lua54", &manifest.metadata.lua54);
+    insert("author", &manifest.metadata.author);
+    insert("version", &manifest.metadata.version);
+    insert("repository", &manifest.metadata.repository);
+    output.insert("game".into(), manifest.metadata.games.clone());
+    output.insert("provide".into(), manifest.metadata.provides.clone());
+    output.insert("dependency".into(), manifest.dependencies.clone());
+    output.insert("client_script".into(), manifest.client_scripts.clone());
+    output.insert("server_script".into(), manifest.server_scripts.clone());
+    output.insert("shared_script".into(), manifest.shared_scripts.clone());
+    output.insert("export".into(), manifest.exports.clone());
+    output
+}
+
+fn joaat(value: &str) -> u32 {
+    let mut hash = 0_u32;
+    for byte in value.bytes().map(|byte| byte.to_ascii_lowercase()) {
+        hash = hash.wrapping_add(byte as u32);
+        hash = hash.wrapping_add(hash << 10);
+        hash ^= hash >> 6;
+    }
+    hash = hash.wrapping_add(hash << 3);
+    hash ^= hash >> 11;
+    hash.wrapping_add(hash << 15)
 }
 
 pub struct ResourceCluster {
@@ -511,7 +688,7 @@ fn dependency_order(hosts: &BTreeMap<String, ResourceHost>) -> Result<Vec<String
 }
 
 const BOOTSTRAP: &str = r#"
-local handlers, callbacks, resource_exports, jobs = {}, {}, {}, {}
+local handlers, callbacks, resource_exports, jobs, commands = {}, {}, {}, {}, {}
 local next_handler, now, max_handlers, max_callbacks = 1, 0, 128, 128
 function __gv_configure(h, c) max_handlers, max_callbacks = h, c end
 local function count(t) local n=0 for _ in pairs(t) do n=n+1 end return n end
@@ -530,7 +707,36 @@ function RegisterCallback(name, handler)
   callbacks[name]=handler
 end
 function TriggerCallback(name, ...) return __gv_callback(name, {...}) end
-function exports(name, handler) resource_exports[name]=handler end
+local function register_export(name, handler) resource_exports[name]=handler end
+exports=setmetatable({}, {
+  __call=function(_, name, handler) register_export(name, handler) end,
+  __index=function(_, resource)
+    return setmetatable({}, {__index=function(_, export)
+      return function(...) error('cross-resource bracket export requires cluster routing: '..resource..'.'..export) end
+    end})
+  end
+})
+function RegisterCommand(name, handler, restricted)
+  if type(name)~='string' or #name==0 or #name>128 or not string.match(name, '^[%w_:%-%.]+$') then error('invalid command name') end
+  if type(handler)~='function' then error('command handler is required') end
+  commands[name]={fn=handler, restricted=restricted==true}
+end
+function ExecuteCommand(command)
+  if type(command)~='string' or #command>4096 then error('invalid command') end
+  local args={}; for value in string.gmatch(command, '%S+') do args[#args+1]=value end
+  local name=table.remove(args, 1); local registered=commands[name]
+  if not registered then error('unknown command: '..tostring(name)) end
+  if registered.restricted then error('restricted command requires permission bridge') end
+  return registered.fn(0, args, command)
+end
+local function vector(kind, ...)
+  local values={...}; local result={__type=kind}
+  local names={'x','y','z','w'}; for i,value in ipairs(values) do result[i]=value; result[names[i]]=value end
+  return result
+end
+function vector2(x,y) return vector('vector2',x,y) end
+function vector3(x,y,z) return vector('vector3',x,y,z) end
+function vector4(x,y,z,w) return vector('vector4',x,y,z,w) end
 function Wait(ms) return coroutine.yield(ms or 0) end
 function CreateThread(fn) local co=coroutine.create(fn); jobs[#jobs+1]={at=now, co=co} return co end
 function SetTimeout(ms, fn) jobs[#jobs+1]={at=now+(ms or 0), fn=fn} end
@@ -547,10 +753,15 @@ function __gv_advance(ms)
     else jobs[#jobs+1]=job end
   end
 end
-function __gv_dispatch(name, args) TriggerEvent(name, table.unpack(args)) end
+function __gv_dispatch(name, args, event_source)
+  local previous=source; source=event_source or 0
+  local ok, result=pcall(TriggerEvent, name, table.unpack(args))
+  source=previous
+  if not ok then error(result) end
+end
 function __gv_callback(name, args) if not callbacks[name] then error('unknown callback: '..name) end return {callbacks[name](table.unpack(args))} end
 function __gv_export(name, args) if not resource_exports[name] then error('unknown export: '..name) end return {resource_exports[name](table.unpack(args))} end
-function __gv_reset() handlers={}; callbacks={}; resource_exports={}; jobs={} end
+function __gv_reset() handlers={}; callbacks={}; resource_exports={}; jobs={}; commands={} end
 "#;
 
 #[cfg(test)]
@@ -561,6 +772,7 @@ mod tests {
         fs::write(dir.path().join("main.lua"), source).unwrap();
         let manifest = ResourceManifest {
             name: "fixture".into(),
+            metadata: Default::default(),
             client_scripts: vec![],
             server_scripts: vec![],
             shared_scripts: vec!["main.lua".into()],
@@ -720,8 +932,10 @@ mod tests {
         let mut host =
             ResourceHost::new(dir.path(), manifest, HostSide::Client, Limits::default()).unwrap();
         host.start().unwrap();
+        assert_eq!(host.generation(), 1);
         host.stop().unwrap();
         host.start().unwrap();
+        assert_eq!(host.generation(), 2);
         host.dispatch(&ResourceEvent {
             resource: "fixture".into(),
             name: "ping".into(),
@@ -732,5 +946,42 @@ mod tests {
         })
         .unwrap();
         assert_eq!(host.drain_outbound().len(), 1);
+    }
+
+    #[test]
+    fn provides_resource_convar_command_vector_hash_and_source_apis() {
+        let source = r#"
+assert(GetCurrentResourceName() == 'fixture')
+assert(GetResourceState('fixture') == 'started')
+assert(GetNumResourceMetadata('fixture', 'version') == 1)
+assert(GetResourceMetadata('fixture', 'version', 0) == '1.0.0')
+assert(GetConvar('fixture:locale', 'en') == 'ru')
+assert(GetConvarInt('fixture:number', 7) == 42)
+SetConvar('fixture:written', 'yes')
+assert(GetConvar('fixture:written', 'no') == 'yes')
+local position=vector3(1,2,3); assert(position.x==1 and position[3]==3 and position.__type=='vector3')
+assert(joaat('adder') == GetHashKey('ADDER'))
+RegisterCommand('hello', function(command_source, args) TriggerServerEvent('command', command_source, args[1]) end, false)
+ExecuteCommand('hello world')
+RegisterNetEvent('source-check', function() TriggerServerEvent('source-result', source) end)
+"#;
+        let (dir, mut manifest) = fixture(source);
+        manifest.metadata.version = Some("1.0.0".into());
+        let mut host =
+            ResourceHost::new(dir.path(), manifest, HostSide::Server, Limits::default()).unwrap();
+        host.set_convar("fixture:locale", "ru").unwrap();
+        host.set_convar("fixture:number", "42").unwrap();
+        host.start().unwrap();
+        assert_eq!(host.drain_outbound()[0].name, "command");
+        host.dispatch(&ResourceEvent {
+            resource: "fixture".into(),
+            name: "source-check".into(),
+            source: Some(37),
+            target: None,
+            arguments: vec![],
+            correlation_id: None,
+        })
+        .unwrap();
+        assert_eq!(host.drain_outbound()[0].arguments, [serde_json::json!(37)]);
     }
 }
