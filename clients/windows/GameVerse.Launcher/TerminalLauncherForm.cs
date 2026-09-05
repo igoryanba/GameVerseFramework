@@ -193,13 +193,13 @@ internal sealed class TerminalLauncherForm : Form
             {
                 await LaunchGameOnceAsync(config, existingGames.Select(value => value.Id).ToHashSet());
             }
+            WindowState = FormWindowState.Minimized;
+            if (gameProcess is not null) _ = WatchGameAsync(gameProcess);
             UiResponse ready = await bridge.SendAsync(
                 UiBridgeClient.Request("ui.ready"),
                 stopping.Token,
                 TimeSpan.FromMinutes(3));
             ShowResponse(ready);
-            WindowState = FormWindowState.Minimized;
-            if (gameProcess is not null) _ = WatchGameAsync(gameProcess);
         }
         catch (Exception error)
         {
