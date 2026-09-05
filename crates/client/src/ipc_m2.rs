@@ -498,6 +498,28 @@ where
                 )
                 .await?;
             }
+            bootstrap::Message::TelemetryCandidatesV1 { candidates, .. } => {
+                anyhow::ensure!(
+                    hello_seen,
+                    "candidate telemetry preceded bootstrap identity"
+                );
+                // Candidate RVAs are local research data. Deliberately expose only
+                // the bounded count to the player-facing launcher.
+                ui::write(
+                    ui_tx,
+                    &UiResponse::success(
+                        "bridge-stage",
+                        json!({
+                            "stage": "telemetry_candidates_observed",
+                            "message": format!(
+                                "GameVerse проверил {} исследовательских кандидатов",
+                                candidates.len()
+                            )
+                        }),
+                    ),
+                )
+                .await?;
+            }
             bootstrap::Message::BootstrapStage {
                 monotonic_ms,
                 stage,

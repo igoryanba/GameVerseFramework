@@ -68,6 +68,17 @@ int main() {
             "telemetry serialization failed");
     Require(telemetry_json.find("0x") == std::string::npos,
             "telemetry leaked an absolute address");
+    const auto candidate_manifest_bytes = read(GAMEVERSE_TEST_CANDIDATES);
+    const auto candidate_manifest = gameverse::ParseManifest(
+        std::string(candidate_manifest_bytes.begin(), candidate_manifest_bytes.end()));
+    const auto candidates = gameverse::InspectImageCandidates(
+        GetModuleHandleW(nullptr), candidate_manifest);
+    Require(candidates.size() == 2, "research candidates were not inspected");
+    const auto candidates_json = gameverse::SerializeTelemetryCandidates(candidates);
+    Require(candidates_json.find("telemetry_candidates_v1") != std::string::npos,
+            "candidate telemetry serialization failed");
+    Require(candidates_json.find("0x") == std::string::npos,
+            "candidate telemetry leaked an absolute address");
     Require(gameverse::TelemetryPageKey(0, ".text", 1) !=
                 gameverse::TelemetryPageKey(1, ".text", 1),
             "duplicate PE section names share a telemetry page key");

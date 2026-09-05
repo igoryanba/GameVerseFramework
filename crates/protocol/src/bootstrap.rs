@@ -42,6 +42,10 @@ pub enum Message {
         schema_version: u16,
         snapshot: TelemetrySnapshotV1,
     },
+    TelemetryCandidatesV1 {
+        schema_version: u16,
+        candidates: Vec<TelemetryCandidateV1>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -85,6 +89,8 @@ pub struct TelemetrySectionV1 {
     pub executable_pages: u32,
     pub readonly_pages: u32,
     pub changed_pages: u32,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub changed_page_rvas: Vec<u32>,
     pub aggregate_sha256: String,
 }
 
@@ -155,7 +161,8 @@ impl Message {
             Self::BootstrapStage { schema_version, .. }
             | Self::BootstrapFailure { schema_version, .. }
             | Self::BootstrapCommand { schema_version, .. }
-            | Self::TelemetrySnapshotV1 { schema_version, .. } => *schema_version == VERSION,
+            | Self::TelemetrySnapshotV1 { schema_version, .. }
+            | Self::TelemetryCandidatesV1 { schema_version, .. } => *schema_version == VERSION,
             Self::TelemetryHelloV1 {
                 schema_version,
                 probe_build,
@@ -179,6 +186,16 @@ impl Message {
                 !code.is_empty() && code.len() <= 64 && !message.is_empty() && message.len() <= 512
             }
             Self::TelemetrySnapshotV1 { snapshot, .. } => snapshot.valid(),
+            Self::TelemetryCandidatesV1 { candidates, .. } => {
+                candidates.len() <= 16
+                    && candidates.iter().all(|candidate| {
+                        !candidate.candidate_id.is_empty()
+                            && candidate.candidate_id.len() <= 64
+                            && !candidate.section.is_empty()
+                            && candidate.section.len() <= 16
+                            && candidate.unique_match_count <= 1024
+                    })
+            }
             _ => true,
         };
         envelope_valid && payload_valid
@@ -201,6 +218,8 @@ impl TelemetrySnapshotV1 {
                 !v.name.is_empty()
                     && v.name.len() <= 16
                     && v.virtual_size <= 4 * 1024 * 1024 * 1024
+                    && v.changed_page_rvas.len() <= 256
+                    && v.changed_page_rvas.windows(2).all(|pair| pair[0] < pair[1])
                     && v.aggregate_sha256.len() == 64
                     && v.aggregate_sha256.bytes().all(|b| b.is_ascii_hexdigit())
             })
@@ -262,6 +281,7 @@ mod tests {
                     executable_pages: 1,
                     readonly_pages: 1,
                     changed_pages: 0,
+                    changed_page_rvas: vec![],
                     aggregate_sha256: "00".repeat(32),
                 }],
                 readiness: TelemetryReadinessV1 {
@@ -280,5 +300,20 @@ mod tests {
             command: Command::StartTelemetry,
         };
         assert_eq!(decode(&encode(&command).unwrap()[4..]).unwrap(), command);
+
+        let candidates = Message::TelemetryCandidatesV1 {
+            schema_version: VERSION,
+            candidates: vec![TelemetryCandidateV1 {
+                candidate_id: "transition_ref_a".into(),
+                rva: 0x11c_52f0,
+                section: ".text".into(),
+                unique_match_count: 1,
+                call_count: 0,
+            }],
+        };
+        assert_eq!(
+            decode(&encode(&candidates).unwrap()[4..]).unwrap(),
+            candidates
+        );
     }
 }

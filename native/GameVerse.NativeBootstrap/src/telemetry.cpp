@@ -291,4 +291,22 @@ std::string SerializeTelemetrySnapshot(const TelemetrySnapshot& value) {
   return output;
 }
 
+std::string SerializeTelemetryCandidates(
+    std::span<const TelemetryCandidate> candidates) {
+  std::string output =
+      "{\"type\":\"telemetry_candidates_v1\",\"schema_version\":1,\"candidates\":[";
+  for (std::size_t index = 0; index < candidates.size(); ++index) {
+    if (index != 0) output += ',';
+    const auto& candidate = candidates[index];
+    output += "{\"candidate_id\":\"" + JsonEscape(candidate.candidate_id) +
+              "\",\"rva\":" + std::to_string(candidate.rva) +
+              ",\"section\":\"" + JsonEscape(candidate.section) +
+              "\",\"unique_match_count\":" +
+              std::to_string(candidate.unique_match_count) +
+              ",\"call_count\":" + std::to_string(candidate.call_count) + "}";
+  }
+  output += "]}";
+  return output;
+}
+
 }  // namespace gameverse

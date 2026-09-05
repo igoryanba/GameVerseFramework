@@ -56,6 +56,7 @@ target_link_libraries(gameverse_native_bootstrap_tests PRIVATE gameverse_bootstr
 target_compile_definitions(gameverse_native_bootstrap_tests PRIVATE
   GAMEVERSE_TEST_MANIFEST=L"${CMAKE_CURRENT_SOURCE_DIR}/compatibility/enhanced-1.0.1158.13.json"
   GAMEVERSE_TEST_SIGNATURE=L"${CMAKE_CURRENT_SOURCE_DIR}/compatibility/enhanced-1.0.1158.13.sig"
+  GAMEVERSE_TEST_CANDIDATES=L"${CMAKE_CURRENT_SOURCE_DIR}/compatibility/telemetry-candidates-v1.json"
 )
 enable_testing()
 add_test(NAME native_bootstrap_tests COMMAND gameverse_native_bootstrap_tests)
@@ -79,6 +80,7 @@ install(TARGETS GameVerse.NativeBootstrap gameverse-native-inspector
 install(FILES
   compatibility/enhanced-1.0.1158.13.json
   compatibility/enhanced-1.0.1158.13.sig
+  compatibility/telemetry-candidates-v1.json
   DESTINATION .
 )
 install(FILES THIRD_PARTY_MINHOOK.txt THIRD_PARTY_ZYDIS.txt DESTINATION licenses)

@@ -79,6 +79,19 @@ bool ValidateExecutable(const std::filesystem::path& path,
 bool VerifyImageSignatures(void* image, const CompatibilityManifest& manifest,
                            std::string& error);
 
+struct TelemetryCandidate {
+  std::string candidate_id;
+  std::uint32_t rva{};
+  std::string section;
+  std::uint32_t unique_match_count{};
+  std::uint64_t call_count{};
+};
+
+std::vector<TelemetryCandidate> InspectImageCandidates(
+    void* image, const CompatibilityManifest& manifest);
+std::string SerializeTelemetryCandidates(
+    std::span<const TelemetryCandidate> candidates);
+
 struct TelemetryModule {
   std::string name;
   std::uint64_t image_size{};

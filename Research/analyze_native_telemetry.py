@@ -16,6 +16,7 @@ KNOWN_TYPES = {
     "bootstrap_failure",
     "telemetry_hello_v1",
     "telemetry_snapshot_v1",
+    "telemetry_candidates_v1",
 }
 SENSITIVE = re.compile(
     r"(?i)(password|access[_-]?token|refresh[_-]?token|dpapi|0x[0-9a-f]{8,})"
@@ -49,6 +50,7 @@ def summarize(path: Path) -> dict[str, Any]:
     snapshots: list[dict[str, Any]] = []
     fingerprint = None
     failure = None
+    candidates: list[dict[str, Any]] = []
     for message in messages:
         kind = message["type"]
         if kind == "bootstrap_stage":
@@ -66,6 +68,22 @@ def summarize(path: Path) -> dict[str, Any]:
             fingerprint = current
         elif kind == "bootstrap_failure":
             failure = message.get("code")
+        elif kind == "telemetry_candidates_v1":
+            raw_candidates = message.get("candidates")
+            if not isinstance(raw_candidates, list) or len(raw_candidates) > 16:
+                raise ValueError(f"{path}: malformed telemetry candidates")
+            for candidate in raw_candidates:
+                if (
+                    not isinstance(candidate, dict)
+                    or not isinstance(candidate.get("candidate_id"), str)
+                    or not isinstance(candidate.get("rva"), int)
+                    or candidate["rva"] < 0
+                    or candidate["rva"] > 0xFFFFFFFF
+                    or not isinstance(candidate.get("unique_match_count"), int)
+                    or not isinstance(candidate.get("call_count"), int)
+                ):
+                    raise ValueError(f"{path}: malformed telemetry candidate")
+                candidates.append(candidate)
 
     if fingerprint is None or "frontend_stable" not in stages:
         classification = "incomplete"
@@ -123,6 +141,7 @@ def summarize(path: Path) -> dict[str, Any]:
         "failure": failure,
         "readiness": readiness,
         "sections": sections,
+        "candidates": candidates,
     }
 
 

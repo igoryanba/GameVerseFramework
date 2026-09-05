@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from analyze_native_telemetry import MAX_FRAME, build_report, load_trace
+from analyze_native_telemetry import MAX_FRAME, build_report, load_trace, summarize
 
 
 FINGERPRINT = "a" * 64
@@ -56,6 +56,31 @@ def write_trace(path: Path, adapter: bool, changed_rvas: list[int] | None = None
 
 
 class AnalyzeNativeTelemetryTests(unittest.TestCase):
+    def test_candidate_message_is_bounded_and_preserved(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "candidate"
+            write_trace(path, False)
+            with path.open("a", encoding="utf-8") as stream:
+                stream.write(
+                    json.dumps(
+                        {
+                            "type": "telemetry_candidates_v1",
+                            "schema_version": 1,
+                            "candidates": [
+                                {
+                                    "candidate_id": "transition_ref_a",
+                                    "rva": 4096,
+                                    "section": ".text",
+                                    "unique_match_count": 1,
+                                    "call_count": 0,
+                                }
+                            ],
+                        }
+                    )
+                    + "\n"
+                )
+            self.assertEqual(summarize(path)["candidates"][0]["rva"], 4096)
+
     def test_candidate_gate_requires_two_manual_and_one_control(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

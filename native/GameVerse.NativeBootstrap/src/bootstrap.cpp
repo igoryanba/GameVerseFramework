@@ -144,6 +144,22 @@ void RunBootstrap(void* module) noexcept {
     pipe.Send(Stage(state.state()));
 
     if (manifest.mode == "telemetry_only") {
+      const auto candidates_path = directory / L"telemetry-candidates-v1.json";
+      if (std::filesystem::exists(candidates_path)) {
+        const auto candidate_bytes = ReadBytes(candidates_path);
+        const std::string candidate_text(candidate_bytes.begin(), candidate_bytes.end());
+        const auto candidate_manifest = ParseManifest(candidate_text);
+        if (candidate_manifest.mode != "telemetry_only" ||
+            candidate_manifest.edition != manifest.edition ||
+            candidate_manifest.build != manifest.build ||
+            candidate_manifest.pe_size != manifest.pe_size ||
+            candidate_manifest.pe_sha256 != manifest.pe_sha256)
+          throw std::runtime_error("telemetry_candidates_identity_mismatch");
+        const auto candidates =
+            InspectImageCandidates(GetModuleHandleW(nullptr), candidate_manifest);
+        if (!pipe.Send(SerializeTelemetryCandidates(candidates)))
+          throw std::runtime_error("telemetry_candidates_frame_rejected");
+      }
       auto previous = telemetry.ObserveReadiness();
       const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(15);
       while (std::chrono::steady_clock::now() < deadline) {
