@@ -115,20 +115,22 @@ async fn run_with_bootstrap_mode(
         if left.is_zero() {
             return Ok(());
         }
-        let (ui_result, bootstrap_result) = tokio::join!(
-            timeout(left, ui_listener.connect()),
-            timeout(left, bootstrap_listener.connect())
-        );
-        if ui_result.is_err() || bootstrap_result.is_err() {
+        timeout(left, ui_listener.connect()).await??;
+        let mut ui_stream = std::mem::replace(&mut ui_listener, listener(ui_pipe, false)?);
+        {
+            let (mut ui_rx, mut ui_tx) = tokio::io::split(&mut ui_stream);
+            ui_handshake(&mut ui_rx, &mut ui_tx, "waiting_for_game").await?;
+        }
+        let left = finish.saturating_duration_since(Instant::now());
+        if left.is_zero() {
             return Ok(());
         }
-        ui_result??;
-        bootstrap_result??;
-        let mut ui_stream = std::mem::replace(&mut ui_listener, listener(ui_pipe, false)?);
+        timeout(left, bootstrap_listener.connect()).await??;
         let mut bootstrap_stream =
             std::mem::replace(&mut bootstrap_listener, listener(bootstrap_pipe, false)?);
         let result = async {
-            bootstrap_gate(&mut bootstrap_stream, &mut ui_stream, automatic_world).await?;
+            bootstrap_gate_after_handshake(&mut bootstrap_stream, &mut ui_stream, automatic_world)
+                .await?;
             timeout(
                 finish.saturating_duration_since(Instant::now()),
                 adapter_listener.connect(),
@@ -365,7 +367,7 @@ async fn ui_handshake(
     }))).await
 }
 
-#[cfg(any(windows, test))]
+#[cfg(test)]
 async fn bootstrap_gate<B, U>(
     bootstrap_stream: &mut B,
     ui_stream: &mut U,
@@ -377,6 +379,33 @@ where
 {
     let (mut ui_rx, mut ui_tx) = tokio::io::split(ui_stream);
     ui_handshake(&mut ui_rx, &mut ui_tx, "waiting_for_game").await?;
+    bootstrap_gate_inner(bootstrap_stream, &mut ui_tx, automatic_world).await
+}
+
+#[cfg(any(windows, test))]
+async fn bootstrap_gate_after_handshake<B, U>(
+    bootstrap_stream: &mut B,
+    ui_stream: &mut U,
+    automatic_world: bool,
+) -> Result<()>
+where
+    B: AsyncRead + AsyncWrite + Unpin,
+    U: AsyncRead + AsyncWrite + Unpin,
+{
+    let (_, mut ui_tx) = tokio::io::split(ui_stream);
+    bootstrap_gate_inner(bootstrap_stream, &mut ui_tx, automatic_world).await
+}
+
+#[cfg(any(windows, test))]
+async fn bootstrap_gate_inner<B, U>(
+    bootstrap_stream: &mut B,
+    ui_tx: &mut U,
+    automatic_world: bool,
+) -> Result<()>
+where
+    B: AsyncRead + AsyncWrite + Unpin,
+    U: AsyncWrite + Unpin,
+{
     let (mut bootstrap_rx, mut bootstrap_tx) = tokio::io::split(bootstrap_stream);
     let mut hello_seen = false;
     let mut world_loader_capable = false;
@@ -429,7 +458,7 @@ where
             bootstrap::Message::TelemetrySnapshotV1 { snapshot, .. } => {
                 anyhow::ensure!(hello_seen, "telemetry preceded bootstrap identity");
                 ui::write(
-                    &mut ui_tx,
+                    ui_tx,
                     &UiResponse::success(
                         "bridge-stage",
                         json!({
@@ -447,7 +476,7 @@ where
             } => {
                 anyhow::ensure!(monotonic_ms >= last_time, "non-monotonic bootstrap clock");
                 last_time = monotonic_ms;
-                ui::write(&mut ui_tx, &UiResponse::success("bridge-stage", json!({
+                ui::write(ui_tx, &UiResponse::success("bridge-stage", json!({
                     "stage": format!("bootstrap_{}", serde_json::to_value(stage)?.as_str().unwrap_or("failed")),
                     "message": "GameVerse готовит игровой мир"
                 }))).await?;
@@ -463,7 +492,7 @@ where
                         )
                         .await?;
                     } else {
-                        ui::write(&mut ui_tx, &UiResponse::success("bridge-stage", json!({
+                        ui::write(ui_tx, &UiResponse::success("bridge-stage", json!({
                             "stage":"telemetry_waiting_for_manual_story",
                             "message":"Для исследовательского trace вручную откройте Story Mode"
                         }))).await?;
@@ -481,7 +510,7 @@ where
             }
             bootstrap::Message::BootstrapFailure { code, message, .. } => {
                 ui::write(
-                    &mut ui_tx,
+                    ui_tx,
                     &UiResponse::success(
                         "bridge-stage",
                         json!({"stage":"failed","message":&message,"error_code":&code}),
@@ -961,5 +990,70 @@ mod bootstrap_tests {
             .unwrap();
         assert!(ui::read::<UiResponse>(&mut ui_peer).await.unwrap().ok);
         gate.await.unwrap().unwrap();
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn ui_handshake_completes_before_native_bootstrap_connects() {
+        use tokio::net::windows::named_pipe::ClientOptions;
+
+        let unique = format!(
+            "{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let adapter_pipe = format!(r"\\.\pipe\gameverse-adapter-order-{unique}");
+        let ui_pipe = format!(r"\\.\pipe\gameverse-ui-order-{unique}");
+        let bootstrap_pipe = format!(r"\\.\pipe\gameverse-bootstrap-order-{unique}");
+        let runner_adapter = adapter_pipe.clone();
+        let runner_ui = ui_pipe.clone();
+        let runner_bootstrap = bootstrap_pipe.clone();
+        let runner = tokio::spawn(async move {
+            run_telemetry(
+                &runner_adapter,
+                &runner_ui,
+                &runner_bootstrap,
+                "127.0.0.1:9".parse().unwrap(),
+                Path::new("unused-certificate.der"),
+                Duration::from_secs(10),
+            )
+            .await
+        });
+
+        let mut client = None;
+        for _ in 0..100 {
+            match ClientOptions::new().open(&ui_pipe) {
+                Ok(value) => {
+                    client = Some(value);
+                    break;
+                }
+                Err(error) if matches!(error.raw_os_error(), Some(2 | 231)) => {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+                Err(error) => panic!("open UI pipe: {error}"),
+            }
+        }
+        let mut client = client.expect("UI pipe did not become available");
+        ui::write(
+            &mut client,
+            &UiRequest {
+                schema_version: ui::VERSION,
+                request_id: "startup-order".into(),
+                command: "ui.hello".into(),
+                payload: json!({}),
+            },
+        )
+        .await
+        .unwrap();
+        let response = timeout(Duration::from_secs(2), ui::read::<UiResponse>(&mut client))
+            .await
+            .expect("UI handshake waited for native bootstrap")
+            .unwrap();
+        assert!(response.ok);
+        assert_eq!(response.payload["stage"], "waiting_for_game");
+        runner.abort();
     }
 }
