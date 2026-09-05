@@ -54,6 +54,7 @@ impl UiRequest {
                     | "job.start"
                     | "job.finish"
                     | "session.reconnect"
+                    | "session.end"
             )
             && self.payload.is_object()
     }
@@ -149,6 +150,13 @@ mod tests {
         assert!(!UiRequest {
             payload: Value::Null,
             ..request
+        }
+        .valid());
+        assert!(UiRequest {
+            schema_version: VERSION,
+            request_id: "shutdown-1".into(),
+            command: "session.end".into(),
+            payload: serde_json::json!({"reason":"launcher_closed"}),
         }
         .valid());
     }

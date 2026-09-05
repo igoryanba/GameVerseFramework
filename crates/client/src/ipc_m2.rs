@@ -689,8 +689,9 @@ async fn serve_active(
                     Err(error)=>UiResponse::error(&request.request_id,"request_failed",public_error(&error)),
                 };
                 ui::write(&mut ui_tx,&response).await?;
-                if request.command == "auth.logout" && response.ok {
-                    ipc::write(&mut adapter_tx,&Message::SessionEnd { reason:"logout".into() }).await?;
+                if matches!(request.command.as_str(), "auth.logout" | "session.end") && response.ok {
+                    let reason = if request.command == "auth.logout" { "logout" } else { "launcher_closed" };
+                    ipc::write(&mut adapter_tx,&Message::SessionEnd { reason:reason.into() }).await?;
                     return Ok(());
                 }
             },
@@ -833,6 +834,12 @@ async fn handle_active(client: &mut Client, request: &UiRequest) -> Result<UiRes
             return Ok(UiResponse::success(
                 &request.request_id,
                 json!({"stage":"auth_required"}),
+            ));
+        }
+        "session.end" => {
+            return Ok(UiResponse::success(
+                &request.request_id,
+                json!({"stage":"stopping"}),
             ));
         }
         _ => {

@@ -44,19 +44,17 @@ jobs:
         shell: pwsh
         run: |
           dotnet build clients/windows/GameVerse.Launcher -c Release --nologo
-          & ./clients/windows/GameVerse.Launcher/bin/Release/net8.0-windows/GameVerse.Launcher.exe self-test
-          dotnet build clients/windows/GameVerse.UI -c Release --nologo
-          & ./clients/windows/GameVerse.UI/bin/Release/net8.0-windows/GameVerse.UI.exe --self-test
+          dotnet ./clients/windows/GameVerse.Launcher/bin/Release/net8.0-windows/GameVerse.Launcher.dll self-test
       - name: Package closed-alpha Windows client
         shell: pwsh
         run: ./clients/windows/package-alpha.ps1
       - name: Verify signed update manifest
         shell: pwsh
         run: |
-          & ./clients/windows/GameVerse.Launcher/bin/Release/net8.0-windows/GameVerse.Launcher.exe __generate-update-test-key "$env:RUNNER_TEMP/update-private.pem" "$env:RUNNER_TEMP/update-public.pem"
+          dotnet ./clients/windows/GameVerse.Launcher/bin/Release/net8.0-windows/GameVerse.Launcher.dll __generate-update-test-key "$env:RUNNER_TEMP/update-private.pem" "$env:RUNNER_TEMP/update-public.pem"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./clients/windows/create-update-manifest.ps1 -PackageRoot artifacts/GameVerse-alpha-win-x64 -BaseUrl https://updates.gameverse.invalid/alpha/ -Version 0.1.0-alpha.ci -MinimumLauncherVersion 0.1.0-alpha.1 -SigningKeyPath "$env:RUNNER_TEMP/update-private.pem" -KeyId ci-test
-          & ./clients/windows/GameVerse.Launcher/bin/Release/net8.0-windows/GameVerse.Launcher.exe verify-update artifacts/GameVerse-alpha-win-x64/update-manifest.json artifacts/GameVerse-alpha-win-x64/update-manifest.sig "$env:RUNNER_TEMP/update-public.pem"
+          dotnet ./clients/windows/GameVerse.Launcher/bin/Release/net8.0-windows/GameVerse.Launcher.dll verify-update artifacts/GameVerse-alpha-win-x64/update-manifest.json artifacts/GameVerse-alpha-win-x64/update-manifest.sig "$env:RUNNER_TEMP/update-public.pem"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Remove-Item -LiteralPath "$env:RUNNER_TEMP/update-private.pem" -Force
       - uses: actions/upload-artifact@v4

@@ -4,10 +4,27 @@ using System.IO.Pipes;
 using System.Text;
 using System.Text.Json;
 
-namespace GameVerse.UI;
+internal sealed record UiRequest(int SchemaVersion, string RequestId, string Command, JsonElement Payload);
+
+internal sealed record UiResponse(
+    int SchemaVersion,
+    string RequestId,
+    bool Ok,
+    string? ErrorCode,
+    string? Message,
+    JsonElement Payload);
+
+internal static class UiJson
+{
+    internal static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+    };
+}
 
 internal sealed class UiBridgeClient : IAsyncDisposable
 {
+    internal const int MaxMessageBytes = 64 * 1024;
     private readonly string pipeName;
     private readonly ConcurrentDictionary<string, TaskCompletionSource<UiResponse>> pending = new();
     private readonly SemaphoreSlim writeLock = new(1, 1);
@@ -16,8 +33,7 @@ internal sealed class UiBridgeClient : IAsyncDisposable
     private Task? reader;
 
     internal bool Connected => stream?.IsConnected == true;
-    internal event Action? ConnectedToBridge;
-    internal event Action? DisconnectedFromBridge;
+    internal event Action? Disconnected;
     internal event Action<UiResponse>? BridgeEvent;
 
     internal UiBridgeClient(string pipe) => pipeName = NormalizePipe(pipe);
@@ -35,11 +51,8 @@ internal sealed class UiBridgeClient : IAsyncDisposable
                 await candidate.ConnectAsync(1000, deadline.Token);
                 stream = candidate;
                 reader = ReadLoopAsync(candidate, stopping.Token);
-                UiResponse hello = await SendAsync(new UiRequest(
-                    1, "ui-host-hello", "ui.hello",
-                    JsonSerializer.SerializeToElement(new { ui_build = Application.ProductVersion }, UiJson.Options)), deadline.Token);
-                if (!hello.Ok) throw new InvalidDataException(hello.Message ?? "Bridge rejected UI handshake");
-                ConnectedToBridge?.Invoke();
+                UiResponse hello = await SendAsync(Request("ui.hello", new { ui_build = Application.ProductVersion }), deadline.Token);
+                if (!hello.Ok) throw new InvalidDataException(hello.Message ?? "Bridge rejected launcher handshake");
                 return;
             }
             catch (Exception error) when (error is IOException or TimeoutException or OperationCanceledException or InvalidDataException)
@@ -62,7 +75,7 @@ internal sealed class UiBridgeClient : IAsyncDisposable
         try
         {
             byte[] body = JsonSerializer.SerializeToUtf8Bytes(request, UiJson.Options);
-            if (body.Length is 0 or > UiMessageValidator.MaxMessageBytes) throw new InvalidDataException("UI message is too large");
+            if (body.Length is 0 or > MaxMessageBytes) throw new InvalidDataException("UI message is too large");
             byte[] prefix = new byte[4];
             BinaryPrimitives.WriteUInt32BigEndian(prefix, (uint)body.Length);
             await writeLock.WaitAsync(cancellationToken);
@@ -78,6 +91,12 @@ internal sealed class UiBridgeClient : IAsyncDisposable
         finally { pending.TryRemove(request.RequestId, out _); }
     }
 
+    internal static UiRequest Request(string command, object? payload = null) => new(
+        1,
+        Guid.NewGuid().ToString("N"),
+        command,
+        JsonSerializer.SerializeToElement(payload ?? new { }, UiJson.Options));
+
     private async Task ReadLoopAsync(Stream source, CancellationToken cancellationToken)
     {
         try
@@ -87,7 +106,7 @@ internal sealed class UiBridgeClient : IAsyncDisposable
             {
                 await source.ReadExactlyAsync(prefix, cancellationToken);
                 uint length = BinaryPrimitives.ReadUInt32BigEndian(prefix);
-                if (length is 0 or > UiMessageValidator.MaxMessageBytes) throw new InvalidDataException("Invalid bridge frame length");
+                if (length is 0 or > MaxMessageBytes) throw new InvalidDataException("Invalid bridge frame length");
                 byte[] body = new byte[length];
                 await source.ReadExactlyAsync(body, cancellationToken);
                 UiResponse response = JsonSerializer.Deserialize<UiResponse>(body, UiJson.Options)
@@ -103,7 +122,7 @@ internal sealed class UiBridgeClient : IAsyncDisposable
             foreach (TaskCompletionSource<UiResponse> completion in pending.Values)
                 completion.TrySetException(new IOException("Связь с GameVerse bridge потеряна", error));
             pending.Clear();
-            if (!stopping.IsCancellationRequested) DisconnectedFromBridge?.Invoke();
+            if (!stopping.IsCancellationRequested) Disconnected?.Invoke();
         }
     }
 
@@ -134,7 +153,6 @@ internal static class TokenStore
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GameVerse", "refresh-token.bin");
 
     internal static bool Exists => File.Exists(TokenPath);
-
     internal static void Save(string token)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(TokenPath)!);
@@ -142,7 +160,6 @@ internal static class TokenStore
             Encoding.UTF8.GetBytes(token), Entropy, System.Security.Cryptography.DataProtectionScope.CurrentUser);
         File.WriteAllBytes(TokenPath, protectedToken);
     }
-
     internal static string? Load()
     {
         if (!File.Exists(TokenPath)) return null;
@@ -150,16 +167,5 @@ internal static class TokenStore
             File.ReadAllBytes(TokenPath), Entropy, System.Security.Cryptography.DataProtectionScope.CurrentUser);
         return Encoding.UTF8.GetString(plaintext);
     }
-
     internal static void Clear() { if (File.Exists(TokenPath)) File.Delete(TokenPath); }
-
-    internal static bool SelfTest()
-    {
-        byte[] source = Encoding.UTF8.GetBytes("self-test-token");
-        byte[] protectedToken = System.Security.Cryptography.ProtectedData.Protect(
-            source, Entropy, System.Security.Cryptography.DataProtectionScope.CurrentUser);
-        byte[] restored = System.Security.Cryptography.ProtectedData.Unprotect(
-            protectedToken, Entropy, System.Security.Cryptography.DataProtectionScope.CurrentUser);
-        return source.SequenceEqual(restored);
-    }
 }

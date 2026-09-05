@@ -35,7 +35,6 @@ jobs:
       - name: Build Windows UI and launcher
         shell: pwsh
         run: |
-          dotnet build clients/windows/GameVerse.UI/GameVerse.UI.csproj -c Release --nologo
           dotnet build clients/windows/GameVerse.Launcher/GameVerse.Launcher.csproj -c Release --nologo
       - uses: actions/upload-artifact@v4
         with:

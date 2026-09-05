@@ -4,13 +4,23 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Microsoft.Win32;
-
-return await Launcher.RunAsync(args);
+internal static class Program
+{
+    [STAThread]
+    private static int Main(string[] args)
+    {
+        string command = args.FirstOrDefault()?.ToLowerInvariant() ?? "start";
+        if (command == "start")
+        {
+            ApplicationConfiguration.Initialize();
+            return LauncherWindow.Run(args);
+        }
+        return Launcher.RunAsync(args).GetAwaiter().GetResult();
+    }
+}
 
 internal sealed record LauncherConfig(
     string GameDirectory,
-    string UiPath,
     string BridgePath,
     string UiPipe,
     string AdapterPipe,
@@ -46,6 +56,7 @@ internal static class Launcher
             return 0;
         }
         if (command == "self-test") return await SelfTestAsync();
+        if (command == "__render-ui") return TerminalLauncherForm.RenderTest(args.ElementAtOrDefault(1));
         if (command == "__generate-update-test-key") return GenerateUpdateTestKey(args);
         if (command == "__apply-update") return await ApplyUpdateAsync(args);
         if (command == "verify-update") return VerifyUpdate(args);
@@ -61,7 +72,7 @@ internal static class Launcher
             return command switch
             {
                 "verify" => Verify(config),
-                "start" => await StartAsync(config, args.Any(value => value.Equals("--allow-low-memory", StringComparison.OrdinalIgnoreCase))),
+                "start" => throw new InvalidOperationException("Interactive startup must be hosted by the launcher window"),
                 "logs" => OpenLogs(config),
                 "diagnostics" => Diagnostics(config, args.ElementAtOrDefault(1)),
                 "update" => await UpdateAsync(config),
@@ -75,7 +86,7 @@ internal static class Launcher
         }
     }
 
-    private static LauncherConfig Load()
+    internal static LauncherConfig Load()
     {
         string path = Path.Combine(AppContext.BaseDirectory, ConfigName);
         if (!File.Exists(path)) throw new FileNotFoundException($"Create {ConfigName} with 'init' first", path);
@@ -83,7 +94,7 @@ internal static class Launcher
         {
             PropertyNameCaseInsensitive = true
         }) ?? throw new InvalidDataException("Launcher configuration is empty");
-        if (new[] { config.GameDirectory, config.UiPath, config.BridgePath, config.UiPipe, config.AdapterPipe, config.BootstrapPipe, config.ServerAddress, config.CertificatePath, config.CertificateSha256, config.UpdateChannel, config.LogLevel }
+        if (new[] { config.GameDirectory, config.BridgePath, config.UiPipe, config.AdapterPipe, config.BootstrapPipe, config.ServerAddress, config.CertificatePath, config.CertificateSha256, config.UpdateChannel, config.LogLevel }
             .Any(string.IsNullOrWhiteSpace))
             throw new InvalidDataException("Launcher configuration contains an empty required value");
         if (!config.UiPipe.StartsWith(@"\\.\pipe\", StringComparison.OrdinalIgnoreCase))
@@ -106,7 +117,6 @@ internal static class Launcher
         if (File.Exists(path)) throw new IOException($"Refusing to replace {path}");
         var example = new LauncherConfig(
             @"C:\Games\Grand Theft Auto V Enhanced",
-            @"ui\GameVerse.UI.exe",
             @"bridge\gameverse-gta-bridge-m2.exe",
             @"\\.\pipe\gameverse-ui-v1",
             @"\\.\pipe\gameverse-gta-v1",
@@ -128,10 +138,9 @@ internal static class Launcher
         return 0;
     }
 
-    private static List<Check> Checks(LauncherConfig config, bool allowLowMemory = false)
+    internal static List<Check> Checks(LauncherConfig config, bool allowLowMemory = false)
     {
         string game = ResolvePath(config.GameDirectory);
-        string ui = ResolvePath(config.UiPath);
         string bridge = ResolvePath(config.BridgePath);
         string cert = ResolvePath(config.CertificatePath);
         string enhanced = Path.Combine(game, "GTA5_Enhanced.exe");
@@ -147,8 +156,6 @@ internal static class Launcher
             new("game_directory", Directory.Exists(game), game),
             new("gta_enhanced", File.Exists(enhanced), enhanced),
             new("play_gtav", File.Exists(play), play),
-            new("gameverse_ui", File.Exists(ui), ui),
-            new("webview2_runtime", WebView2Version() is not null, WebView2Version() ?? "Install Microsoft Edge WebView2 Evergreen Runtime"),
             new("bridge", File.Exists(bridge), bridge),
             new("server_certificate", File.Exists(cert), cert),
             new("server_certificate_fingerprint", File.Exists(cert) && CertificateHash(cert).Equals(config.CertificateSha256, StringComparison.OrdinalIgnoreCase), File.Exists(cert) ? CertificateHash(cert) : "certificate unavailable"),
@@ -171,103 +178,6 @@ internal static class Launcher
         List<Check> checks = Checks(config);
         Console.WriteLine(JsonSerializer.Serialize(new { status = checks.All(value => value.Passed) ? "ready" : "failed", checks }));
         return checks.All(value => value.Passed) ? 0 : 3;
-    }
-
-    private static async Task<int> StartAsync(LauncherConfig config, bool allowLowMemory)
-    {
-        List<Check> checks = Checks(config, allowLowMemory);
-        Console.WriteLine(JsonSerializer.Serialize(new
-        {
-            status = checks.All(value => value.Passed) ? "ready" : "failed",
-            low_memory_override = allowLowMemory,
-            checks
-        }));
-        if (checks.Any(value => !value.Passed)) return 3;
-        string game = ResolvePath(config.GameDirectory);
-        string ui = ResolvePath(config.UiPath);
-        string bridge = ResolvePath(config.BridgePath);
-        string cert = ResolvePath(config.CertificatePath);
-        ProcessStartInfo uiInfo = new()
-        {
-            FileName = ui,
-            UseShellExecute = false,
-            CreateNoWindow = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            WorkingDirectory = Path.GetDirectoryName(ui)!
-        };
-        uiInfo.ArgumentList.Add("--pipe");
-        uiInfo.ArgumentList.Add(config.UiPipe);
-        Process uiProcess = Process.Start(uiInfo) ?? throw new InvalidOperationException("GameVerse UI did not start");
-        try { await WaitForReadyEventAsync(uiProcess, "ui_ready", TimeSpan.FromSeconds(20), "GameVerse UI"); }
-        catch { uiProcess.Dispose(); throw; }
-        ProcessStartInfo bridgeInfo = new()
-        {
-            FileName = bridge,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            WorkingDirectory = Path.GetDirectoryName(bridge)!
-        };
-        bridgeInfo.ArgumentList.Add("--server");
-        bridgeInfo.ArgumentList.Add(config.ServerAddress);
-        bridgeInfo.ArgumentList.Add("--cert");
-        bridgeInfo.ArgumentList.Add(cert);
-        bridgeInfo.ArgumentList.Add("--ui-pipe");
-        bridgeInfo.ArgumentList.Add(config.UiPipe);
-        bridgeInfo.ArgumentList.Add("--pipe");
-        bridgeInfo.ArgumentList.Add(config.AdapterPipe);
-        bridgeInfo.ArgumentList.Add("--bootstrap-pipe");
-        bridgeInfo.ArgumentList.Add(config.BootstrapPipe);
-        if (config.DeveloperManualStory) bridgeInfo.ArgumentList.Add("--manual-story");
-        if (config.DeveloperTelemetryStory) bridgeInfo.ArgumentList.Add("--telemetry-story");
-        using Process bridgeProcess = Process.Start(bridgeInfo) ?? throw new InvalidOperationException("Bridge did not start");
-        try { await WaitForReadyEventAsync(bridgeProcess, "m2_pipe_ready", TimeSpan.FromSeconds(15), "Bridge"); }
-        catch
-        {
-            if (!uiProcess.HasExited) uiProcess.Kill(entireProcessTree: true);
-            uiProcess.Dispose();
-            throw;
-        }
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = Path.Combine(game, "PlayGTAV.exe"),
-            WorkingDirectory = game,
-            UseShellExecute = true
-        });
-        Console.WriteLine(JsonSerializer.Serialize(new { status = "started", ui_pid = uiProcess.Id, bridge_pid = bridgeProcess.Id, stage = "game_starting" }));
-        try
-        {
-            using Process gameProcess = await WaitForGameAsync(TimeSpan.FromMinutes(2));
-            Console.WriteLine(JsonSerializer.Serialize(new { status = "active", game_pid = gameProcess.Id }));
-            await gameProcess.WaitForExitAsync();
-            return 0;
-        }
-        finally
-        {
-            if (!bridgeProcess.HasExited) bridgeProcess.Kill(entireProcessTree: true);
-            if (!uiProcess.HasExited) uiProcess.Kill(entireProcessTree: true);
-            uiProcess.Dispose();
-        }
-    }
-
-    private static async Task<Process> WaitForGameAsync(TimeSpan timeout)
-    {
-        using CancellationTokenSource deadline = new(timeout);
-        try
-        {
-            while (true)
-            {
-                Process? game = Process.GetProcessesByName("GTA5_Enhanced").FirstOrDefault();
-                if (game is not null) return game;
-                await Task.Delay(500, deadline.Token);
-            }
-        }
-        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
-        {
-            throw new TimeoutException("GTA V Enhanced did not start within two minutes");
-        }
     }
 
     private static async Task WaitForReadyEventAsync(Process process, string expectedEvent, TimeSpan timeout, string component)
@@ -321,8 +231,9 @@ internal static class Launcher
         bool passed = child.ExitCode == 0;
         bool updateSecurity = UpdateSecuritySelfTest();
         bool atomicUpdate = AtomicUpdateSelfTest();
-        passed = passed && updateSecurity && atomicUpdate;
-        Console.WriteLine(JsonSerializer.Serialize(new { status = passed ? "passed" : "failed", readiness_event = child.ExitCode == 0, child_cleaned_up = child.HasExited, update_signature = updateSecurity, atomic_update_rollback = atomicUpdate }));
+        bool terminalUi = TerminalLauncherForm.SelfTest();
+        passed = passed && updateSecurity && atomicUpdate && terminalUi;
+        Console.WriteLine(JsonSerializer.Serialize(new { status = passed ? "passed" : "failed", readiness_event = child.ExitCode == 0, child_cleaned_up = child.HasExited, update_signature = updateSecurity, atomic_update_rollback = atomicUpdate, terminal_ui = terminalUi }));
         return passed ? 0 : 1;
     }
 
@@ -537,7 +448,7 @@ internal static class Launcher
         finally { Directory.Delete(staging, true); }
     }
 
-    private static string ResolvePath(string value)
+    internal static string ResolvePath(string value)
     {
         string expanded = Environment.ExpandEnvironmentVariables(value);
         return Path.GetFullPath(expanded, AppContext.BaseDirectory);
@@ -576,22 +487,6 @@ internal static class Launcher
         }
     }
     private static string LogDirectory(LauncherConfig config) => ResolvePath(config.LogDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GameVerse", "logs"));
-    private static string? WebView2Version()
-    {
-        const string client = @"SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}";
-        foreach ((RegistryHive hive, RegistryView view) in new[]
-        {
-            (RegistryHive.CurrentUser, RegistryView.Default),
-            (RegistryHive.LocalMachine, RegistryView.Registry32),
-            (RegistryHive.LocalMachine, RegistryView.Registry64)
-        })
-        {
-            using RegistryKey root = RegistryKey.OpenBaseKey(hive, view);
-            using RegistryKey? key = root.OpenSubKey(client);
-            if (key?.GetValue("pv") is string version && !string.IsNullOrWhiteSpace(version)) return version;
-        }
-        return null;
-    }
     private static int Usage()
     {
         Console.Error.WriteLine("Usage: GameVerse.Launcher init|verify|start [--allow-low-memory]|update|logs|diagnostics [output.zip]|self-test|verify-update <manifest> <signature> <public-key.pem>");

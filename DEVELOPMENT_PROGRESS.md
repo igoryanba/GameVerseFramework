@@ -8,7 +8,7 @@ This file describes only functionality demonstrated by the active independent ru
 - A Windows GTA V Enhanced adapter prototype with session bootstrap and remote pedestrian presentation.
 - A PostgreSQL-backed closed-alpha RP path covering invites, accounts, sessions, characters, wallets, inventory, a shop and courier work.
 - Static FiveM resource analysis plus an isolated Lua compatibility harness for GameVerse-owned MIT fixtures.
-- A Windows launcher and a separate WinForms/WebView2 UI connected to the M2 bridge through a bounded local protocol.
+- A single compact native Windows launcher owns the text interface, the bounded M2 UI pipe, bridge startup, and the one-shot GTA launch gate. WebView2 is no longer part of the alpha client.
 - A PostgreSQL acceptance that drives the real UI protocol and fake adapter through the bridge and QUIC server from registration to reconnect.
 - A reproducible self-contained Windows package, detached ECDSA update-manifest verification, and a separate symbols archive.
 - A Docker Compose acceptance that verifies PostgreSQL migrations, seed content, readiness, version and Prometheus metrics.
