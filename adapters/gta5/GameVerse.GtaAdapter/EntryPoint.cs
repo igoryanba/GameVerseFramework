@@ -22,6 +22,7 @@ namespace GameVerse.GtaAdapter
         private long lastSample = -50;
         private bool validBuild;
         private bool bootstrapReported;
+        private string reportedBootstrapError;
         public EntryPoint()
         {
             logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "GameVerse.GtaAdapter.log");
@@ -49,9 +50,10 @@ namespace GameVerse.GtaAdapter
                     bootstrapReported = true;
                     link.Report("session_ready", local);
                 }
-                else if (bootstrap.Error != null && !bootstrapReported)
+                else if (bootstrap.Error != null && bootstrap.Error != reportedBootstrapError)
                 {
                     bootstrapReported = true;
+                    reportedBootstrapError = bootstrap.Error;
                     link.ReportBootstrapFailure(bootstrap.Error, "Не удалось применить конфигурацию персонажа");
                 }
                 if (elapsed.ElapsedMilliseconds - lastSample >= 50)
@@ -88,6 +90,7 @@ namespace GameVerse.GtaAdapter
                     if (config == null || !config.IsValid()) throw new InvalidDataException("Invalid session config");
                     bootstrap.Begin(config);
                     bootstrapReported = false;
+                    reportedBootstrapError = null;
                     break;
                 case "session_active":
                     bootstrap.Activate();
@@ -96,6 +99,7 @@ namespace GameVerse.GtaAdapter
                     Cleanup();
                     bootstrap.Reset();
                     bootstrapReported = false;
+                    reportedBootstrapError = null;
                     local = null;
                     break;
                 case "remote_entity_create":
@@ -124,7 +128,7 @@ namespace GameVerse.GtaAdapter
                     var destroyedVehicleId = message["id"].ToObject<EntityId>();
                     if (remoteVehicles.TryGetValue(destroyedVehicleId, out RemoteVehicle destroyedVehicle)) { destroyedVehicle.Dispose(); remoteVehicles.Remove(destroyedVehicleId); }
                     break;
-                case "reset": Cleanup(); bootstrap.Reset(); bootstrapReported = false; local = null; break;
+                case "reset": Cleanup(); bootstrap.Reset(); bootstrapReported = false; reportedBootstrapError = null; local = null; break;
                 default: throw new InvalidDataException("Unexpected bridge command");
             }
         }
