@@ -11,6 +11,7 @@ GameVerse must retain the applicable copyright and license notice.
 | CitizenFX/FiveM | public documentation only | mixed/Creator Platform terms | resource manifest, events, exports and networking concepts | Compatibility specification only; no source copied |
 | QBCore, Qbox, ESX, GTA Coop | no vendored revision | GPL or project-specific | resource shapes used by opt-in fixtures | No source in GameVerse executables |
 | MinHook | `c3fcafdc10146beb5919319d0683e44e3c30d537` (`v1.3.4`) | BSD-2-Clause plus bundled HDE notices | Native hook lifecycle | Pinned build dependency of NativeBootstrap; no hook is installed in telemetry mode |
+| StraightToStoryMode | `e2a5528d0a28b5fa47f1ccf19ed31a44494cc650` | GPL-3.0 | Evidence that Enhanced landing-page bypass needs build-specific memory changes | Research only; no source, patch bytes or signatures copied into GameVerse |
 
 The M1.2 locomotion code is a new adapter-specific implementation. It uses the
 already transmitted GameVerse state and GTA native tasks; it does not copy a
