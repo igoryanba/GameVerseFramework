@@ -22,6 +22,7 @@ internal sealed record LauncherConfig(
     string LogLevel,
     bool RequireInstallManifest,
     bool DeveloperManualStory,
+    bool DeveloperTelemetryStory,
     string? LogDirectory,
     string? UpdateManifestUrl,
     string? UpdateSignatureUrl,
@@ -94,6 +95,8 @@ internal static class Launcher
             throw new InvalidDataException("BootstrapPipe must be a distinct local Windows named-pipe path");
         if (!Regex.IsMatch(config.CertificateSha256, "^[A-Fa-f0-9]{64}$"))
             throw new InvalidDataException("CertificateSha256 must contain 64 hexadecimal characters");
+        if (config.DeveloperManualStory && config.DeveloperTelemetryStory)
+            throw new InvalidDataException("DeveloperManualStory and DeveloperTelemetryStory are mutually exclusive");
         return config;
     }
 
@@ -113,6 +116,7 @@ internal static class Launcher
             new string('0', 64),
             "alpha",
             "info",
+            false,
             false,
             false,
             @"%LOCALAPPDATA%\GameVerse\logs",
@@ -217,6 +221,7 @@ internal static class Launcher
         bridgeInfo.ArgumentList.Add("--bootstrap-pipe");
         bridgeInfo.ArgumentList.Add(config.BootstrapPipe);
         if (config.DeveloperManualStory) bridgeInfo.ArgumentList.Add("--manual-story");
+        if (config.DeveloperTelemetryStory) bridgeInfo.ArgumentList.Add("--telemetry-story");
         using Process bridgeProcess = Process.Start(bridgeInfo) ?? throw new InvalidOperationException("Bridge did not start");
         try { await WaitForReadyEventAsync(bridgeProcess, "m2_pipe_ready", TimeSpan.FromSeconds(15), "Bridge"); }
         catch

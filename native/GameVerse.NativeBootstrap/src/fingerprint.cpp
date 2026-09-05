@@ -70,7 +70,8 @@ std::string Sha256File(const std::filesystem::path& path) {
   object.resize(object_size);
   if (BCryptCreateHash(algorithm, &hash, object.data(), static_cast<ULONG>(object.size()), nullptr, 0, 0) < 0) goto failure;
   {
-    std::array<char, 1024 * 1024> buffer{};
+    // Keep the streaming buffer off the default 1 MiB Windows thread stack.
+    std::vector<char> buffer(1024 * 1024);
     while (input) {
       input.read(buffer.data(), buffer.size());
       const auto count = input.gcount();

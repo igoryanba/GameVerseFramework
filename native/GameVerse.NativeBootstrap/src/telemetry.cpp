@@ -85,19 +85,25 @@ std::filesystem::path ReportPath() {
 TelemetryRecorder::TelemetryRecorder(void* image)
     : image_(image), report_path_(ReportPath()) {}
 
+TelemetryReadiness TelemetryRecorder::ObserveReadiness() const noexcept {
+  TelemetryReadiness result;
+  EnumWindows(InspectWindow, reinterpret_cast<LPARAM>(&result));
+  result.scripthook_loaded = GetModuleHandleW(L"ScriptHookV.dll") != nullptr;
+  result.shvdn_loaded =
+      GetModuleHandleW(L"ScriptHookVDotNet.asi") != nullptr ||
+      GetModuleHandleW(L"ScriptHookVDotNet2.dll") != nullptr ||
+      GetModuleHandleW(L"ScriptHookVDotNet3.dll") != nullptr;
+  result.adapter_loaded =
+      GetModuleHandleW(L"GameVerse.GtaAdapter.dll") != nullptr ||
+      GetModuleHandleW(L"GameVerse.GtaAdapter.asi") != nullptr;
+  return result;
+}
+
 TelemetrySnapshot TelemetryRecorder::Capture(std::string_view stage) {
   TelemetrySnapshot result;
   result.monotonic_ms = MonotonicMilliseconds();
   result.stage = std::string(stage.substr(0, 64));
-  EnumWindows(InspectWindow, reinterpret_cast<LPARAM>(&result.readiness));
-  result.readiness.scripthook_loaded = GetModuleHandleW(L"ScriptHookV.dll") != nullptr;
-  result.readiness.shvdn_loaded =
-      GetModuleHandleW(L"ScriptHookVDotNet.asi") != nullptr ||
-      GetModuleHandleW(L"ScriptHookVDotNet2.dll") != nullptr ||
-      GetModuleHandleW(L"ScriptHookVDotNet3.dll") != nullptr;
-  result.readiness.adapter_loaded =
-      GetModuleHandleW(L"GameVerse.GtaAdapter.dll") != nullptr ||
-      GetModuleHandleW(L"GameVerse.GtaAdapter.asi") != nullptr;
+  result.readiness = ObserveReadiness();
 
   const HANDLE snapshot = CreateToolhelp32Snapshot(
       TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, GetCurrentProcessId());

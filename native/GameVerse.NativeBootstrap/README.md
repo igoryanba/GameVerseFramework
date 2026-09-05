@@ -41,6 +41,16 @@ The produced `GameVerse.NativeBootstrap.asi` and the two files under
 `compatibility/` belong beside the existing ASI loader. The bridge must expose
 `\\.\pipe\gameverse-bootstrap-v1` before GTA starts.
 
+For a research trace, start the M2 bridge with `--telemetry-story`. The probe
+captures the verified image and stable frontend, then samples only window and
+module readiness every 250 ms while the user enters Story Mode manually. A full
+section/module snapshot is written only when ScriptHook/SHVDN or the adapter
+appears. Reports are bounded JSONL files under
+`%LOCALAPPDATA%\GameVerse\telemetry`; they contain hashes and relative facts,
+never memory contents or absolute addresses. A telemetry-only manifest does not
+advertise the `world_loader` capability, so the bridge cannot request
+`begin_world` accidentally.
+
 `world_loader` mode is rejected until independently verified patterns for this
 exact executable are recorded, signed, uniquely matched, checked against the PE
 executable section and covered by tests. Do not derive patterns from DRM,

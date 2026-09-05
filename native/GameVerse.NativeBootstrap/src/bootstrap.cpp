@@ -72,6 +72,12 @@ std::string Stage(BootstrapState state) {
          std::to_string(MonotonicMilliseconds()) + ",\"stage\":\"" + std::string(StateName(state)) + "\"}";
 }
 
+std::string ObservedStage(std::string_view stage) {
+  return "{\"type\":\"bootstrap_stage\",\"schema_version\":1,\"monotonic_ms\":" +
+         std::to_string(MonotonicMilliseconds()) + ",\"stage\":\"" +
+         JsonEscape(stage) + "\"}";
+}
+
 std::string Failure(std::string_view code, std::string_view message) {
   return "{\"type\":\"bootstrap_failure\",\"schema_version\":1,\"code\":\"" +
          JsonEscape(code) + "\",\"message\":\"" + JsonEscape(message) + "\"}";
@@ -106,8 +112,13 @@ void RunBootstrap(void* module) noexcept {
       throw std::runtime_error(validation_error);
     if (!state.Advance(BootstrapState::verified)) throw std::runtime_error("invalid_bootstrap_state");
     TelemetryRecorder telemetry(GetModuleHandleW(nullptr));
+    const std::string bootstrap_capabilities =
+        manifest.mode == "world_loader" ? "[\"telemetry\",\"world_loader\"]"
+                                        : "[\"telemetry\"]";
     pipe.Send("{\"type\":\"bootstrap_hello\",\"schema_version\":1,\"bootstrap_build\":\"0.1.0\",\"gta_edition\":\"enhanced\",\"gta_build\":\"" +
-              JsonEscape(manifest.build) + "\",\"fingerprint\":\"" + JsonEscape(manifest.pe_sha256) + "\",\"capabilities\":[\"telemetry\"]}");
+              JsonEscape(manifest.build) + "\",\"fingerprint\":\"" +
+              JsonEscape(manifest.pe_sha256) + "\",\"capabilities\":" +
+              bootstrap_capabilities + "}");
     pipe.Send(Stage(state.state()));
     pipe.Send("{\"type\":\"telemetry_hello_v1\",\"schema_version\":1,\"probe_build\":\"0.1.0\",\"gta_build\":\"" +
               JsonEscape(manifest.build) + "\",\"fingerprint\":\"" +
@@ -131,6 +142,34 @@ void RunBootstrap(void* module) noexcept {
     if (!pipe.Send(SerializeTelemetrySnapshot(snapshot)))
       throw std::runtime_error("telemetry_frame_rejected");
     pipe.Send(Stage(state.state()));
+
+    if (manifest.mode == "telemetry_only") {
+      auto previous = telemetry.ObserveReadiness();
+      const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(15);
+      while (std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        const auto current = telemetry.ObserveReadiness();
+        const bool runtime_changed =
+            current.scripthook_loaded != previous.scripthook_loaded ||
+            current.shvdn_loaded != previous.shvdn_loaded;
+        if (runtime_changed) {
+          snapshot = telemetry.Capture("world_transition");
+          telemetry.AppendLocal(snapshot);
+          if (!pipe.Send(SerializeTelemetrySnapshot(snapshot))) return;
+        }
+        if (current.adapter_loaded && !previous.adapter_loaded) {
+          snapshot = telemetry.Capture("adapter_loaded");
+          telemetry.AppendLocal(snapshot);
+          if (!pipe.Send(SerializeTelemetrySnapshot(snapshot))) return;
+          pipe.Send(ObservedStage("adapter_ready"));
+          return;
+        }
+        previous = current;
+      }
+      pipe.Send(Failure("telemetry_adapter_timeout",
+                        "Adapter did not appear during the telemetry window"));
+      return;
+    }
 
     if (!pipe.Receive(command)) return;
     if (command.find("\"command\":\"abort\"") != std::string::npos ||

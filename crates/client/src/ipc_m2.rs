@@ -47,6 +47,51 @@ pub async fn run(
     cert: &Path,
     duration: Duration,
 ) -> Result<()> {
+    run_with_bootstrap_mode(
+        adapter_pipe,
+        ui_pipe,
+        bootstrap_pipe,
+        server,
+        cert,
+        duration,
+        true,
+    )
+    .await
+}
+
+/// Research mode: records the verified frontend and waits for the user to enter
+/// the local Story world. It never requests an automatic world transition.
+#[cfg(windows)]
+pub async fn run_telemetry(
+    adapter_pipe: &str,
+    ui_pipe: &str,
+    bootstrap_pipe: &str,
+    server: SocketAddr,
+    cert: &Path,
+    duration: Duration,
+) -> Result<()> {
+    run_with_bootstrap_mode(
+        adapter_pipe,
+        ui_pipe,
+        bootstrap_pipe,
+        server,
+        cert,
+        duration,
+        false,
+    )
+    .await
+}
+
+#[cfg(windows)]
+async fn run_with_bootstrap_mode(
+    adapter_pipe: &str,
+    ui_pipe: &str,
+    bootstrap_pipe: &str,
+    server: SocketAddr,
+    cert: &Path,
+    duration: Duration,
+    automatic_world: bool,
+) -> Result<()> {
     anyhow::ensure!(
         valid_pipe(adapter_pipe)
             && valid_pipe(ui_pipe)
@@ -83,7 +128,7 @@ pub async fn run(
         let mut bootstrap_stream =
             std::mem::replace(&mut bootstrap_listener, listener(bootstrap_pipe, false)?);
         let result = async {
-            bootstrap_gate(&mut bootstrap_stream, &mut ui_stream).await?;
+            bootstrap_gate(&mut bootstrap_stream, &mut ui_stream, automatic_world).await?;
             timeout(
                 finish.saturating_duration_since(Instant::now()),
                 adapter_listener.connect(),
@@ -321,7 +366,11 @@ async fn ui_handshake(
 }
 
 #[cfg(any(windows, test))]
-async fn bootstrap_gate<B, U>(bootstrap_stream: &mut B, ui_stream: &mut U) -> Result<()>
+async fn bootstrap_gate<B, U>(
+    bootstrap_stream: &mut B,
+    ui_stream: &mut U,
+    automatic_world: bool,
+) -> Result<()>
 where
     B: AsyncRead + AsyncWrite + Unpin,
     U: AsyncRead + AsyncWrite + Unpin,
@@ -330,6 +379,7 @@ where
     ui_handshake(&mut ui_rx, &mut ui_tx, "waiting_for_game").await?;
     let (mut bootstrap_rx, mut bootstrap_tx) = tokio::io::split(bootstrap_stream);
     let mut hello_seen = false;
+    let mut world_loader_capable = false;
     let mut last_time = 0_u64;
     loop {
         let message: bootstrap::Message =
@@ -340,6 +390,7 @@ where
                 gta_edition,
                 gta_build,
                 fingerprint,
+                capabilities,
                 ..
             } => {
                 anyhow::ensure!(
@@ -351,6 +402,7 @@ where
                     "unsupported native bootstrap fingerprint"
                 );
                 hello_seen = true;
+                world_loader_capable = capabilities.iter().any(|value| value == "world_loader");
                 ui::write(
                     &mut bootstrap_tx,
                     &bootstrap::Message::BootstrapCommand {
@@ -401,16 +453,26 @@ where
                 }))).await?;
                 if stage == bootstrap::Stage::FrontendReady {
                     anyhow::ensure!(hello_seen, "bootstrap stage preceded hello");
-                    ui::write(
-                        &mut bootstrap_tx,
-                        &bootstrap::Message::BootstrapCommand {
-                            schema_version: bootstrap::VERSION,
-                            command: bootstrap::Command::BeginWorld,
-                        },
-                    )
-                    .await?;
+                    if automatic_world && world_loader_capable {
+                        ui::write(
+                            &mut bootstrap_tx,
+                            &bootstrap::Message::BootstrapCommand {
+                                schema_version: bootstrap::VERSION,
+                                command: bootstrap::Command::BeginWorld,
+                            },
+                        )
+                        .await?;
+                    } else {
+                        ui::write(&mut ui_tx, &UiResponse::success("bridge-stage", json!({
+                            "stage":"telemetry_waiting_for_manual_story",
+                            "message":"Для исследовательского trace вручную откройте Story Mode"
+                        }))).await?;
+                    }
                 }
-                if stage == bootstrap::Stage::WorldReady {
+                if stage == bootstrap::Stage::WorldReady
+                    || ((!automatic_world || !world_loader_capable)
+                        && stage == bootstrap::Stage::AdapterReady)
+                {
                     return Ok(());
                 }
                 if stage == bootstrap::Stage::Failed {
@@ -813,7 +875,9 @@ mod bootstrap_tests {
         let (mut bootstrap_host, mut bootstrap_peer) = tokio::io::duplex(4096);
         let (mut ui_host, mut ui_peer) = tokio::io::duplex(4096);
         let gate =
-            tokio::spawn(async move { bootstrap_gate(&mut bootstrap_host, &mut ui_host).await });
+            tokio::spawn(
+                async move { bootstrap_gate(&mut bootstrap_host, &mut ui_host, true).await },
+            );
         ui::write(
             &mut ui_peer,
             &UiRequest {
@@ -840,7 +904,7 @@ mod bootstrap_tests {
                 gta_build: adapter::GAME_VERSION.into(),
                 fingerprint: "0C52864D4521D9C9D441348AA1156958792DDE8825D0297C851753F167336401"
                     .into(),
-                capabilities: vec!["telemetry".into()],
+                capabilities: vec!["telemetry".into(), "world_loader".into()],
             },
         )
         .await

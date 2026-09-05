@@ -115,6 +115,7 @@ struct TelemetrySnapshot {
 class TelemetryRecorder {
  public:
   explicit TelemetryRecorder(void* image);
+  TelemetryReadiness ObserveReadiness() const noexcept;
   TelemetrySnapshot Capture(std::string_view stage);
   bool AppendLocal(const TelemetrySnapshot& snapshot) noexcept;
   const std::filesystem::path& report_path() const noexcept { return report_path_; }
