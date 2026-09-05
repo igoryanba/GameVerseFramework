@@ -16,6 +16,7 @@ node_modules/
 # Caches & generated artefacts
 .cache/
 **/.cache/
+**/__pycache__/
 /generated/
 **/generated/
 

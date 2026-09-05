@@ -162,7 +162,11 @@ TelemetrySnapshot TelemetryRecorder::Capture(std::string_view stage) {
       if (IsReadonly(memory.Protect)) ++section.readonly_pages;
       const auto length = std::min(page_size, section_size - offset);
       const auto page_hash = Sha256Bytes(std::span(section_base + offset, length));
-      const auto key = section.name + ":" + std::to_string(offset / page_size);
+      // PE section names are not unique. Enhanced 1.0.1158.13 contains repeated
+      // .text/.xbld names, so name-only keys compare unrelated pages and report
+      // thousands of false changes inside a single capture.
+      const auto key = std::to_string(index) + ":" + section.name + ":" +
+                       std::to_string(offset / page_size);
       const auto previous = page_hashes_.find(key);
       if (previous != page_hashes_.end() && previous->second != page_hash)
         ++section.changed_pages;

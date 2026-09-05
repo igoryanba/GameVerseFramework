@@ -53,6 +53,28 @@ never memory contents or absolute addresses. A telemetry-only manifest does not
 advertise the `world_loader` capability, so the bridge cannot request
 `begin_world` accidentally.
 
+When the full M2 server is not needed, the bounded research harness can capture
+the same probe stream without opening a network connection:
+
+```powershell
+pwsh Research/run_native_telemetry.ps1 `
+  -OutputPath .research/telemetry/manual-1.jsonl
+```
+
+It sends only `start_telemetry`, enforces the 64 KiB frame limit, validates the
+hello and stops on `adapter_ready`, failure or timeout. Compare completed traces
+before selecting a candidate:
+
+```powershell
+python Research/analyze_native_telemetry.py `
+  .research/telemetry/manual-1.jsonl `
+  .research/telemetry/manual-2.jsonl `
+  .research/telemetry/control.jsonl
+```
+
+The candidate gate remains false until two adapter-ready traces and one
+frontend-only control trace share the same executable fingerprint.
+
 `world_loader` mode is rejected until independently verified patterns for this
 exact executable are recorded, signed, uniquely matched, checked against the PE
 executable section and covered by tests. Do not derive patterns from DRM,

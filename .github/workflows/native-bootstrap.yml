@@ -19,6 +19,8 @@ jobs:
         run: cmake --build .build/native-bootstrap --config Release
       - name: Test scanner, manifest and state machine
         run: ctest --test-dir .build/native-bootstrap -C Release --output-on-failure -V
+      - name: Test telemetry trace validation
+        run: python Research/test_analyze_native_telemetry.py
       - name: Test Rust bootstrap and bridge protocol
         shell: pwsh
         run: |
