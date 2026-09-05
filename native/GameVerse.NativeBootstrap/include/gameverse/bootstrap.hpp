@@ -85,6 +85,7 @@ struct TelemetryCandidate {
   std::string section;
   std::uint32_t unique_match_count{};
   std::uint64_t call_count{};
+  std::string entry_sha256;
 };
 
 std::vector<TelemetryCandidate> InspectImageCandidates(

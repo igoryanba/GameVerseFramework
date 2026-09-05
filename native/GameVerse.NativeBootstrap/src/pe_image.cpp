@@ -80,7 +80,7 @@ std::vector<TelemetryCandidate> InspectImageCandidates(
   if (!ReadImage(image, base, nt)) return result;
   const auto first = IMAGE_FIRST_SECTION(nt);
   for (const auto& spec : manifest.signatures) {
-    TelemetryCandidate candidate{spec.name, 0, spec.section, 0, 0};
+    TelemetryCandidate candidate{spec.name, 0, spec.section, 0, 0, {}};
     std::uint32_t matched_rva = 0;
     for (unsigned index = 0; index < nt->FileHeader.NumberOfSections; ++index) {
       const auto& section = first[index];
@@ -101,6 +101,9 @@ std::vector<TelemetryCandidate> InspectImageCandidates(
       candidate.rva = function != nullptr && image_base == reinterpret_cast<DWORD64>(base)
                           ? function->BeginAddress
                           : matched_rva;
+      if (candidate.rva <= nt->OptionalHeader.SizeOfImage - 32)
+        candidate.entry_sha256 =
+            Sha256Bytes(std::span(base + candidate.rva, std::size_t{32}));
     }
     result.push_back(std::move(candidate));
   }

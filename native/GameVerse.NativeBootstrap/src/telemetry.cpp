@@ -304,6 +304,10 @@ std::string SerializeTelemetryCandidates(
               "\",\"unique_match_count\":" +
               std::to_string(candidate.unique_match_count) +
               ",\"call_count\":" + std::to_string(candidate.call_count) + "}";
+    if (!candidate.entry_sha256.empty()) {
+      output.pop_back();
+      output += ",\"entry_sha256\":\"" + candidate.entry_sha256 + "\"}";
+    }
   }
   output += "]}";
   return output;

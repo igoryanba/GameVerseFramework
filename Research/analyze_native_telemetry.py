@@ -81,6 +81,14 @@ def summarize(path: Path) -> dict[str, Any]:
                     or candidate["rva"] > 0xFFFFFFFF
                     or not isinstance(candidate.get("unique_match_count"), int)
                     or not isinstance(candidate.get("call_count"), int)
+                    or (
+                        "entry_sha256" in candidate
+                        and (
+                            not isinstance(candidate["entry_sha256"], str)
+                            or re.fullmatch(r"[0-9A-Fa-f]{64}", candidate["entry_sha256"])
+                            is None
+                        )
+                    )
                 ):
                     raise ValueError(f"{path}: malformed telemetry candidate")
                 candidates.append(candidate)

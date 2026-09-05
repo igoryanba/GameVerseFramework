@@ -73,6 +73,7 @@ class AnalyzeNativeTelemetryTests(unittest.TestCase):
                                     "section": ".text",
                                     "unique_match_count": 1,
                                     "call_count": 0,
+                                    "entry_sha256": "1" * 64,
                                 }
                             ],
                         }

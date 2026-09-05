@@ -124,6 +124,8 @@ pub struct TelemetryCandidateV1 {
     pub section: String,
     pub unique_match_count: u32,
     pub call_count: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entry_sha256: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -194,6 +196,10 @@ impl Message {
                             && !candidate.section.is_empty()
                             && candidate.section.len() <= 16
                             && candidate.unique_match_count <= 1024
+                            && candidate.entry_sha256.as_ref().is_none_or(|digest| {
+                                digest.len() == 64
+                                    && digest.bytes().all(|value| value.is_ascii_hexdigit())
+                            })
                     })
             }
             _ => true,
@@ -309,6 +315,7 @@ mod tests {
                 section: ".text".into(),
                 unique_match_count: 1,
                 call_count: 0,
+                entry_sha256: Some("11".repeat(32)),
             }],
         };
         assert_eq!(
