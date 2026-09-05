@@ -1,5 +1,7 @@
 #include "gameverse/bootstrap.hpp"
 
+#include <windows.h>
+
 #include <array>
 #include <iostream>
 #include <fstream>
@@ -57,6 +59,15 @@ int main() {
     Require(gameverse::VerifyManifestSignature(signed_manifest, signature), "manifest signature rejected");
     signature[0] ^= 1;
     Require(!gameverse::VerifyManifestSignature(signed_manifest, signature), "damaged signature accepted");
+    gameverse::TelemetryRecorder telemetry(GetModuleHandleW(nullptr));
+    const auto telemetry_snapshot = telemetry.Capture("synthetic_host");
+    Require(!telemetry_snapshot.modules.empty(), "telemetry module inventory empty");
+    Require(!telemetry_snapshot.sections.empty(), "telemetry section inventory empty");
+    const auto telemetry_json = gameverse::SerializeTelemetrySnapshot(telemetry_snapshot);
+    Require(telemetry_json.find("telemetry_snapshot_v1") != std::string::npos,
+            "telemetry serialization failed");
+    Require(telemetry_json.find("0x") == std::string::npos,
+            "telemetry leaked an absolute address");
     std::cout << "native bootstrap tests passed\n";
     return 0;
   } catch (const std::exception& error) {

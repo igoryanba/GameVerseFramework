@@ -5,6 +5,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace gameverse {
@@ -70,12 +71,62 @@ CompatibilityManifest ParseManifest(std::string_view json);
 bool VerifyManifestSignature(std::span<const std::uint8_t> manifest,
                              std::span<const std::uint8_t> signature);
 std::string Sha256File(const std::filesystem::path& path);
+std::string Sha256Bytes(std::span<const std::uint8_t> bytes);
 std::string FileVersion(const std::filesystem::path& path);
 bool ValidateExecutable(const std::filesystem::path& path,
                         const CompatibilityManifest& manifest,
                         std::string& error);
 bool VerifyImageSignatures(void* image, const CompatibilityManifest& manifest,
                            std::string& error);
+
+struct TelemetryModule {
+  std::string name;
+  std::uint64_t image_size{};
+  std::string file_version;
+};
+
+struct TelemetrySection {
+  std::string name;
+  std::uint64_t virtual_size{};
+  std::uint32_t characteristics{};
+  std::uint32_t committed_pages{};
+  std::uint32_t executable_pages{};
+  std::uint32_t readonly_pages{};
+  std::uint32_t changed_pages{};
+  std::string aggregate_sha256;
+};
+
+struct TelemetryReadiness {
+  bool window_visible{};
+  bool window_responsive{};
+  bool scripthook_loaded{};
+  bool shvdn_loaded{};
+  bool adapter_loaded{};
+};
+
+struct TelemetrySnapshot {
+  std::uint64_t monotonic_ms{};
+  std::string stage;
+  std::vector<TelemetryModule> modules;
+  std::vector<TelemetrySection> sections;
+  TelemetryReadiness readiness;
+};
+
+class TelemetryRecorder {
+ public:
+  explicit TelemetryRecorder(void* image);
+  TelemetrySnapshot Capture(std::string_view stage);
+  bool AppendLocal(const TelemetrySnapshot& snapshot) noexcept;
+  const std::filesystem::path& report_path() const noexcept { return report_path_; }
+
+ private:
+  void* image_{};
+  std::unordered_map<std::string, std::string> page_hashes_;
+  std::filesystem::path report_path_;
+  std::uint32_t snapshots_{};
+};
+
+std::string SerializeTelemetrySnapshot(const TelemetrySnapshot& snapshot);
 
 class PipeClient {
  public:

@@ -105,19 +105,42 @@ void RunBootstrap(void* module) noexcept {
     if (!VerifyImageSignatures(GetModuleHandleW(nullptr), manifest, validation_error))
       throw std::runtime_error(validation_error);
     if (!state.Advance(BootstrapState::verified)) throw std::runtime_error("invalid_bootstrap_state");
+    TelemetryRecorder telemetry(GetModuleHandleW(nullptr));
     pipe.Send("{\"type\":\"bootstrap_hello\",\"schema_version\":1,\"bootstrap_build\":\"0.1.0\",\"gta_edition\":\"enhanced\",\"gta_build\":\"" +
               JsonEscape(manifest.build) + "\",\"fingerprint\":\"" + JsonEscape(manifest.pe_sha256) + "\",\"capabilities\":[\"telemetry\"]}");
     pipe.Send(Stage(state.state()));
+    pipe.Send("{\"type\":\"telemetry_hello_v1\",\"schema_version\":1,\"probe_build\":\"0.1.0\",\"gta_build\":\"" +
+              JsonEscape(manifest.build) + "\",\"fingerprint\":\"" +
+              JsonEscape(manifest.pe_sha256) +
+              "\",\"capabilities\":[\"pe_sections\",\"module_inventory\",\"page_hashes\"]}");
+    std::string command;
+    if (!pipe.Receive(command)) return;
+    if (command.find("\"command\":\"abort\"") != std::string::npos ||
+        command.find("\"command\":\"shutdown\"") != std::string::npos)
+      return;
+    if (command.find("\"command\":\"start_telemetry\"") == std::string::npos)
+      throw std::runtime_error("telemetry_start_required");
+    auto snapshot = telemetry.Capture("image_verified");
+    telemetry.AppendLocal(snapshot);
+    if (!pipe.Send(SerializeTelemetrySnapshot(snapshot)))
+      throw std::runtime_error("telemetry_frame_rejected");
     if (!WaitForFrontend(std::chrono::seconds(90))) throw std::runtime_error("frontend_timeout");
     if (!state.Advance(BootstrapState::frontend_ready)) throw std::runtime_error("invalid_bootstrap_state");
+    snapshot = telemetry.Capture("frontend_stable");
+    telemetry.AppendLocal(snapshot);
+    if (!pipe.Send(SerializeTelemetrySnapshot(snapshot)))
+      throw std::runtime_error("telemetry_frame_rejected");
     pipe.Send(Stage(state.state()));
 
-    std::string command;
     if (!pipe.Receive(command)) return;
     if (command.find("\"command\":\"abort\"") != std::string::npos ||
         command.find("\"command\":\"shutdown\"") != std::string::npos) return;
     if (command.find("\"command\":\"begin_world\"") == std::string::npos)
       throw std::runtime_error("unsupported_bootstrap_command");
+    snapshot = telemetry.Capture("world_transition");
+    telemetry.AppendLocal(snapshot);
+    if (!pipe.Send(SerializeTelemetrySnapshot(snapshot)))
+      throw std::runtime_error("telemetry_frame_rejected");
     if (manifest.mode != "world_loader" || manifest.signatures.empty()) {
       state.Fail();
       pipe.Send(Failure("world_loader_unverified",

@@ -6,11 +6,56 @@
 #include <array>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <vector>
 
 namespace gameverse {
+
+namespace {
+std::string Sha256Chunks(const std::vector<std::span<const std::uint8_t>>& chunks) {
+  BCRYPT_ALG_HANDLE algorithm = nullptr;
+  BCRYPT_HASH_HANDLE hash = nullptr;
+  DWORD object_size = 0, copied = 0;
+  std::vector<std::uint8_t> object;
+  std::array<std::uint8_t, 32> digest{};
+  if (BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0) < 0)
+    throw std::runtime_error("sha256 unavailable");
+  if (BCryptGetProperty(algorithm, BCRYPT_OBJECT_LENGTH,
+                        reinterpret_cast<PUCHAR>(&object_size), sizeof(object_size),
+                        &copied, 0) < 0)
+    goto failure;
+  object.resize(object_size);
+  if (BCryptCreateHash(algorithm, &hash, object.data(),
+                       static_cast<ULONG>(object.size()), nullptr, 0, 0) < 0)
+    goto failure;
+  for (const auto chunk : chunks) {
+    if (chunk.size() > static_cast<std::size_t>(std::numeric_limits<ULONG>::max()) ||
+        BCryptHashData(hash, const_cast<PUCHAR>(chunk.data()),
+                       static_cast<ULONG>(chunk.size()), 0) < 0)
+      goto failure;
+  }
+  if (BCryptFinishHash(hash, digest.data(), static_cast<ULONG>(digest.size()), 0) < 0)
+    goto failure;
+  BCryptDestroyHash(hash);
+  BCryptCloseAlgorithmProvider(algorithm, 0);
+  {
+    std::ostringstream output;
+    output << std::uppercase << std::hex << std::setfill('0');
+    for (auto byte : digest) output << std::setw(2) << static_cast<unsigned>(byte);
+    return output.str();
+  }
+failure:
+  if (hash) BCryptDestroyHash(hash);
+  if (algorithm) BCryptCloseAlgorithmProvider(algorithm, 0);
+  throw std::runtime_error("sha256 failed");
+}
+}  // namespace
+
+std::string Sha256Bytes(std::span<const std::uint8_t> bytes) {
+  return Sha256Chunks({bytes});
+}
 
 std::string Sha256File(const std::filesystem::path& path) {
   std::ifstream input(path, std::ios::binary);

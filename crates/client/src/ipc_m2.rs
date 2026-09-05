@@ -349,6 +349,42 @@ where
                     "unsupported native bootstrap fingerprint"
                 );
                 hello_seen = true;
+                ui::write(
+                    &mut bootstrap_tx,
+                    &bootstrap::Message::BootstrapCommand {
+                        schema_version: bootstrap::VERSION,
+                        command: bootstrap::Command::StartTelemetry,
+                    },
+                )
+                .await?;
+            }
+            bootstrap::Message::TelemetryHelloV1 {
+                gta_build,
+                fingerprint,
+                ..
+            } => {
+                anyhow::ensure!(
+                    hello_seen
+                        && gta_build == adapter::GAME_VERSION
+                        && fingerprint.eq_ignore_ascii_case(
+                            "0C52864D4521D9C9D441348AA1156958792DDE8825D0297C851753F167336401"
+                        ),
+                    "unsupported telemetry identity"
+                );
+            }
+            bootstrap::Message::TelemetrySnapshotV1 { snapshot, .. } => {
+                anyhow::ensure!(hello_seen, "telemetry preceded bootstrap identity");
+                ui::write(
+                    &mut ui_tx,
+                    &UiResponse::success(
+                        "bridge-stage",
+                        json!({
+                            "stage": format!("telemetry_{}", snapshot.stage),
+                            "message": "GameVerse проверяет загруженные компоненты"
+                        }),
+                    ),
+                )
+                .await?;
             }
             bootstrap::Message::BootstrapStage {
                 monotonic_ms,
@@ -803,6 +839,28 @@ mod bootstrap_tests {
                 fingerprint: "0C52864D4521D9C9D441348AA1156958792DDE8825D0297C851753F167336401"
                     .into(),
                 capabilities: vec!["telemetry".into()],
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            ui::read::<bootstrap::Message>(&mut bootstrap_peer)
+                .await
+                .unwrap(),
+            bootstrap::Message::BootstrapCommand {
+                schema_version: bootstrap::VERSION,
+                command: bootstrap::Command::StartTelemetry
+            }
+        );
+        ui::write(
+            &mut bootstrap_peer,
+            &bootstrap::Message::TelemetryHelloV1 {
+                schema_version: bootstrap::VERSION,
+                probe_build: "0.1.0".into(),
+                gta_build: adapter::GAME_VERSION.into(),
+                fingerprint: "0C52864D4521D9C9D441348AA1156958792DDE8825D0297C851753F167336401"
+                    .into(),
+                capabilities: vec!["pe_sections".into()],
             },
         )
         .await
