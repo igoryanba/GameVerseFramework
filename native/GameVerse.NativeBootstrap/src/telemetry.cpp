@@ -334,4 +334,25 @@ std::string SerializeTelemetryCallers(
   return output;
 }
 
+std::string SerializeStateWriters(
+    std::span<const StateWriterCandidate> writers) {
+  std::string output =
+      "{\"type\":\"state_writer_candidates_v1\",\"schema_version\":1,\"writers\":[";
+  for (std::size_t index = 0; index < writers.size(); ++index) {
+    if (index != 0) output += ',';
+    const auto& writer = writers[index];
+    output += "{\"candidate_id\":\"" + JsonEscape(writer.candidate_id) +
+              "\",\"state_rva\":" + std::to_string(writer.state_rva) +
+              ",\"instruction_rva\":" +
+              std::to_string(writer.instruction_rva) +
+              ",\"function_rva\":" + std::to_string(writer.function_rva) +
+              ",\"write_width\":" + std::to_string(writer.write_width) +
+              ",\"thread_class\":\"" + JsonEscape(writer.thread_class) +
+              "\",\"call_count\":" + std::to_string(writer.call_count) +
+              ",\"entry_sha256\":\"" + writer.entry_sha256 + "\"}";
+  }
+  output += "]}";
+  return output;
+}
+
 }  // namespace gameverse

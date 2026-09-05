@@ -102,6 +102,55 @@ std::string JsonStringField(std::string_view json, std::string_view name) {
   return value;
 }
 
+std::optional<std::uint32_t> JsonU32Field(std::string_view json,
+                                         std::string_view name) {
+  const auto key = "\"" + std::string(name) + "\"";
+  auto position = json.find(key);
+  if (position == std::string_view::npos) return std::nullopt;
+  position = json.find(':', position + key.size());
+  if (position == std::string_view::npos) return std::nullopt;
+  ++position;
+  while (position < json.size() &&
+         std::isspace(static_cast<unsigned char>(json[position])) != 0)
+    ++position;
+  const auto begin = position;
+  std::uint64_t value = 0;
+  while (position < json.size() &&
+         std::isdigit(static_cast<unsigned char>(json[position])) != 0) {
+    value = value * 10 + static_cast<unsigned>(json[position] - '0');
+    if (value > UINT32_MAX) return std::nullopt;
+    ++position;
+  }
+  if (position == begin) return std::nullopt;
+  while (position < json.size() &&
+         std::isspace(static_cast<unsigned char>(json[position])) != 0)
+    ++position;
+  if (position >= json.size() || (json[position] != ',' && json[position] != '}'))
+    return std::nullopt;
+  return static_cast<std::uint32_t>(value);
+}
+
+bool SendInitStateCandidateBatches(
+    PipeClient& pipe, TelemetryRecorder& telemetry,
+    std::span<const InitStateCandidate> candidates) {
+  constexpr std::size_t kBatchSize = 160;
+  if (candidates.empty()) {
+    const auto json = SerializeInitStateCandidates(candidates);
+    if (!telemetry.AppendLocalJson(json) || !pipe.Send(json)) return false;
+  } else {
+    for (std::size_t offset = 0; offset < candidates.size(); offset += kBatchSize) {
+      const auto batch = candidates.subspan(
+          offset, std::min(kBatchSize, candidates.size() - offset));
+      const auto json = SerializeInitStateCandidates(batch);
+      if (!telemetry.AppendLocalJson(json) || !pipe.Send(json)) return false;
+    }
+  }
+  const auto done =
+      "{\"type\":\"init_state_candidates_done_v1\",\"schema_version\":1,"
+      "\"total_count\":" + std::to_string(candidates.size()) + "}";
+  return telemetry.AppendLocalJson(done) && pipe.Send(done);
+}
+
 }  // namespace
 
 void AppendStartupDiagnostic(std::string_view event) noexcept {
@@ -254,14 +303,22 @@ void RunBootstrap(void* module) noexcept {
             telemetry.AppendLocal(telemetry.Capture("marker_" + marker_id));
             telemetry.AppendLocalJson(marker);
             if (!pipe.Send(marker)) return;
+          } else if (live_command.find("\"type\":\"state_writer_probe_v1\"") !=
+                     std::string::npos) {
+            const auto state_rva = JsonU32Field(live_command, "state_rva");
+            if (!state_rva || *state_rva == 0 || (*state_rva % 4) != 0)
+              throw std::runtime_error("invalid_state_writer_probe");
+            const auto writers =
+                InspectStateWriters(GetModuleHandleW(nullptr), *state_rva);
+            const auto writers_json = SerializeStateWriters(writers);
+            telemetry.AppendLocalJson(writers_json);
+            if (!pipe.Send(writers_json)) return;
           } else if (live_command.find("\"command\":\"finish_telemetry\"") !=
                      std::string::npos) {
             if (state_sampler.active()) {
               const auto candidates = state_sampler.Finish();
-              const auto candidate_json =
-                  SerializeInitStateCandidates(candidates);
-              telemetry.AppendLocalJson(candidate_json);
-              if (!pipe.Send(candidate_json)) return;
+              if (!SendInitStateCandidateBatches(pipe, telemetry, candidates))
+                return;
             }
           } else {
             throw std::runtime_error("unsupported_bootstrap_command");
@@ -271,9 +328,8 @@ void RunBootstrap(void* module) noexcept {
           static_cast<void>(state_sampler.Poll());
           if (state_sampler.expired()) {
             const auto candidates = state_sampler.Finish();
-            const auto candidate_json = SerializeInitStateCandidates(candidates);
-            telemetry.AppendLocalJson(candidate_json);
-            if (!pipe.Send(candidate_json)) return;
+            if (!SendInitStateCandidateBatches(pipe, telemetry, candidates))
+              return;
           }
         }
         if (!observed_candidates.empty() &&
@@ -306,9 +362,8 @@ void RunBootstrap(void* module) noexcept {
             return;
           if (state_sampler.active()) {
             const auto candidates = state_sampler.Finish();
-            const auto candidate_json = SerializeInitStateCandidates(candidates);
-            telemetry.AppendLocalJson(candidate_json);
-            if (!pipe.Send(candidate_json)) return;
+            if (!SendInitStateCandidateBatches(pipe, telemetry, candidates))
+              return;
           }
           snapshot.stage = "adapter_loaded";
           telemetry.AppendLocal(snapshot);

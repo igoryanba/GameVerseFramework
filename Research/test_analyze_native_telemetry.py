@@ -278,6 +278,38 @@ class AnalyzeNativeTelemetryTests(unittest.TestCase):
                 )
             self.assertEqual(summarize(path)["callers"][0]["caller_rva"], 8192)
 
+    def test_runtime_state_writer_inventory_is_validated(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "writer"
+            write_trace(path, False)
+            message = {
+                "type": "state_writer_candidates_v1",
+                "schema_version": 1,
+                "writers": [
+                    {
+                        "candidate_id": "writer_rva_8192",
+                        "state_rva": 16384,
+                        "instruction_rva": 8200,
+                        "function_rva": 8192,
+                        "write_width": 4,
+                        "thread_class": "unobserved",
+                        "call_count": 0,
+                        "entry_sha256": "4" * 64,
+                    }
+                ],
+            }
+            with path.open("a", encoding="utf-8") as stream:
+                stream.write(json.dumps(message) + "\n")
+            self.assertEqual(
+                summarize(path)["state_writer_candidates"][0]["state_rva"],
+                16384,
+            )
+
+            message["writers"][0]["write_width"] = 32
+            path.write_text(json.dumps(message) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "malformed state writer"):
+                summarize(path)
+
     def test_rejects_sensitive_data_and_oversized_frames(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "bad"

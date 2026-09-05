@@ -257,4 +257,100 @@ std::vector<TelemetryCallerCandidate> InspectDirectCallers(
   return result;
 }
 
+std::vector<StateWriterCandidate> InspectStateWriters(void* image,
+                                                      std::uint32_t state_rva) {
+  std::vector<StateWriterCandidate> result;
+  const std::uint8_t* base = nullptr;
+  const IMAGE_NT_HEADERS64* nt = nullptr;
+  if (!ReadImage(image, base, nt) || state_rva >= nt->OptionalHeader.SizeOfImage)
+    return result;
+
+  const auto image_base = reinterpret_cast<std::uintptr_t>(base);
+  const auto target = image_base + state_rva;
+  const auto first = IMAGE_FIRST_SECTION(nt);
+  ZydisDecoder decoder;
+  if (!ZYAN_SUCCESS(ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_64,
+                                      ZYDIS_STACK_WIDTH_64)))
+    return result;
+
+  std::set<std::uint32_t> seen_instructions;
+  for (unsigned index = 0;
+       index < nt->FileHeader.NumberOfSections && result.size() < 256; ++index) {
+    const auto& section = first[index];
+    if ((section.Characteristics & IMAGE_SCN_MEM_EXECUTE) == 0) continue;
+    const auto section_size = static_cast<std::size_t>(section.Misc.VirtualSize);
+    const auto section_begin = base + section.VirtualAddress;
+    std::size_t offset = 0;
+    std::uintptr_t region_end = 0;
+    bool region_readable = false;
+    while (offset < section_size && result.size() < 256) {
+      const auto address = reinterpret_cast<std::uintptr_t>(section_begin + offset);
+      if (address >= region_end) {
+        MEMORY_BASIC_INFORMATION memory{};
+        if (VirtualQuery(section_begin + offset, &memory, sizeof(memory)) == 0)
+          break;
+        region_end = std::min(
+            reinterpret_cast<std::uintptr_t>(section_begin) + section_size,
+            reinterpret_cast<std::uintptr_t>(memory.BaseAddress) +
+                memory.RegionSize);
+        region_readable =
+            memory.State == MEM_COMMIT &&
+            (memory.Protect & (PAGE_GUARD | PAGE_NOACCESS)) == 0;
+      }
+      if (!region_readable || region_end <= address) {
+        offset += std::max<std::size_t>(1, region_end > address
+                                              ? region_end - address
+                                              : 1);
+        continue;
+      }
+      const auto available = static_cast<std::size_t>(region_end - address);
+      ZydisDecodedInstruction instruction{};
+      ZydisDecodedOperand operands[ZYDIS_MAX_OPERAND_COUNT]{};
+      if (!ZYAN_SUCCESS(ZydisDecoderDecodeFull(
+              &decoder, section_begin + offset, available, &instruction,
+              operands))) {
+        ++offset;
+        continue;
+      }
+      const auto instruction_address = image_base + section.VirtualAddress + offset;
+      const auto instruction_rva =
+          section.VirtualAddress + static_cast<std::uint32_t>(offset);
+      for (std::uint8_t operand_index = 0;
+           operand_index < instruction.operand_count_visible; ++operand_index) {
+        const auto& operand = operands[operand_index];
+        if (operand.type != ZYDIS_OPERAND_TYPE_MEMORY ||
+            operand.mem.base != ZYDIS_REGISTER_RIP ||
+            (operand.actions & ZYDIS_OPERAND_ACTION_WRITE) == 0)
+          continue;
+        ZyanU64 absolute = 0;
+        if (!ZYAN_SUCCESS(ZydisCalcAbsoluteAddress(
+                &instruction, &operand, instruction_address, &absolute)) ||
+            absolute != target || !seen_instructions.insert(instruction_rva).second)
+          continue;
+
+        DWORD64 lookup_base = static_cast<DWORD64>(image_base);
+        const auto entry = RtlLookupFunctionEntry(
+            static_cast<DWORD64>(instruction_address), &lookup_base, nullptr);
+        const auto function_rva =
+            entry != nullptr && lookup_base == image_base &&
+                    entry->BeginAddress < nt->OptionalHeader.SizeOfImage
+                ? entry->BeginAddress
+                : instruction_rva;
+        if (function_rva > nt->OptionalHeader.SizeOfImage - 32) continue;
+        result.push_back({"writer_rva_" + std::to_string(function_rva),
+                          state_rva,
+                          instruction_rva,
+                          function_rva,
+                          static_cast<std::uint16_t>(operand.size / 8),
+                          "unobserved",
+                          0,
+                          Sha256Bytes(std::span(base + function_rva,
+                                                std::size_t{32}))});
+      }
+      offset += instruction.length;
+    }
+  }
+  return result;
+}
+
 }  // namespace gameverse

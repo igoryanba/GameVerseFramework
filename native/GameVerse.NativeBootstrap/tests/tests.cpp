@@ -159,6 +159,17 @@ int main() {
             "init state candidate serialization failed");
     Require(state_json.find("0x") == std::string::npos,
             "init state telemetry leaked an absolute address");
+    const auto state_writers = gameverse::InspectStateWriters(
+        GetModuleHandleW(nullptr), synthetic_rva);
+    Require(!state_writers.empty(),
+            "runtime scanner did not find the synthetic state writer");
+    const auto state_writers_json =
+        gameverse::SerializeStateWriters(state_writers);
+    Require(state_writers_json.find("state_writer_candidates_v1") !=
+                std::string::npos,
+            "state writer serialization failed");
+    Require(state_writers_json.find("0x") == std::string::npos,
+            "state writer telemetry leaked an absolute address");
     const auto adapter_log = std::filesystem::temp_directory_path() /
                              L"gameverse-native-adapter-test.log";
     std::ofstream(adapter_log) << "old run\n";

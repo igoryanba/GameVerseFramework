@@ -20,6 +20,7 @@ KNOWN_TYPES = {
     "telemetry_callers_v1",
     "telemetry_marker_v1",
     "init_state_candidates_v1",
+    "init_state_candidates_done_v1",
     "state_writer_candidates_v1",
     "world_request_status_v1",
 }
@@ -60,6 +61,8 @@ def summarize(path: Path) -> dict[str, Any]:
     callers: list[dict[str, Any]] = []
     markers: list[dict[str, Any]] = []
     init_states: list[dict[str, Any]] = []
+    state_writers: list[dict[str, Any]] = []
+    init_state_total: int | None = None
     for message in messages:
         kind = message["type"]
         if kind == "bootstrap_stage":
@@ -152,6 +155,39 @@ def summarize(path: Path) -> dict[str, Any]:
                 ):
                     raise ValueError(f"{path}: malformed init-state candidate")
                 init_states.append(state)
+        elif kind == "state_writer_candidates_v1":
+            raw_writers = message.get("writers")
+            if not isinstance(raw_writers, list) or len(raw_writers) > 256:
+                raise ValueError(f"{path}: malformed state writer candidates")
+            for writer in raw_writers:
+                if (
+                    not isinstance(writer, dict)
+                    or not isinstance(writer.get("candidate_id"), str)
+                    or not isinstance(writer.get("state_rva"), int)
+                    or not 0 < writer["state_rva"] <= 0xFFFFFFFF
+                    or not isinstance(writer.get("instruction_rva"), int)
+                    or not 0 <= writer["instruction_rva"] <= 0xFFFFFFFF
+                    or not isinstance(writer.get("function_rva"), int)
+                    or not 0 <= writer["function_rva"] <= 0xFFFFFFFF
+                    or writer.get("write_width") not in {1, 2, 4, 8}
+                    or not isinstance(writer.get("thread_class"), str)
+                    or len(writer["thread_class"]) > 32
+                    or not isinstance(writer.get("call_count"), int)
+                    or writer["call_count"] < 0
+                    or not isinstance(writer.get("entry_sha256"), str)
+                    or re.fullmatch(r"[0-9A-Fa-f]{64}", writer["entry_sha256"])
+                    is None
+                ):
+                    raise ValueError(f"{path}: malformed state writer candidate")
+                state_writers.append(writer)
+        elif kind == "init_state_candidates_done_v1":
+            total = message.get("total_count")
+            if not isinstance(total, int) or not 0 <= total <= 8192:
+                raise ValueError(f"{path}: malformed init-state completion")
+            init_state_total = total
+
+    if init_state_total is not None and init_state_total != len(init_states):
+        raise ValueError(f"{path}: incomplete init-state candidate batches")
 
     candidate_observations = []
     for candidate_id, series in sorted(candidate_series.items()):
@@ -245,6 +281,7 @@ def summarize(path: Path) -> dict[str, Any]:
         "callers": callers,
         "markers": markers,
         "init_state_candidates": init_states,
+        "state_writer_candidates": state_writers,
     }
 
 

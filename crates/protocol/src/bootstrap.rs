@@ -59,9 +59,17 @@ pub enum Message {
         schema_version: u16,
         candidates: Vec<InitStateCandidateV1>,
     },
+    InitStateCandidatesDoneV1 {
+        schema_version: u16,
+        total_count: u32,
+    },
     StateWriterCandidatesV1 {
         schema_version: u16,
         writers: Vec<StateWriterCandidateV1>,
+    },
+    StateWriterProbeV1 {
+        schema_version: u16,
+        state_rva: u32,
     },
     WorldRequestStatusV1 {
         schema_version: u16,
@@ -238,7 +246,9 @@ impl Message {
             | Self::TelemetryCallersV1 { schema_version, .. }
             | Self::TelemetryMarkerV1 { schema_version, .. }
             | Self::InitStateCandidatesV1 { schema_version, .. }
+            | Self::InitStateCandidatesDoneV1 { schema_version, .. }
             | Self::StateWriterCandidatesV1 { schema_version, .. }
+            | Self::StateWriterProbeV1 { schema_version, .. }
             | Self::WorldRequestStatusV1 { schema_version, .. } => *schema_version == VERSION,
             Self::TelemetryHelloV1 {
                 schema_version,
@@ -317,6 +327,7 @@ impl Message {
                             && candidate.stage_correlation.len() <= 64
                     })
             }
+            Self::InitStateCandidatesDoneV1 { total_count, .. } => *total_count <= 8192,
             Self::StateWriterCandidatesV1 { writers, .. } => {
                 writers.len() <= 256
                     && writers.iter().all(|writer| {
@@ -328,6 +339,7 @@ impl Message {
                             && writer.entry_sha256.bytes().all(|v| v.is_ascii_hexdigit())
                     })
             }
+            Self::StateWriterProbeV1 { state_rva, .. } => *state_rva > 0 && state_rva % 4 == 0,
             Self::WorldRequestStatusV1 { code, .. } => code.as_ref().is_none_or(|value| {
                 !value.is_empty()
                     && value.len() <= 64
@@ -486,5 +498,13 @@ mod tests {
             }],
         };
         assert_eq!(decode(&encode(&states).unwrap()[4..]).unwrap(), states);
+        let writer_probe = Message::StateWriterProbeV1 {
+            schema_version: VERSION,
+            state_rva: 4096,
+        };
+        assert_eq!(
+            decode(&encode(&writer_probe).unwrap()[4..]).unwrap(),
+            writer_probe
+        );
     }
 }

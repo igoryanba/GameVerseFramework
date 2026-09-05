@@ -66,6 +66,13 @@ struct StateWriter {
   std::string entry_sha256;
 };
 
+struct StateReference {
+  std::uint32_t instruction_rva{};
+  std::uint32_t function_rva{};
+  std::uint8_t actions{};
+  std::string mnemonic;
+};
+
 Image LoadImage(const std::filesystem::path& path) {
   std::ifstream input(path, std::ios::binary);
   if (!input) throw std::runtime_error("image_unavailable");
@@ -390,6 +397,54 @@ std::vector<StateWriter> FindStateWriters(const Image& image,
   return writers;
 }
 
+std::vector<StateReference> FindStateReferences(const Image& image,
+                                                std::uint32_t state_rva) {
+  std::vector<StateReference> references;
+  ZydisDecoder decoder;
+  if (!ZYAN_SUCCESS(ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_64,
+                                      ZYDIS_STACK_WIDTH_64)))
+    throw std::runtime_error("decoder_initialization_failed");
+  for (const auto& section : image.sections) {
+    if ((section.characteristics & IMAGE_SCN_MEM_EXECUTE) == 0 ||
+        section.raw_offset >= image.bytes.size())
+      continue;
+    const auto size = std::min<std::size_t>(section.raw_size,
+                                            image.bytes.size() - section.raw_offset);
+    std::size_t offset = 0;
+    while (offset < size && references.size() < 256) {
+      ZydisDecodedInstruction instruction{};
+      ZydisDecodedOperand operands[ZYDIS_MAX_OPERAND_COUNT]{};
+      if (!ZYAN_SUCCESS(ZydisDecoderDecodeFull(
+              &decoder, image.bytes.data() + section.raw_offset + offset,
+              size - offset, &instruction, operands))) {
+        ++offset;
+        continue;
+      }
+      const auto instruction_rva = section.rva + static_cast<std::uint32_t>(offset);
+      for (std::uint8_t operand_index = 0;
+           operand_index < instruction.operand_count_visible; ++operand_index) {
+        const auto& operand = operands[operand_index];
+        if (operand.type != ZYDIS_OPERAND_TYPE_MEMORY ||
+            operand.mem.base != ZYDIS_REGISTER_RIP)
+          continue;
+        ZyanU64 absolute = 0;
+        if (ZYAN_SUCCESS(ZydisCalcAbsoluteAddress(
+                &instruction, &operand, instruction_rva, &absolute)) &&
+            absolute == state_rva) {
+          references.push_back(
+              {instruction_rva,
+               image.FunctionStart(instruction_rva).value_or(instruction_rva),
+               static_cast<std::uint8_t>(operand.actions),
+               ZydisMnemonicGetString(instruction.mnemonic)});
+          break;
+        }
+      }
+      offset += instruction.length;
+    }
+  }
+  return references;
+}
+
 }  // namespace
 
 int wmain(int argc, wchar_t** argv) {
@@ -510,6 +565,7 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (state_rva) {
       const auto writers = FindStateWriters(image, *state_rva);
+      const auto references = FindStateReferences(image, *state_rva);
       if (self_test_writers && writers.empty())
         throw std::runtime_error("state_writer_self_test_failed");
       std::cout << ",\"state_writers\":{\"state_rva\":\"" << Hex(*state_rva)
@@ -521,6 +577,15 @@ int wmain(int argc, wchar_t** argv) {
                   << "\",\"function_rva\":\"" << Hex(writer.function_rva)
                   << "\",\"write_width\":" << writer.write_width
                   << ",\"entry_sha256\":\"" << writer.entry_sha256 << "\"}";
+      }
+      std::cout << "],\"references\":[";
+      for (std::size_t index = 0; index < references.size(); ++index) {
+        if (index != 0) std::cout << ',';
+        const auto& reference = references[index];
+        std::cout << "{\"instruction_rva\":\"" << Hex(reference.instruction_rva)
+                  << "\",\"function_rva\":\"" << Hex(reference.function_rva)
+                  << "\",\"actions\":" << static_cast<unsigned>(reference.actions)
+                  << ",\"mnemonic\":\"" << reference.mnemonic << "\"}";
       }
       std::cout << "]}";
     }

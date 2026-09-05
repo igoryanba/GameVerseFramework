@@ -104,6 +104,22 @@ struct TelemetryCallerCandidate {
   std::string entry_sha256;
 };
 
+struct StateWriterCandidate {
+  std::string candidate_id;
+  std::uint32_t state_rva{};
+  std::uint32_t instruction_rva{};
+  std::uint32_t function_rva{};
+  std::uint16_t write_width{};
+  std::string thread_class;
+  std::uint64_t call_count{};
+  std::string entry_sha256;
+};
+
+std::vector<StateWriterCandidate> InspectStateWriters(void* image,
+                                                      std::uint32_t state_rva);
+std::string SerializeStateWriters(
+    std::span<const StateWriterCandidate> writers);
+
 struct InitStateCandidate {
   std::string candidate_id;
   std::uint32_t rva{};

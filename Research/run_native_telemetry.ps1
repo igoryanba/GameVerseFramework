@@ -10,6 +10,12 @@ param(
     [ValidatePattern('^[A-Za-z0-9_-]{1,64}$')]
     [string]$MarkerId = 'manual_story_transition',
 
+    [ValidateRange(0, 4294967295)]
+    [long]$StateRva = 0,
+
+    [ValidateRange(0, 60)]
+    [int]$MarkerDelaySeconds = 10,
+
     [ValidateRange(10, 1200)]
     [int]$TimeoutSeconds = 900
 )
@@ -117,6 +123,8 @@ try {
 
     $telemetryStarted = $false
     $markerSent = $false
+    $writerProbeSent = $false
+    $writerResultReceived = ($StateRva -eq 0)
     while ($pipe.IsConnected -and -not $cancellation.IsCancellationRequested) {
         $json = Read-Frame -Stream $pipe -CancellationToken $cancellation.Token
         # Windows PowerShell 5.1 has no -Depth parameter on ConvertFrom-Json.
@@ -134,6 +142,18 @@ try {
 
         if ($message.type -eq 'bootstrap_stage' -and
             $message.stage -eq 'frontend_ready' -and -not $markerSent) {
+            if ($MarkerDelaySeconds -gt 0) {
+                Start-Sleep -Seconds $MarkerDelaySeconds
+            }
+            if ($StateRva -ne 0 -and -not $writerProbeSent) {
+                $probe = @{
+                    type = 'state_writer_probe_v1'
+                    schema_version = 1
+                    state_rva = $StateRva
+                } | ConvertTo-Json -Compress
+                Write-Frame -Stream $pipe -Json $probe
+                $writerProbeSent = $true
+            }
             $marker = @{
                 type = 'telemetry_marker_v1'
                 schema_version = 1
@@ -144,8 +164,13 @@ try {
             $markerSent = $true
         }
 
+        if ($message.type -eq 'state_writer_candidates_v1') {
+            $writerResultReceived = $true
+        }
+
         if ($TraceKind -eq 'Control' -and
-            $message.type -eq 'init_state_candidates_v1') {
+            $message.type -eq 'init_state_candidates_done_v1' -and
+            $writerResultReceived) {
             break
         }
 

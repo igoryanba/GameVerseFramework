@@ -570,6 +570,22 @@ where
                 )
                 .await?;
             }
+            bootstrap::Message::InitStateCandidatesDoneV1 { total_count, .. } => {
+                anyhow::ensure!(hello_seen, "state candidate completion preceded identity");
+                ui::write(
+                    ui_tx,
+                    &UiResponse::success(
+                        "bridge-stage",
+                        json!({
+                            "stage": "telemetry_state_candidates_complete",
+                            "message": format!(
+                                "GameVerse завершил проверку {total_count} кандидатов init-state"
+                            )
+                        }),
+                    ),
+                )
+                .await?;
+            }
             bootstrap::Message::StateWriterCandidatesV1 { writers, .. } => {
                 anyhow::ensure!(hello_seen, "state writers preceded bootstrap identity");
                 ui::write(
@@ -583,6 +599,9 @@ where
                     ),
                 )
                 .await?;
+            }
+            bootstrap::Message::StateWriterProbeV1 { .. } => {
+                anyhow::bail!("bootstrap sent a host-only state writer probe")
             }
             bootstrap::Message::WorldRequestStatusV1 { status, code, .. } => {
                 anyhow::ensure!(hello_seen, "world status preceded bootstrap identity");

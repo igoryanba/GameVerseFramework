@@ -14,8 +14,10 @@ constexpr std::uint64_t kWindowMilliseconds = 20'000;
 constexpr std::size_t kPageBytes = 4096;
 constexpr std::size_t kMaximumPages = 16'384;
 constexpr std::size_t kMaximumTransitions = 32;
-// Keep the serialized result comfortably below the shared 64 KiB pipe bound.
-constexpr std::size_t kMaximumResults = 240;
+// The bootstrap sends these in bounded batches. Keeping a wider local set is
+// required because a Story transition can change thousands of small scalars;
+// truncating before comparison can discard the actual init-state.
+constexpr std::size_t kMaximumResults = 8192;
 
 std::string SectionName(const IMAGE_SECTION_HEADER& section) {
   char name[IMAGE_SIZEOF_SHORT_NAME + 1]{};
