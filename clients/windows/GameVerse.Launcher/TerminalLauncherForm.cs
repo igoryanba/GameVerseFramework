@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 
 internal static class LauncherWindow
@@ -441,8 +442,43 @@ internal sealed class TerminalLauncherForm : Form
         if (InvokeRequired) { BeginInvoke(() => SetStage(value, message)); return; }
         stage = value;
         Log(message, value == "failed");
-        if (value is "failed" or "reconnecting" or "auth_required" or "character_required") RestoreWindow();
-        if (value == "active") WindowState = FormWindowState.Minimized;
+        if (value is "auth_required" or "character_required")
+        {
+            MinimizeGameForInteraction();
+            RestoreWindow();
+        }
+        else if (value is "failed" or "reconnecting") RestoreWindow();
+        if (value == "active")
+        {
+            RestoreGameAfterInteraction();
+            WindowState = FormWindowState.Minimized;
+        }
+    }
+
+    private void MinimizeGameForInteraction()
+    {
+        try
+        {
+            if (gameProcess is null || gameProcess.HasExited) return;
+            gameProcess.Refresh();
+            if (gameProcess.MainWindowHandle != IntPtr.Zero)
+                NativeWindow.ShowWindowAsync(gameProcess.MainWindowHandle, NativeWindow.SwMinimize);
+        }
+        catch (InvalidOperationException) { }
+        catch (System.ComponentModel.Win32Exception) { }
+    }
+
+    private void RestoreGameAfterInteraction()
+    {
+        try
+        {
+            if (gameProcess is null || gameProcess.HasExited) return;
+            gameProcess.Refresh();
+            if (gameProcess.MainWindowHandle != IntPtr.Zero)
+                NativeWindow.ShowWindowAsync(gameProcess.MainWindowHandle, NativeWindow.SwRestore);
+        }
+        catch (InvalidOperationException) { }
+        catch (System.ComponentModel.Win32Exception) { }
     }
 
     private static string StageText(string? value) => value switch
@@ -526,4 +562,14 @@ internal sealed class TerminalLauncherForm : Form
         catch (System.ComponentModel.Win32Exception) { }
         finally { process.Dispose(); }
     }
+}
+
+internal static class NativeWindow
+{
+    internal const int SwMinimize = 6;
+    internal const int SwRestore = 9;
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool ShowWindowAsync(IntPtr window, int command);
 }
