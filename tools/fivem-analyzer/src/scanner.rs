@@ -439,8 +439,8 @@ fn expand_available(patterns: &[String], files: &[PathBuf]) -> (Vec<String>, Vec
     let mut missing = Vec::new();
     for pattern in patterns {
         match expand_patterns(std::slice::from_ref(pattern), files) {
-            Ok(matches) => expanded.extend(matches),
-            Err(_) => missing.push(pattern.clone()),
+            Ok(matches) if !matches.is_empty() => expanded.extend(matches),
+            Ok(_) | Err(_) => missing.push(pattern.clone()),
         }
     }
     (expanded.into_iter().collect(), missing)
