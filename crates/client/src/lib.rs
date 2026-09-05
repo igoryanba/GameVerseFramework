@@ -159,7 +159,10 @@ impl Client {
         Ok(())
     }
     pub async fn close(&mut self) -> Result<()> {
-        let result = timeout(HANDSHAKE_TIMEOUT, async {
+        // A clean peer shutdown can race this final application message. Closing
+        // the local QUIC endpoint is still successful in that case, so treat the
+        // disconnect frame as best-effort cleanup.
+        let _ = timeout(HANDSHAKE_TIMEOUT, async {
             write_message(
                 &mut self.send,
                 &Message::Disconnect {
@@ -174,7 +177,6 @@ impl Client {
         self.connection.close(0_u32.into(), b"client shutdown");
         self.reader.abort();
         self.endpoint.wait_idle().await;
-        result??;
         Ok(())
     }
 }

@@ -98,7 +98,10 @@ impl Client {
         Ok(())
     }
     pub async fn close(&mut self) -> Result<()> {
-        let result = timeout(HANDSHAKE_TIMEOUT, async {
+        // The server may finish the session between the disconnect write and
+        // stream finish. Local shutdown remains complete, so this notification
+        // is intentionally best effort.
+        let _ = timeout(HANDSHAKE_TIMEOUT, async {
             write_message(
                 &mut self.send,
                 &Message::Disconnect {
@@ -113,7 +116,6 @@ impl Client {
         self.connection.close(0_u32.into(), b"client shutdown");
         self.reader.abort();
         self.endpoint.wait_idle().await;
-        result??;
         Ok(())
     }
 }
