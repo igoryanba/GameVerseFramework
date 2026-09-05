@@ -8,7 +8,7 @@
       "url": "https://github.com/Bob74/bob74_ipl.git",
       "commit": "831e3c9f0da79106465031cbb6981e4ea5804354",
       "license": "MIT",
-      "archive_sha256": "3EB72347D75690F52569A2EF31C20508281DB8C39E29438BBCB6E178761B7E58",
+      "archive_sha256": "16D4B5E1C2D83D7CA6166E3BAD10CB765925703BD63662C34F6439E71DD66081",
       "mode": "executable_canary",
       "purpose": "standalone Lua, IPL and native coverage"
     },
@@ -17,7 +17,7 @@
       "url": "https://github.com/THELOLAN/fivem-appearence.git",
       "commit": "a93aa25832b2854fb32d8b80e643489c099780ab",
       "license": "MIT",
-      "archive_sha256": "839CE8B0A8A01E454DA8CFE38753667458B20A34A257DBF84C680886F8ED9B04",
+      "archive_sha256": "616CBBEA90969A237EBEBD5CFD19A3AF10C5A3175F5E1856BB0D8CA50819E0F0",
       "mode": "executable_canary",
       "purpose": "appearance exports and NUI inventory"
     },

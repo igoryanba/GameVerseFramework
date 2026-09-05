@@ -38,3 +38,42 @@ jobs:
             unknown-natives.json
             license-report.json
           if-no-files-found: ignore
+  external-corpus-static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.0
+      - name: Fetch and verify pinned MIT canaries
+        run: python3 Research/fetch_corpus.py
+      - name: Create static report directory
+        run: mkdir -p .research/reports
+      - name: Analyze bob74_ipl without executing Lua
+        run: >-
+          cargo run --locked --manifest-path tools/fivem-analyzer/Cargo.toml --
+          --path .research/resources/bob74_ipl/bob74_ipl-831e3c9f0da79106465031cbb6981e4ea5804354
+          --format json
+          --gameverse-manifest .research/reports/bob74_ipl.toml
+          --required-capabilities .research/reports/bob74_ipl-capabilities.json
+          --unknown-natives .research/reports/bob74_ipl-natives.json
+          --license-report .research/reports/bob74_ipl-license.json
+          > .research/reports/bob74_ipl-report.json
+      - name: Analyze fivem-appearence without executing Lua
+        run: >-
+          cargo run --locked --manifest-path tools/fivem-analyzer/Cargo.toml --
+          --path .research/resources/fivem-appearence/fivem-appearence-a93aa25832b2854fb32d8b80e643489c099780ab
+          --format json
+          --gameverse-manifest .research/reports/fivem-appearence.toml
+          --required-capabilities .research/reports/fivem-appearence-capabilities.json
+          --unknown-natives .research/reports/fivem-appearence-natives.json
+          --license-report .research/reports/fivem-appearence-license.json
+          > .research/reports/fivem-appearence-report.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: external-resource-static-reports
+          path: |
+            .research/resources/receipt.json
+            .research/reports/
+          if-no-files-found: error
