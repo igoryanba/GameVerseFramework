@@ -620,6 +620,14 @@ pub async fn run(
     run_inner(endpoint, None, shutdown, None).await
 }
 
+pub async fn run_with_metrics(
+    endpoint: quinn::Endpoint,
+    shutdown: watch::Receiver<bool>,
+    metrics: MetricsHandle,
+) -> Result<serde_json::Value> {
+    run_inner(endpoint, None, shutdown, Some(metrics)).await
+}
+
 pub async fn run_alpha(
     endpoint: quinn::Endpoint,
     store: PostgresStore,

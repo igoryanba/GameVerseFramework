@@ -93,7 +93,7 @@ async fn main() -> Result<()> {
     let report = if let Some(store) = store {
         gameverse_server::presence_m2::run_alpha_with_metrics(endpoint, store, rx, metrics).await?
     } else {
-        gameverse_server::presence_m2::run(endpoint, rx).await?
+        gameverse_server::presence_m2::run_with_metrics(endpoint, rx, metrics).await?
     };
     health.abort();
     if let Some(admin) = admin {
