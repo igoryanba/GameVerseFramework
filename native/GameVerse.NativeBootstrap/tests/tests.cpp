@@ -22,6 +22,10 @@ __declspec(noinline) int ObserveTarget(int value) {
   return result;
 }
 volatile std::uint32_t gSyntheticInitState = 1;
+volatile std::uint32_t* gSyntheticInitStatePointer = &gSyntheticInitState;
+__declspec(noinline) void WriteSyntheticInitStateIndirect(std::uint32_t value) {
+  *gSyntheticInitStatePointer = value;
+}
 #pragma optimize("", on)
 }
 
@@ -170,6 +174,20 @@ int main() {
             "state writer serialization failed");
     Require(state_writers_json.find("0x") == std::string::npos,
             "state writer telemetry leaked an absolute address");
+    WriteSyntheticInitStateIndirect(11);
+    Require(gSyntheticInitState == 11,
+            "synthetic indirect writer did not update state");
+    const auto indirect_rva = static_cast<std::uint32_t>(
+        reinterpret_cast<std::uintptr_t>(&WriteSyntheticInitStateIndirect) -
+        reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr)));
+    Require(std::any_of(
+                state_writers.begin(), state_writers.end(),
+                [&](const auto& writer) {
+                  return writer.write_width == 4 &&
+                         writer.instruction_rva >= indirect_rva &&
+                         writer.instruction_rva < indirect_rva + 32;
+                }),
+            "runtime scanner did not find the indirect 32-bit writer");
     const auto adapter_log = std::filesystem::temp_directory_path() /
                              L"gameverse-native-adapter-test.log";
     std::ofstream(adapter_log) << "old run\n";

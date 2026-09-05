@@ -274,6 +274,31 @@ std::vector<StateWriterCandidate> InspectStateWriters(void* image,
     return result;
 
   std::set<std::uint32_t> seen_instructions;
+  const auto add_writer = [&](std::uint32_t instruction_rva,
+                              std::uint16_t write_width) {
+    if (!seen_instructions.insert(instruction_rva).second ||
+        result.size() >= 256)
+      return;
+    const auto instruction_address = image_base + instruction_rva;
+    DWORD64 lookup_base = static_cast<DWORD64>(image_base);
+    const auto entry = RtlLookupFunctionEntry(
+        static_cast<DWORD64>(instruction_address), &lookup_base, nullptr);
+    const auto function_rva =
+        entry != nullptr && lookup_base == image_base &&
+                entry->BeginAddress < nt->OptionalHeader.SizeOfImage
+            ? entry->BeginAddress
+            : instruction_rva;
+    if (function_rva > nt->OptionalHeader.SizeOfImage - 32) return;
+    result.push_back({"writer_rva_" + std::to_string(function_rva),
+                      state_rva,
+                      instruction_rva,
+                      function_rva,
+                      write_width,
+                      "unobserved",
+                      0,
+                      Sha256Bytes(std::span(base + function_rva,
+                                            std::size_t{32}))});
+  };
   for (unsigned index = 0;
        index < nt->FileHeader.NumberOfSections && result.size() < 256; ++index) {
     const auto& section = first[index];
@@ -283,6 +308,7 @@ std::vector<StateWriterCandidate> InspectStateWriters(void* image,
     std::size_t offset = 0;
     std::uintptr_t region_end = 0;
     bool region_readable = false;
+    std::map<ZydisRegister, std::uintptr_t> register_values;
     while (offset < section_size && result.size() < 256) {
       const auto address = reinterpret_cast<std::uintptr_t>(section_begin + offset);
       if (address >= region_end) {
@@ -325,28 +351,93 @@ std::vector<StateWriterCandidate> InspectStateWriters(void* image,
         ZyanU64 absolute = 0;
         if (!ZYAN_SUCCESS(ZydisCalcAbsoluteAddress(
                 &instruction, &operand, instruction_address, &absolute)) ||
-            absolute != target || !seen_instructions.insert(instruction_rva).second)
+            absolute != target)
           continue;
-
-        DWORD64 lookup_base = static_cast<DWORD64>(image_base);
-        const auto entry = RtlLookupFunctionEntry(
-            static_cast<DWORD64>(instruction_address), &lookup_base, nullptr);
-        const auto function_rva =
-            entry != nullptr && lookup_base == image_base &&
-                    entry->BeginAddress < nt->OptionalHeader.SizeOfImage
-                ? entry->BeginAddress
-                : instruction_rva;
-        if (function_rva > nt->OptionalHeader.SizeOfImage - 32) continue;
-        result.push_back({"writer_rva_" + std::to_string(function_rva),
-                          state_rva,
-                          instruction_rva,
-                          function_rva,
-                          static_cast<std::uint16_t>(operand.size / 8),
-                          "unobserved",
-                          0,
-                          Sha256Bytes(std::span(base + function_rva,
-                                                std::size_t{32}))});
+        add_writer(instruction_rva,
+                   static_cast<std::uint16_t>(operand.size / 8));
       }
+
+      // Resolve a bounded, intra-basic-block pointer chain. This recognizes
+      // code such as `mov rax, [rip+global]; mov [rax+offset], ecx` without
+      // reading heaps, stacks or third-party modules.
+      for (std::uint8_t operand_index = 0;
+           operand_index < instruction.operand_count_visible; ++operand_index) {
+        const auto& operand = operands[operand_index];
+        if (operand.type != ZYDIS_OPERAND_TYPE_MEMORY ||
+            operand.mem.base == ZYDIS_REGISTER_NONE ||
+            operand.mem.base == ZYDIS_REGISTER_RIP ||
+            operand.mem.index != ZYDIS_REGISTER_NONE ||
+            (operand.actions & ZYDIS_OPERAND_ACTION_WRITE) == 0)
+          continue;
+        const auto base_register = ZydisRegisterGetLargestEnclosing(
+            ZYDIS_MACHINE_MODE_LONG_64, operand.mem.base);
+        const auto known = register_values.find(base_register);
+        if (known == register_values.end()) continue;
+        const auto effective = static_cast<std::uintptr_t>(
+            static_cast<std::intptr_t>(known->second) + operand.mem.disp.value);
+        if (effective == target)
+          add_writer(instruction_rva,
+                     static_cast<std::uint16_t>(operand.size / 8));
+      }
+
+      std::optional<std::pair<ZydisRegister, std::uintptr_t>> propagated;
+      if (instruction.operand_count_visible >= 2 &&
+          operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER &&
+          (operands[0].actions & ZYDIS_OPERAND_ACTION_WRITE) != 0) {
+        const auto destination = ZydisRegisterGetLargestEnclosing(
+            ZYDIS_MACHINE_MODE_LONG_64, operands[0].reg.value);
+        const auto& source = operands[1];
+        if (instruction.mnemonic == ZYDIS_MNEMONIC_LEA &&
+            source.type == ZYDIS_OPERAND_TYPE_MEMORY &&
+            source.mem.base == ZYDIS_REGISTER_RIP) {
+          ZyanU64 absolute = 0;
+          if (ZYAN_SUCCESS(ZydisCalcAbsoluteAddress(
+                  &instruction, &source, instruction_address, &absolute)))
+            propagated = std::pair(destination,
+                                   static_cast<std::uintptr_t>(absolute));
+        } else if (instruction.mnemonic == ZYDIS_MNEMONIC_MOV &&
+                   source.type == ZYDIS_OPERAND_TYPE_REGISTER) {
+          const auto source_register = ZydisRegisterGetLargestEnclosing(
+              ZYDIS_MACHINE_MODE_LONG_64, source.reg.value);
+          const auto known = register_values.find(source_register);
+          if (known != register_values.end())
+            propagated = std::pair(destination, known->second);
+        } else if (instruction.mnemonic == ZYDIS_MNEMONIC_MOV &&
+                   operands[0].size == 64 &&
+                   source.type == ZYDIS_OPERAND_TYPE_MEMORY &&
+                   source.mem.base == ZYDIS_REGISTER_RIP) {
+          ZyanU64 source_address = 0;
+          if (ZYAN_SUCCESS(ZydisCalcAbsoluteAddress(
+                  &instruction, &source, instruction_address,
+                  &source_address)) &&
+              source_address >= image_base &&
+              source_address + sizeof(std::uintptr_t) <=
+                  image_base + nt->OptionalHeader.SizeOfImage) {
+            std::uintptr_t pointer = 0;
+            std::memcpy(&pointer,
+                        reinterpret_cast<const void*>(source_address),
+                        sizeof(pointer));
+            if (pointer >= image_base &&
+                pointer < image_base + nt->OptionalHeader.SizeOfImage)
+              propagated = std::pair(destination, pointer);
+          }
+        }
+      }
+      for (std::uint8_t operand_index = 0;
+           operand_index < instruction.operand_count_visible; ++operand_index) {
+        const auto& operand = operands[operand_index];
+        if (operand.type == ZYDIS_OPERAND_TYPE_REGISTER &&
+            (operand.actions & ZYDIS_OPERAND_ACTION_WRITE) != 0)
+          register_values.erase(ZydisRegisterGetLargestEnclosing(
+              ZYDIS_MACHINE_MODE_LONG_64, operand.reg.value));
+      }
+      if (propagated) register_values.insert_or_assign(propagated->first,
+                                                       propagated->second);
+      if (instruction.meta.category == ZYDIS_CATEGORY_CALL ||
+          instruction.meta.category == ZYDIS_CATEGORY_RET ||
+          instruction.meta.category == ZYDIS_CATEGORY_COND_BR ||
+          instruction.meta.category == ZYDIS_CATEGORY_UNCOND_BR)
+        register_values.clear();
       offset += instruction.length;
     }
   }
