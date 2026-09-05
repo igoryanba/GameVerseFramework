@@ -45,6 +45,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.98.0
+      - name: Test corpus archive validation
+        run: python3 Research/test_fetch_corpus.py
       - name: Fetch and verify pinned MIT canaries
         run: python3 Research/fetch_corpus.py
       - name: Create static report directory
