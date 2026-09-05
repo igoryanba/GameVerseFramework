@@ -80,10 +80,12 @@ delta. The analyzer reports this separately as `observe_gate_satisfied`; a page
 correlation alone never authorizes a behavioral hook.
 
 After a candidate passes that correlation, the probe inventories direct relative
-call sites in the loaded executable and reports only owning-function RVAs,
+call sites in the loaded executable, following callers for at most eight levels,
+and reports only owning-function RVAs,
 call-site counts and entry hashes. This read-only caller inventory narrows the
 one-shot transition initiator without exposing process addresses or code bytes
-and without installing additional hooks.
+and without installing additional hooks. Zydis decodes instruction boundaries;
+raw opcode-byte matches are never treated as call edges.
 Stable caller entries can then be attested by a signed RVA plus the SHA-256 of
 their first 32 bytes. The probe verifies that the bytes occur exactly once in
 the loaded executable section before an observe-only hook is allowed; this

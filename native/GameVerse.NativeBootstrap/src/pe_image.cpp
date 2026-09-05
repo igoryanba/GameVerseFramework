@@ -1,10 +1,12 @@
 #include "gameverse/bootstrap.hpp"
 
 #include <windows.h>
+#include <Zydis/Zydis.h>
 
 #include <algorithm>
 #include <cstring>
 #include <map>
+#include <set>
 
 namespace gameverse {
 
@@ -184,9 +186,26 @@ std::vector<TelemetryCallerCandidate> InspectDirectCallers(
   const auto image_base = reinterpret_cast<std::uintptr_t>(base);
   const auto image_end = image_base + nt->OptionalHeader.SizeOfImage;
   const auto first = IMAGE_FIRST_SECTION(nt);
+  ZydisDecoder decoder;
+  if (!ZYAN_SUCCESS(ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_64,
+                                      ZYDIS_STACK_WIDTH_64)))
+    return result;
+  struct WorkItem {
+    std::string candidate_id;
+    std::uint32_t rva;
+    std::uint32_t depth;
+  };
+  std::vector<WorkItem> work;
+  std::set<std::uint32_t> visited;
   for (const auto& candidate : candidates) {
     if (candidate.rva == 0 || candidate.unique_match_count != 1) continue;
-    const auto target = image_base + candidate.rva;
+    if (visited.insert(candidate.rva).second)
+      work.push_back({candidate.candidate_id, candidate.rva, 0});
+  }
+  for (std::size_t work_index = 0;
+       work_index < work.size() && result.size() < 128; ++work_index) {
+    const auto item = work[work_index];
+    const auto target = image_base + item.rva;
     std::map<std::uint32_t, std::uint32_t> callers;
     for (unsigned index = 0; index < nt->FileHeader.NumberOfSections; ++index) {
       const auto& section = first[index];
@@ -194,27 +213,45 @@ std::vector<TelemetryCallerCandidate> InspectDirectCallers(
       const auto section_begin = base + section.VirtualAddress;
       const auto section_size = static_cast<std::size_t>(section.Misc.VirtualSize);
       if (section_size < 5) continue;
-      for (std::size_t offset = 0; offset <= section_size - 5; ++offset) {
-        if (section_begin[offset] != 0xe8) continue;
-        std::int32_t displacement = 0;
-        std::memcpy(&displacement, section_begin + offset + 1,
-                    sizeof(displacement));
+      std::size_t offset = 0;
+      while (offset < section_size) {
+        ZydisDecodedInstruction instruction{};
+        ZydisDecodedOperand operands[ZYDIS_MAX_OPERAND_COUNT]{};
+        if (!ZYAN_SUCCESS(ZydisDecoderDecodeFull(
+                &decoder, section_begin + offset, section_size - offset,
+                &instruction, operands))) {
+          ++offset;
+          continue;
+        }
         const auto call_address = reinterpret_cast<std::uintptr_t>(section_begin + offset);
-        if (call_address + 5 + displacement != target) continue;
-        DWORD64 lookup_base = static_cast<DWORD64>(image_base);
-        const auto entry = RtlLookupFunctionEntry(
-            static_cast<DWORD64>(call_address), &lookup_base, nullptr);
-        if (!entry || lookup_base != image_base ||
-            entry->BeginAddress >= nt->OptionalHeader.SizeOfImage) continue;
-        ++callers[entry->BeginAddress];
+        if (instruction.mnemonic == ZYDIS_MNEMONIC_CALL &&
+            instruction.operand_count_visible > 0 &&
+            operands[0].type == ZYDIS_OPERAND_TYPE_IMMEDIATE &&
+            operands[0].imm.is_relative) {
+          ZyanU64 absolute = 0;
+          if (ZYAN_SUCCESS(ZydisCalcAbsoluteAddress(
+                  &instruction, &operands[0], call_address, &absolute)) &&
+              absolute == target) {
+            DWORD64 lookup_base = static_cast<DWORD64>(image_base);
+            const auto entry = RtlLookupFunctionEntry(
+                static_cast<DWORD64>(call_address), &lookup_base, nullptr);
+            if (entry && lookup_base == image_base &&
+                entry->BeginAddress < nt->OptionalHeader.SizeOfImage)
+              ++callers[entry->BeginAddress];
+          }
+        }
+        offset += instruction.length;
       }
     }
     for (const auto& [caller_rva, call_sites] : callers) {
       if (result.size() >= 128) return result;
       if (image_base + caller_rva + 32 > image_end) continue;
       result.push_back(
-          {candidate.candidate_id, caller_rva, call_sites,
+          {item.candidate_id, caller_rva, call_sites,
            Sha256Bytes(std::span(base + caller_rva, std::size_t{32}))});
+      if (item.depth < 7 && visited.insert(caller_rva).second)
+        work.push_back({"caller_rva_" + std::to_string(caller_rva), caller_rva,
+                        item.depth + 1});
     }
   }
   return result;

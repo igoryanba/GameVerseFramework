@@ -190,20 +190,26 @@ void RunBootstrap(void* module) noexcept {
             candidate_manifest.pe_sha256 != manifest.pe_sha256)
           throw std::runtime_error("telemetry_candidates_identity_mismatch");
         if (candidate_manifest.mode == "observe_only") {
+          observed_candidates =
+              InspectImageCandidates(GetModuleHandleW(nullptr), candidate_manifest);
+          const auto caller_candidates = InspectDirectCallers(
+              GetModuleHandleW(nullptr), observed_candidates);
           std::string observe_error;
           if (!observe_hooks.Start(GetModuleHandleW(nullptr), candidate_manifest,
                                    observed_candidates, observe_error))
             throw std::runtime_error(observe_error);
+          if (!pipe.Send(SerializeTelemetryCallers(caller_candidates)))
+            throw std::runtime_error("telemetry_callers_frame_rejected");
         } else {
           observed_candidates =
               InspectImageCandidates(GetModuleHandleW(nullptr), candidate_manifest);
+          const auto caller_candidates = InspectDirectCallers(
+              GetModuleHandleW(nullptr), observed_candidates);
+          if (!pipe.Send(SerializeTelemetryCallers(caller_candidates)))
+            throw std::runtime_error("telemetry_callers_frame_rejected");
         }
         if (!pipe.Send(SerializeTelemetryCandidates(observed_candidates)))
           throw std::runtime_error("telemetry_candidates_frame_rejected");
-        const auto caller_candidates = InspectDirectCallers(
-            GetModuleHandleW(nullptr), observed_candidates);
-        if (!pipe.Send(SerializeTelemetryCallers(caller_candidates)))
-          throw std::runtime_error("telemetry_callers_frame_rejected");
       }
       auto previous = telemetry.ObserveReadiness();
       const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(15);

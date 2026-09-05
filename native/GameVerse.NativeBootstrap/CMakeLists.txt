@@ -40,7 +40,7 @@ add_library(gameverse_bootstrap_core STATIC
 )
 target_include_directories(gameverse_bootstrap_core PUBLIC include)
 target_compile_definitions(gameverse_bootstrap_core PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
-target_link_libraries(gameverse_bootstrap_core PUBLIC bcrypt user32 version)
+target_link_libraries(gameverse_bootstrap_core PUBLIC bcrypt user32 version Zydis)
 
 add_library(GameVerse.NativeBootstrap SHARED
   src/bootstrap.cpp
