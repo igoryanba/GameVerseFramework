@@ -18,6 +18,10 @@ KNOWN_TYPES = {
     "telemetry_snapshot_v1",
     "telemetry_candidates_v1",
     "telemetry_callers_v1",
+    "telemetry_marker_v1",
+    "init_state_candidates_v1",
+    "state_writer_candidates_v1",
+    "world_request_status_v1",
 }
 SENSITIVE = re.compile(
     r"(?i)(password|access[_-]?token|refresh[_-]?token|dpapi|0x[0-9a-f]{8,})"
@@ -54,6 +58,8 @@ def summarize(path: Path) -> dict[str, Any]:
     candidates: list[dict[str, Any]] = []
     candidate_series: dict[str, list[dict[str, Any]]] = {}
     callers: list[dict[str, Any]] = []
+    markers: list[dict[str, Any]] = []
+    init_states: list[dict[str, Any]] = []
     for message in messages:
         kind = message["type"]
         if kind == "bootstrap_stage":
@@ -115,6 +121,37 @@ def summarize(path: Path) -> dict[str, Any]:
                 ):
                     raise ValueError(f"{path}: malformed telemetry caller")
                 callers.append(caller)
+        elif kind == "telemetry_marker_v1":
+            marker_id = message.get("marker_id")
+            if (
+                not isinstance(marker_id, str)
+                or re.fullmatch(r"[A-Za-z0-9_-]{1,64}", marker_id) is None
+                or not isinstance(message.get("monotonic_ms"), int)
+            ):
+                raise ValueError(f"{path}: malformed telemetry marker")
+            markers.append(message)
+        elif kind == "init_state_candidates_v1":
+            raw_states = message.get("candidates")
+            if not isinstance(raw_states, list) or len(raw_states) > 256:
+                raise ValueError(f"{path}: malformed init-state candidates")
+            for state in raw_states:
+                if (
+                    not isinstance(state, dict)
+                    or not isinstance(state.get("candidate_id"), str)
+                    or not isinstance(state.get("rva"), int)
+                    or state["rva"] < 0
+                    or state["rva"] > 0xFFFFFFFF
+                    or not isinstance(state.get("transition_count"), int)
+                    or not 1 <= state["transition_count"] <= 32
+                    or not isinstance(state.get("distinct_state_count"), int)
+                    or not 2 <= state["distinct_state_count"] <= 16
+                    or not isinstance(state.get("sequence_sha256"), str)
+                    or re.fullmatch(r"[0-9A-Fa-f]{64}", state["sequence_sha256"])
+                    is None
+                    or not isinstance(state.get("stage_correlation"), str)
+                ):
+                    raise ValueError(f"{path}: malformed init-state candidate")
+                init_states.append(state)
 
     candidate_observations = []
     for candidate_id, series in sorted(candidate_series.items()):
@@ -206,6 +243,8 @@ def summarize(path: Path) -> dict[str, Any]:
         "candidates": candidates,
         "candidate_observations": candidate_observations,
         "callers": callers,
+        "markers": markers,
+        "init_state_candidates": init_states,
     }
 
 
@@ -304,6 +343,36 @@ def build_report(paths: list[Path]) -> dict[str, Any]:
                 "observe_gate_satisfied": confirmed,
             }
         )
+    init_state_keys: set[tuple[int, str, str]] = set()
+    for trace in manual:
+        init_state_keys.update(
+            (item["rva"], item.get("section", ""), item["sequence_sha256"])
+            for item in trace["init_state_candidates"]
+        )
+    confirmed_init_states = []
+    for rva, section, sequence_sha256 in sorted(init_state_keys):
+        manual_hits = sum(
+            any(
+                (item["rva"], item.get("section", ""), item["sequence_sha256"])
+                == (rva, section, sequence_sha256)
+                for item in trace["init_state_candidates"]
+            )
+            for trace in manual
+        )
+        control_hits = sum(
+            any(item["rva"] == rva for item in trace["init_state_candidates"])
+            for trace in controls
+        )
+        if len(manual) >= 2 and manual_hits == len(manual) and control_hits == 0:
+            confirmed_init_states.append(
+                {
+                    "rva": rva,
+                    "section": section,
+                    "sequence_sha256": sequence_sha256,
+                    "manual_trace_hits": manual_hits,
+                    "control_trace_hits": control_hits,
+                }
+            )
     return {
         "schema_version": 1,
         "trace_count": len(traces),
@@ -317,6 +386,7 @@ def build_report(paths: list[Path]) -> dict[str, Any]:
         ),
         "candidate_pages": candidate_pages,
         "candidate_observations": candidate_observations,
+        "confirmed_init_state_candidates": confirmed_init_states,
         "traces": traces,
     }
 

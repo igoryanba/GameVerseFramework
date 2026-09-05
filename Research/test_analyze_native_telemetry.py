@@ -78,6 +78,41 @@ def append_candidate(path: Path, count: int, *, candidate_id: str = "candidate")
         )
 
 
+def append_init_state(path: Path, rva: int, sequence: str = "3" * 64) -> None:
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write(
+            json.dumps(
+                {
+                    "type": "telemetry_marker_v1",
+                    "schema_version": 1,
+                    "marker_id": "manual_story_transition",
+                    "monotonic_ms": 10,
+                }
+            )
+            + "\n"
+        )
+        stream.write(
+            json.dumps(
+                {
+                    "type": "init_state_candidates_v1",
+                    "schema_version": 1,
+                    "candidates": [
+                        {
+                            "candidate_id": f"state_rva_{rva}",
+                            "rva": rva,
+                            "section": ".data",
+                            "transition_count": 2,
+                            "distinct_state_count": 3,
+                            "sequence_sha256": sequence,
+                            "stage_correlation": "manual_story_transition",
+                        }
+                    ],
+                }
+            )
+            + "\n"
+        )
+
+
 class AnalyzeNativeTelemetryTests(unittest.TestCase):
     def test_candidate_message_is_bounded_and_preserved(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -184,6 +219,40 @@ class AnalyzeNativeTelemetryTests(unittest.TestCase):
             append_candidate(decreasing, 1)
             with self.assertRaisesRegex(ValueError, "call count decreased"):
                 summarize(decreasing)
+
+    def test_init_state_requires_repeatable_story_sequence_and_quiet_control(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manual_one, manual_two, control = (
+                root / "manual-one",
+                root / "manual-two",
+                root / "control",
+            )
+            write_trace(manual_one, True)
+            write_trace(manual_two, True)
+            write_trace(control, False)
+            append_init_state(manual_one, 16384)
+            append_init_state(manual_two, 16384)
+            report = build_report([manual_one, manual_two, control])
+            self.assertEqual(
+                report["confirmed_init_state_candidates"],
+                [
+                    {
+                        "rva": 16384,
+                        "section": ".data",
+                        "sequence_sha256": "3" * 64,
+                        "manual_trace_hits": 2,
+                        "control_trace_hits": 0,
+                    }
+                ],
+            )
+            append_init_state(control, 16384, "4" * 64)
+            self.assertEqual(
+                build_report([manual_one, manual_two, control])[
+                    "confirmed_init_state_candidates"
+                ],
+                [],
+            )
 
     def test_caller_inventory_is_validated(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

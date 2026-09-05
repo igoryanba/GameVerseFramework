@@ -5,55 +5,5 @@
   "pe_size": 56064632,
   "pe_sha256": "0C52864D4521D9C9D441348AA1156958792DDE8825D0297C851753F167336401",
   "mode": "telemetry_only",
-  "signatures": [
-    {
-      "name": "transition_ref_c",
-      "section": ".text",
-      "pattern": "48 8D 05 ?? ?? ?? ?? 48 89 44 24 28 48 8D B4 24 9C 00 00 00 89 9C 24 44 01 00 00 89 BC 24 48 01 00 00 48 B8 00 00 00 00 01 00 00 00 48 89 84 24 4C 01 00 00 0F B6 84 24 54 01 00 00 24 FE",
-      "prologue": "48 8D 05",
-      "entry_sha256": "F5C4BB1A0C1ED3E2AE27033CAC8BF1754C32E83D00BE9C90DEA49DD786BEB5CB"
-    },
-    {
-      "name": "transition_ref_c_caller_1",
-      "section": ".text",
-      "rva": 18684624,
-      "entry_sha256": "D5754485D99F74B6CB0C4370526DE7D8710B0D3B9C4B3730C83397396B6B4F0C"
-    },
-    {
-      "name": "transition_ref_c_caller_2",
-      "section": ".text",
-      "rva": 18694016,
-      "entry_sha256": "C7C3FBE9D9BBF602983F5C0A282ABBF9DEE49D51D8483DAB2413BD9709DC461A"
-    },
-    {
-      "name": "transition_ref_c_caller_3",
-      "section": ".text",
-      "rva": 282400,
-      "entry_sha256": "38E13185738593AB7D2B4597BB3093326B8C3897F4A7FA3CE3A78917F2F8038F"
-    },
-    {
-      "name": "transition_ref_c_caller_4",
-      "section": ".text",
-      "rva": 66480,
-      "entry_sha256": "3D830ABC34D87F2E385926862EB750EE83EB0FB269BEFA05816DF170BC90DD67"
-    },
-    {
-      "name": "transition_ref_c_branch_a",
-      "section": ".text",
-      "rva": 9648,
-      "entry_sha256": "5C651B0B16F7D3DB749F0A2B34A156095D47447721C94D3A5F8543D973BA8B7F"
-    },
-    {
-      "name": "transition_ref_c_branch_b",
-      "section": ".text",
-      "rva": 12864,
-      "entry_sha256": "9BEBFA5ECC4BC174685312992C8E33C536404179A2B522FD35764B731C3C24EB"
-    },
-    {
-      "name": "transition_ref_c_root",
-      "section": ".text",
-      "rva": 9200,
-      "entry_sha256": "B63AAEA63CE5EDC3A0B3E586EB808D9CC1807813B87DC1E9DE2F8840FEB47641"
-    }
-  ]
+  "signatures": []
 }

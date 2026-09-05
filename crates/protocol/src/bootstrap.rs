@@ -50,6 +50,24 @@ pub enum Message {
         schema_version: u16,
         callers: Vec<TelemetryCallerV1>,
     },
+    TelemetryMarkerV1 {
+        schema_version: u16,
+        marker_id: String,
+        monotonic_ms: u64,
+    },
+    InitStateCandidatesV1 {
+        schema_version: u16,
+        candidates: Vec<InitStateCandidateV1>,
+    },
+    StateWriterCandidatesV1 {
+        schema_version: u16,
+        writers: Vec<StateWriterCandidateV1>,
+    },
+    WorldRequestStatusV1 {
+        schema_version: u16,
+        status: WorldRequestStatus,
+        code: Option<String>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -73,6 +91,16 @@ pub enum Command {
     BeginWorld,
     Abort,
     Shutdown,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorldRequestStatus {
+    Pending,
+    Requested,
+    Transitioning,
+    Ready,
+    Failed,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -143,6 +171,33 @@ pub struct TelemetryCallerV1 {
     pub entry_sha256: String,
 }
 
+/// Bounded scalar transition metadata from writable, non-executable sections
+/// of the main image. Values are represented by hashes, never raw memory.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InitStateCandidateV1 {
+    pub candidate_id: String,
+    pub rva: u32,
+    pub section: String,
+    pub transition_count: u16,
+    pub distinct_state_count: u16,
+    pub sequence_sha256: String,
+    pub stage_correlation: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StateWriterCandidateV1 {
+    pub candidate_id: String,
+    pub state_rva: u32,
+    pub instruction_rva: u32,
+    pub function_rva: u32,
+    pub write_width: u16,
+    pub thread_class: String,
+    pub call_count: u64,
+    pub entry_sha256: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TelemetryReportV1 {
@@ -180,7 +235,11 @@ impl Message {
             | Self::BootstrapCommand { schema_version, .. }
             | Self::TelemetrySnapshotV1 { schema_version, .. }
             | Self::TelemetryCandidatesV1 { schema_version, .. }
-            | Self::TelemetryCallersV1 { schema_version, .. } => *schema_version == VERSION,
+            | Self::TelemetryCallersV1 { schema_version, .. }
+            | Self::TelemetryMarkerV1 { schema_version, .. }
+            | Self::InitStateCandidatesV1 { schema_version, .. }
+            | Self::StateWriterCandidatesV1 { schema_version, .. }
+            | Self::WorldRequestStatusV1 { schema_version, .. } => *schema_version == VERSION,
             Self::TelemetryHelloV1 {
                 schema_version,
                 probe_build,
@@ -232,6 +291,50 @@ impl Message {
                                 .all(|value| value.is_ascii_hexdigit())
                     })
             }
+            Self::TelemetryMarkerV1 { marker_id, .. } => {
+                !marker_id.is_empty()
+                    && marker_id.len() <= 64
+                    && marker_id
+                        .bytes()
+                        .all(|value| value.is_ascii_alphanumeric() || matches!(value, b'_' | b'-'))
+            }
+            Self::InitStateCandidatesV1 { candidates, .. } => {
+                candidates.len() <= 256
+                    && candidates.iter().all(|candidate| {
+                        !candidate.candidate_id.is_empty()
+                            && candidate.candidate_id.len() <= 64
+                            && !candidate.section.is_empty()
+                            && candidate.section.len() <= 16
+                            && candidate.transition_count > 0
+                            && candidate.transition_count <= 32
+                            && candidate.distinct_state_count >= 2
+                            && candidate.distinct_state_count <= 16
+                            && candidate.sequence_sha256.len() == 64
+                            && candidate
+                                .sequence_sha256
+                                .bytes()
+                                .all(|v| v.is_ascii_hexdigit())
+                            && candidate.stage_correlation.len() <= 64
+                    })
+            }
+            Self::StateWriterCandidatesV1 { writers, .. } => {
+                writers.len() <= 256
+                    && writers.iter().all(|writer| {
+                        !writer.candidate_id.is_empty()
+                            && writer.candidate_id.len() <= 64
+                            && matches!(writer.write_width, 1 | 2 | 4 | 8)
+                            && writer.thread_class.len() <= 32
+                            && writer.entry_sha256.len() == 64
+                            && writer.entry_sha256.bytes().all(|v| v.is_ascii_hexdigit())
+                    })
+            }
+            Self::WorldRequestStatusV1 { code, .. } => code.as_ref().is_none_or(|value| {
+                !value.is_empty()
+                    && value.len() <= 64
+                    && value
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+            }),
             _ => true,
         };
         envelope_valid && payload_valid
@@ -363,5 +466,25 @@ mod tests {
             }],
         };
         assert_eq!(decode(&encode(&callers).unwrap()[4..]).unwrap(), callers);
+
+        let marker = Message::TelemetryMarkerV1 {
+            schema_version: VERSION,
+            marker_id: "manual_story_transition".into(),
+            monotonic_ms: 44,
+        };
+        assert_eq!(decode(&encode(&marker).unwrap()[4..]).unwrap(), marker);
+        let states = Message::InitStateCandidatesV1 {
+            schema_version: VERSION,
+            candidates: vec![InitStateCandidateV1 {
+                candidate_id: "state_rva_4096".into(),
+                rva: 4096,
+                section: ".data".into(),
+                transition_count: 2,
+                distinct_state_count: 3,
+                sequence_sha256: "33".repeat(32),
+                stage_correlation: "manual_story_transition".into(),
+            }],
+        };
+        assert_eq!(decode(&encode(&states).unwrap()[4..]).unwrap(), states);
     }
 }

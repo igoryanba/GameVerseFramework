@@ -539,6 +539,65 @@ where
                 )
                 .await?;
             }
+            bootstrap::Message::TelemetryMarkerV1 { marker_id, .. } => {
+                anyhow::ensure!(hello_seen, "telemetry marker preceded bootstrap identity");
+                ui::write(
+                    ui_tx,
+                    &UiResponse::success(
+                        "bridge-stage",
+                        json!({
+                            "stage": "telemetry_transition_window",
+                            "message": format!("Окно телеметрии запущено: {marker_id}")
+                        }),
+                    ),
+                )
+                .await?;
+            }
+            bootstrap::Message::InitStateCandidatesV1 { candidates, .. } => {
+                anyhow::ensure!(hello_seen, "state candidates preceded bootstrap identity");
+                ui::write(
+                    ui_tx,
+                    &UiResponse::success(
+                        "bridge-stage",
+                        json!({
+                            "stage": "telemetry_state_candidates",
+                            "message": format!(
+                                "GameVerse сохранил {} кандидатов init-state",
+                                candidates.len()
+                            )
+                        }),
+                    ),
+                )
+                .await?;
+            }
+            bootstrap::Message::StateWriterCandidatesV1 { writers, .. } => {
+                anyhow::ensure!(hello_seen, "state writers preceded bootstrap identity");
+                ui::write(
+                    ui_tx,
+                    &UiResponse::success(
+                        "bridge-stage",
+                        json!({
+                            "stage": "telemetry_state_writers",
+                            "message": format!("Проверено {} функций записи", writers.len())
+                        }),
+                    ),
+                )
+                .await?;
+            }
+            bootstrap::Message::WorldRequestStatusV1 { status, code, .. } => {
+                anyhow::ensure!(hello_seen, "world status preceded bootstrap identity");
+                ui::write(
+                    ui_tx,
+                    &UiResponse::success(
+                        "bridge-stage",
+                        json!({
+                            "stage": format!("world_{:?}", status).to_ascii_lowercase(),
+                            "message": code.unwrap_or_else(|| "Состояние загрузки мира изменилось".into())
+                        }),
+                    ),
+                )
+                .await?;
+            }
             bootstrap::Message::BootstrapStage {
                 monotonic_ms,
                 stage,
@@ -562,6 +621,15 @@ where
                         )
                         .await?;
                     } else {
+                        ui::write(
+                            &mut bootstrap_tx,
+                            &bootstrap::Message::TelemetryMarkerV1 {
+                                schema_version: bootstrap::VERSION,
+                                marker_id: "manual_story_transition".into(),
+                                monotonic_ms: 0,
+                            },
+                        )
+                        .await?;
                         ui::write(ui_tx, &UiResponse::success("bridge-stage", json!({
                             "stage":"telemetry_waiting_for_manual_story",
                             "message":"Для исследовательского trace вручную откройте Story Mode"

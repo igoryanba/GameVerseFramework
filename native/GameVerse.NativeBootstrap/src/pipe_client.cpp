@@ -60,6 +60,15 @@ bool PipeClient::Receive(std::string& json) noexcept {
   return true;
 }
 
+bool PipeClient::TryReceive(std::string& json) noexcept {
+  if (handle_ == INVALID_HANDLE_VALUE) return false;
+  DWORD available = 0;
+  if (!PeekNamedPipe(handle_, nullptr, 0, nullptr, &available, nullptr) ||
+      available < 4)
+    return false;
+  return Receive(json);
+}
+
 void PipeClient::Close() noexcept {
   if (handle_ != INVALID_HANDLE_VALUE) CloseHandle(handle_);
   handle_ = INVALID_HANDLE_VALUE;

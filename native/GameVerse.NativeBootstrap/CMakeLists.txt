@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.24)
+cmake_minimum_required(VERSION 3.20)
 project(GameVerseNativeBootstrap VERSION 0.1.0 LANGUAGES CXX)
 
 if(NOT WIN32 OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
@@ -32,6 +32,7 @@ FetchContent_MakeAvailable(zydis)
 add_library(gameverse_bootstrap_core STATIC
   src/compatibility.cpp
   src/fingerprint.cpp
+  src/init_state_sampler.cpp
   src/pe_image.cpp
   src/pipe_client.cpp
   src/signature_scanner.cpp
@@ -70,6 +71,8 @@ add_test(NAME native_inspector_self_scan COMMAND gameverse-native-inspector
   --image $<TARGET_FILE:gameverse-native-inspector> --string schema_version)
 add_test(NAME native_inspector_reference_scan COMMAND gameverse-native-inspector
   --image $<TARGET_FILE:gameverse-native-inspector> --reference-page-rva 0)
+add_test(NAME native_inspector_state_writer_scan COMMAND gameverse-native-inspector
+  --self-test-writers)
 
 foreach(target gameverse_bootstrap_core GameVerse.NativeBootstrap gameverse_native_bootstrap_tests gameverse-native-inspector)
   if(MSVC)

@@ -4,6 +4,7 @@
 #include <Zydis/Zydis.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <fstream>
 #include <iomanip>
@@ -16,6 +17,13 @@
 #include <vector>
 
 namespace {
+
+volatile std::uint32_t gSyntheticInspectorState = 1;
+#pragma optimize("", off)
+__declspec(noinline) void WriteSyntheticInspectorState(std::uint32_t value) {
+  gSyntheticInspectorState = value;
+}
+#pragma optimize("", on)
 
 struct Section {
   std::string name;
@@ -49,6 +57,13 @@ struct Image {
     }
     return std::nullopt;
   }
+};
+
+struct StateWriter {
+  std::uint32_t instruction_rva{};
+  std::uint32_t function_rva{};
+  std::uint16_t write_width{};
+  std::string entry_sha256;
 };
 
 Image LoadImage(const std::filesystem::path& path) {
@@ -314,6 +329,67 @@ std::vector<std::uint32_t> FindReferencesInRange(const Image& image,
   return references;
 }
 
+std::vector<StateWriter> FindStateWriters(const Image& image,
+                                          std::uint32_t state_rva) {
+  std::vector<StateWriter> writers;
+  ZydisDecoder decoder;
+  if (!ZYAN_SUCCESS(ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_64,
+                                      ZYDIS_STACK_WIDTH_64)))
+    throw std::runtime_error("decoder_initialization_failed");
+  for (const auto& section : image.sections) {
+    if ((section.characteristics & IMAGE_SCN_MEM_EXECUTE) == 0 ||
+        section.raw_offset >= image.bytes.size())
+      continue;
+    const auto size = std::min<std::size_t>(section.raw_size,
+                                            image.bytes.size() - section.raw_offset);
+    std::size_t offset = 0;
+    while (offset < size && writers.size() < 256) {
+      ZydisDecodedInstruction instruction{};
+      ZydisDecodedOperand operands[ZYDIS_MAX_OPERAND_COUNT]{};
+      if (!ZYAN_SUCCESS(ZydisDecoderDecodeFull(
+              &decoder, image.bytes.data() + section.raw_offset + offset,
+              size - offset, &instruction, operands))) {
+        ++offset;
+        continue;
+      }
+      const auto instruction_rva = section.rva + static_cast<std::uint32_t>(offset);
+      for (std::uint8_t operand_index = 0;
+           operand_index < instruction.operand_count_visible; ++operand_index) {
+        const auto& operand = operands[operand_index];
+        if (operand.type != ZYDIS_OPERAND_TYPE_MEMORY ||
+            operand.mem.base != ZYDIS_REGISTER_RIP ||
+            (operand.actions & ZYDIS_OPERAND_ACTION_WRITE) == 0)
+          continue;
+        ZyanU64 absolute = 0;
+        if (!ZYAN_SUCCESS(ZydisCalcAbsoluteAddress(
+                &instruction, &operand, instruction_rva, &absolute)) ||
+            absolute != state_rva)
+          continue;
+        const auto function_rva = image.FunctionStart(instruction_rva)
+                                      .value_or(instruction_rva);
+        const auto entry = image.FileOffset(function_rva);
+        if (!entry || *entry + 32 > image.bytes.size()) continue;
+        writers.push_back(
+            {instruction_rva, function_rva,
+             static_cast<std::uint16_t>(operand.size / 8),
+             gameverse::Sha256Bytes(std::span(image.bytes.data() + *entry,
+                                              std::size_t{32}))});
+        break;
+      }
+      offset += instruction.length;
+    }
+  }
+  std::sort(writers.begin(), writers.end(), [](const auto& left, const auto& right) {
+    return left.instruction_rva < right.instruction_rva;
+  });
+  writers.erase(std::unique(writers.begin(), writers.end(), [](const auto& left,
+                                                               const auto& right) {
+                  return left.instruction_rva == right.instruction_rva;
+                }),
+                writers.end());
+  return writers;
+}
+
 }  // namespace
 
 int wmain(int argc, wchar_t** argv) {
@@ -321,8 +397,10 @@ int wmain(int argc, wchar_t** argv) {
     std::filesystem::path image_path;
     std::optional<std::uint32_t> candidate;
     std::optional<std::uint32_t> reference_page;
+    std::optional<std::uint32_t> state_rva;
     std::optional<std::string> search;
     std::size_t length = 32;
+    bool self_test_writers = false;
     for (int index = 1; index < argc; ++index) {
       const std::wstring_view argument(argv[index]);
       if (argument == L"--image" && index + 1 < argc)
@@ -333,16 +411,32 @@ int wmain(int argc, wchar_t** argv) {
         length = static_cast<std::size_t>(ParseRva(argv[++index]));
       else if (argument == L"--reference-page-rva" && index + 1 < argc)
         reference_page = ParseRva(argv[++index]);
+      else if (argument == L"--state-rva" && index + 1 < argc)
+        state_rva = ParseRva(argv[++index]);
+      else if (argument == L"--self-test-writers")
+        self_test_writers = true;
       else if (argument == L"--string" && index + 1 < argc) {
         const std::wstring value(argv[++index]);
         search = Narrow(value);
       } else
         throw std::runtime_error("unsupported_argument");
     }
-    if (image_path.empty() || (!candidate && !search && !reference_page))
+    if (self_test_writers) {
+      std::array<wchar_t, 32768> executable{};
+      const auto count = GetModuleFileNameW(nullptr, executable.data(),
+                                            static_cast<DWORD>(executable.size()));
+      if (count == 0 || count >= executable.size())
+        throw std::runtime_error("self_test_image_unavailable");
+      image_path = executable.data();
+      WriteSyntheticInspectorState(2);
+      state_rva = static_cast<std::uint32_t>(
+          reinterpret_cast<std::uintptr_t>(&gSyntheticInspectorState) -
+          reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr)));
+    }
+    if (image_path.empty() || (!candidate && !search && !reference_page && !state_rva))
       throw std::runtime_error(
           "usage: --image PATH (--candidate-rva RVA | --string TEXT | "
-          "--reference-page-rva RVA)");
+          "--reference-page-rva RVA | --state-rva RVA)");
     const auto image = LoadImage(image_path);
     std::cout << "{\"schema_version\":1,\"image_sha256\":\""
               << gameverse::Sha256File(image_path) << "\"";
@@ -411,6 +505,22 @@ int wmain(int argc, wchar_t** argv) {
       for (std::size_t index = 0; index < references.size(); ++index) {
         if (index != 0) std::cout << ',';
         std::cout << '\"' << Hex(references[index]) << '\"';
+      }
+      std::cout << "]}";
+    }
+    if (state_rva) {
+      const auto writers = FindStateWriters(image, *state_rva);
+      if (self_test_writers && writers.empty())
+        throw std::runtime_error("state_writer_self_test_failed");
+      std::cout << ",\"state_writers\":{\"state_rva\":\"" << Hex(*state_rva)
+                << "\",\"writers\":[";
+      for (std::size_t index = 0; index < writers.size(); ++index) {
+        if (index != 0) std::cout << ',';
+        const auto& writer = writers[index];
+        std::cout << "{\"instruction_rva\":\"" << Hex(writer.instruction_rva)
+                  << "\",\"function_rva\":\"" << Hex(writer.function_rva)
+                  << "\",\"write_width\":" << writer.write_width
+                  << ",\"entry_sha256\":\"" << writer.entry_sha256 << "\"}";
       }
       std::cout << "]}";
     }

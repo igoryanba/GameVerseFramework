@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include <array>
+#include <algorithm>
 #include <iostream>
 #include <fstream>
 #include <iterator>
@@ -20,6 +21,7 @@ __declspec(noinline) int ObserveTarget(int value) {
   for (volatile int index = 0; index < 7; ++index) result += index * 3;
   return result;
 }
+volatile std::uint32_t gSyntheticInitState = 1;
 #pragma optimize("", on)
 }
 
@@ -118,9 +120,8 @@ int main() {
     const auto candidate_manifest = gameverse::ParseManifest(
         std::string(candidate_manifest_bytes.begin(), candidate_manifest_bytes.end()));
     Require(candidate_manifest.mode == "telemetry_only" &&
-                candidate_manifest.signatures.size() == 8 &&
-                candidate_manifest.signatures[0].entry_sha256.size() == 64,
-            "research candidate manifest was not parsed");
+                candidate_manifest.signatures.empty(),
+            "rejected research candidates remain active");
     const auto candidates = gameverse::InspectImageCandidates(
         GetModuleHandleW(nullptr), candidate_manifest);
     Require(candidates.size() == candidate_manifest.signatures.size(),
@@ -133,6 +134,31 @@ int main() {
     Require(gameverse::TelemetryPageKey(0, ".text", 1) !=
                 gameverse::TelemetryPageKey(1, ".text", 1),
             "duplicate PE section names share a telemetry page key");
+    gameverse::InitStateSampler state_sampler(GetModuleHandleW(nullptr));
+    Require(state_sampler.Start("synthetic_transition"),
+            "init state sampler did not start");
+    gSyntheticInitState = 2;
+    Require(state_sampler.Poll(), "init state sampler did not poll");
+    gSyntheticInitState = 7;
+    Require(state_sampler.Poll(), "init state sampler second poll failed");
+    const auto state_candidates = state_sampler.Finish();
+    const auto synthetic_rva = static_cast<std::uint32_t>(
+        reinterpret_cast<std::uintptr_t>(&gSyntheticInitState) -
+        reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr)));
+    const auto found_state = std::find_if(
+        state_candidates.begin(), state_candidates.end(), [&](const auto& value) {
+          return value.rva == synthetic_rva && value.transition_count == 2 &&
+                 value.distinct_state_count == 3;
+        });
+    Require(found_state != state_candidates.end(),
+            "synthetic init state transition was not captured");
+    const auto state_json =
+        gameverse::SerializeInitStateCandidates(state_candidates);
+    Require(state_json.find("init_state_candidates_v1") != std::string::npos &&
+                state_json.find("synthetic_transition") != std::string::npos,
+            "init state candidate serialization failed");
+    Require(state_json.find("0x") == std::string::npos,
+            "init state telemetry leaked an absolute address");
     const auto adapter_log = std::filesystem::temp_directory_path() /
                              L"gameverse-native-adapter-test.log";
     std::ofstream(adapter_log) << "old run\n";

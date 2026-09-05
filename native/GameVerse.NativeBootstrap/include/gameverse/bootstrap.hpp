@@ -7,6 +7,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace gameverse {
@@ -103,6 +104,51 @@ struct TelemetryCallerCandidate {
   std::string entry_sha256;
 };
 
+struct InitStateCandidate {
+  std::string candidate_id;
+  std::uint32_t rva{};
+  std::string section;
+  std::uint16_t transition_count{};
+  std::uint16_t distinct_state_count{};
+  std::string sequence_sha256;
+  std::string stage_correlation;
+};
+
+class InitStateSampler {
+ public:
+  explicit InitStateSampler(void* image);
+  bool Start(std::string_view marker_id) noexcept;
+  bool Poll() noexcept;
+  bool active() const noexcept { return active_; }
+  bool expired() const noexcept;
+  std::vector<InitStateCandidate> Finish() noexcept;
+
+ private:
+  struct Page {
+    const std::uint8_t* address{};
+    std::uint32_t rva{};
+    std::string section;
+    std::vector<std::uint32_t> values;
+    std::uint64_t digest{};
+  };
+  struct Sequence {
+    std::string section;
+    std::vector<std::uint32_t> values;
+    std::unordered_set<std::uint32_t> distinct;
+  };
+  void* image_{};
+  bool active_{};
+  std::uint64_t deadline_ms_{};
+  std::string marker_id_;
+  std::vector<Page> pages_;
+  std::unordered_map<std::uint32_t, Sequence> sequences_;
+};
+
+std::string SerializeTelemetryMarker(std::string_view marker_id,
+                                     std::uint64_t monotonic_ms);
+std::string SerializeInitStateCandidates(
+    std::span<const InitStateCandidate> candidates);
+
 std::vector<TelemetryCallerCandidate> InspectDirectCallers(
     void* image, std::span<const TelemetryCandidate> candidates);
 std::string SerializeTelemetryCallers(
@@ -173,6 +219,7 @@ class TelemetryRecorder {
   TelemetryReadiness ObserveReadiness() const noexcept;
   TelemetrySnapshot Capture(std::string_view stage);
   bool AppendLocal(const TelemetrySnapshot& snapshot) noexcept;
+  bool AppendLocalJson(std::string_view json) noexcept;
   const std::filesystem::path& report_path() const noexcept { return report_path_; }
 
  private:
@@ -195,6 +242,7 @@ class PipeClient {
   bool Connect(std::wstring_view pipe, std::uint32_t timeout_ms) noexcept;
   bool Send(std::string_view json) noexcept;
   bool Receive(std::string& json) noexcept;
+  bool TryReceive(std::string& json) noexcept;
   void Close() noexcept;
 
  private:

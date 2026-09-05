@@ -9,8 +9,9 @@ active, or world-loader signatures are absent or ambiguous.
 ## Offline inspector
 
 `gameverse-native-inspector` reads an executable from disk and never loads it.
-It can inventory string locations by their query hash or generate a wildcard
-signature from an independently selected RVA. RIP-relative displacements and
+It can inventory string locations by their query hash, find RIP-relative write
+instructions for a selected state RVA, or generate a wildcard signature from
+an independently selected RVA. RIP-relative displacements and
 relative immediates are masked and the resulting pattern is counted across all
 executable sections. String inventory also reports x64 RIP-relative instruction
 RVAs that reference an exact match, providing the first independent candidate
@@ -19,6 +20,7 @@ chain without copying third-party signatures.
 ```text
 gameverse-native-inspector --image GTA5_Enhanced.exe --string frontend
 gameverse-native-inspector --image GTA5_Enhanced.exe --candidate-rva 0x1234 --length 32
+gameverse-native-inspector --image GTA5_Enhanced.exe --state-rva 0x1234
 ```
 
 Generated patterns are research candidates only. They cannot be added to the
@@ -44,12 +46,14 @@ The produced `GameVerse.NativeBootstrap.asi` and the two files under
 `\\.\pipe\gameverse-bootstrap-v1` before GTA starts.
 
 For a research trace, start the M2 bridge with `--telemetry-story`. The probe
-captures the verified image and stable frontend, then samples only window and
-module readiness every 250 ms while the user enters Story Mode manually. A full
+captures the verified image and stable frontend. After a bounded marker it
+samples only writable, non-executable pages owned by the main GTA image every
+50 ms for 20 seconds while the user enters Story Mode manually. Unchanged pages
+are skipped and only small scalar transitions are retained. A full
 section/module snapshot is written only when ScriptHook/SHVDN or the adapter
 appears. Reports are bounded JSONL files under
 `%LOCALAPPDATA%\GameVerse\telemetry`; they contain hashes and relative facts,
-never memory contents or absolute addresses. A telemetry-only manifest does not
+never raw scalar values, memory contents or absolute addresses. A telemetry-only manifest does not
 advertise the `world_loader` capability, so the bridge cannot request
 `begin_world` accidentally.
 
@@ -58,7 +62,9 @@ the same probe stream without opening a network connection:
 
 ```powershell
 pwsh Research/run_native_telemetry.ps1 `
-  -OutputPath .research/telemetry/manual-1.jsonl
+  -OutputPath .research/telemetry/manual-1.jsonl -TraceKind Manual
+pwsh Research/run_native_telemetry.ps1 `
+  -OutputPath .research/telemetry/control.jsonl -TraceKind Control
 ```
 
 It sends only `start_telemetry`, enforces the 64 KiB frame limit, validates the
@@ -72,12 +78,21 @@ python Research/analyze_native_telemetry.py `
   .research/telemetry/control.jsonl
 ```
 
-The candidate gate remains false until two adapter-ready traces and one
+The harness sends `telemetry_marker_v1` after `frontend_ready`. A manual run must
+enter Story during the following 20-second window; a control run stays in the
+frontend and stops after the sampler result. The candidate gate remains false until two adapter-ready traces and one
 frontend-only control trace share the same executable fingerprint.
 For an observe-only candidate, both adapter-ready traces must record a positive,
 monotonic call-count delta while every frontend-only control records a zero
 delta. The analyzer reports this separately as `observe_gate_satisfied`; a page
 correlation alone never authorizes a behavioral hook.
+
+Init-state candidates use a different, stricter gate: the same RVA and hashed
+transition sequence must occur in both manual traces and must be absent from the
+control. Pass each resulting RVA to `--state-rva`; the inspector reports only
+RIP-relative write instructions, their owning function when unwind metadata is
+available, write width and entry hash. A leaf function without unwind metadata
+is reported at the instruction RVA and is never automatically considered hook-safe.
 
 After a candidate passes that correlation, the probe inventories direct relative
 call sites in the loaded executable, following callers for at most eight levels,

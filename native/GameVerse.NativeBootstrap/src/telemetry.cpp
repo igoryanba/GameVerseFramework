@@ -236,6 +236,10 @@ TelemetrySnapshot TelemetryRecorder::Capture(std::string_view stage) {
 }
 
 bool TelemetryRecorder::AppendLocal(const TelemetrySnapshot& snapshot) noexcept {
+  return AppendLocalJson(SerializeTelemetrySnapshot(snapshot));
+}
+
+bool TelemetryRecorder::AppendLocalJson(std::string_view json) noexcept {
   if (report_path_.empty() || snapshots_ >= kMaximumSnapshots) return false;
   try {
     std::error_code error;
@@ -244,7 +248,7 @@ bool TelemetryRecorder::AppendLocal(const TelemetrySnapshot& snapshot) noexcept 
       return false;
     std::ofstream output(report_path_, std::ios::binary | std::ios::app);
     if (!output) return false;
-    output << SerializeTelemetrySnapshot(snapshot) << '\n';
+    output << json << '\n';
     ++snapshots_;
     return output.good();
   } catch (...) {

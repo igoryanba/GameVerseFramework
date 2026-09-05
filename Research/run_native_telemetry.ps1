@@ -4,6 +4,12 @@ param(
 
     [string]$ReadyPath,
 
+    [ValidateSet('Manual', 'Control')]
+    [string]$TraceKind = 'Manual',
+
+    [ValidatePattern('^[A-Za-z0-9_-]{1,64}$')]
+    [string]$MarkerId = 'manual_story_transition',
+
     [ValidateRange(10, 1200)]
     [int]$TimeoutSeconds = 900
 )
@@ -110,6 +116,7 @@ try {
     $pipe.WaitForConnectionAsync($cancellation.Token).GetAwaiter().GetResult()
 
     $telemetryStarted = $false
+    $markerSent = $false
     while ($pipe.IsConnected -and -not $cancellation.IsCancellationRequested) {
         $json = Read-Frame -Stream $pipe -CancellationToken $cancellation.Token
         # Windows PowerShell 5.1 has no -Depth parameter on ConvertFrom-Json.
@@ -123,6 +130,23 @@ try {
             }
             Write-Frame -Stream $pipe -Json '{"type":"bootstrap_command","schema_version":1,"command":"start_telemetry"}'
             $telemetryStarted = $true
+        }
+
+        if ($message.type -eq 'bootstrap_stage' -and
+            $message.stage -eq 'frontend_ready' -and -not $markerSent) {
+            $marker = @{
+                type = 'telemetry_marker_v1'
+                schema_version = 1
+                marker_id = $MarkerId
+                monotonic_ms = 0
+            } | ConvertTo-Json -Compress
+            Write-Frame -Stream $pipe -Json $marker
+            $markerSent = $true
+        }
+
+        if ($TraceKind -eq 'Control' -and
+            $message.type -eq 'init_state_candidates_v1') {
+            break
         }
 
         if ($message.type -eq 'bootstrap_failure' -or

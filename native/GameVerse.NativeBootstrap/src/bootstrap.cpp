@@ -83,6 +83,25 @@ std::string Failure(std::string_view code, std::string_view message) {
          JsonEscape(code) + "\",\"message\":\"" + JsonEscape(message) + "\"}";
 }
 
+std::string JsonStringField(std::string_view json, std::string_view name) {
+  const auto key = "\"" + std::string(name) + "\"";
+  auto position = json.find(key);
+  if (position == std::string_view::npos) return {};
+  position = json.find(':', position + key.size());
+  if (position == std::string_view::npos) return {};
+  position = json.find('"', position + 1);
+  if (position == std::string_view::npos) return {};
+  const auto end = json.find('"', position + 1);
+  if (end == std::string_view::npos) return {};
+  auto value = std::string(json.substr(position + 1, end - position - 1));
+  if (value.empty() || value.size() > 64 ||
+      !std::all_of(value.begin(), value.end(), [](unsigned char character) {
+        return std::isalnum(character) != 0 || character == '_' || character == '-';
+      }))
+    return {};
+  return value;
+}
+
 }  // namespace
 
 void AppendStartupDiagnostic(std::string_view event) noexcept {
@@ -173,6 +192,7 @@ void RunBootstrap(void* module) noexcept {
     pipe.Send(Stage(state.state()));
 
     if (manifest.mode == "telemetry_only") {
+      InitStateSampler state_sampler(GetModuleHandleW(nullptr));
       const auto candidates_path = directory / L"telemetry-candidates-v1.json";
       if (std::filesystem::exists(candidates_path)) {
       const auto candidate_bytes = ReadBytes(candidates_path);
@@ -216,7 +236,46 @@ void RunBootstrap(void* module) noexcept {
           std::chrono::steady_clock::now() + std::chrono::seconds(5);
       const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(15);
       while (std::chrono::steady_clock::now() < deadline) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        std::string live_command;
+        if (pipe.TryReceive(live_command)) {
+          if (live_command.find("\"command\":\"abort\"") != std::string::npos ||
+              live_command.find("\"command\":\"shutdown\"") != std::string::npos)
+            return;
+          if (live_command.find("\"type\":\"telemetry_marker_v1\"") !=
+              std::string::npos) {
+            const auto marker_id = JsonStringField(live_command, "marker_id");
+            if (marker_id.empty())
+              throw std::runtime_error("invalid_telemetry_marker");
+            if (!state_sampler.Start(marker_id))
+              throw std::runtime_error("init_state_sampler_unavailable");
+            const auto marker = SerializeTelemetryMarker(
+                marker_id, MonotonicMilliseconds());
+            telemetry.AppendLocal(telemetry.Capture("marker_" + marker_id));
+            telemetry.AppendLocalJson(marker);
+            if (!pipe.Send(marker)) return;
+          } else if (live_command.find("\"command\":\"finish_telemetry\"") !=
+                     std::string::npos) {
+            if (state_sampler.active()) {
+              const auto candidates = state_sampler.Finish();
+              const auto candidate_json =
+                  SerializeInitStateCandidates(candidates);
+              telemetry.AppendLocalJson(candidate_json);
+              if (!pipe.Send(candidate_json)) return;
+            }
+          } else {
+            throw std::runtime_error("unsupported_bootstrap_command");
+          }
+        }
+        if (state_sampler.active()) {
+          static_cast<void>(state_sampler.Poll());
+          if (state_sampler.expired()) {
+            const auto candidates = state_sampler.Finish();
+            const auto candidate_json = SerializeInitStateCandidates(candidates);
+            telemetry.AppendLocalJson(candidate_json);
+            if (!pipe.Send(candidate_json)) return;
+          }
+        }
         if (!observed_candidates.empty() &&
             std::chrono::steady_clock::now() >= next_candidate_sample) {
           observe_hooks.Refresh(observed_candidates);
@@ -245,6 +304,12 @@ void RunBootstrap(void* module) noexcept {
           if (!observed_candidates.empty() &&
               !pipe.Send(SerializeTelemetryCandidates(observed_candidates)))
             return;
+          if (state_sampler.active()) {
+            const auto candidates = state_sampler.Finish();
+            const auto candidate_json = SerializeInitStateCandidates(candidates);
+            telemetry.AppendLocalJson(candidate_json);
+            if (!pipe.Send(candidate_json)) return;
+          }
           snapshot.stage = "adapter_loaded";
           telemetry.AppendLocal(snapshot);
           if (!pipe.Send(SerializeTelemetrySnapshot(snapshot))) return;
