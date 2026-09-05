@@ -16,6 +16,10 @@ OpenVHook or GTA Network source has been copied into it.
 - **Newtonsoft.Json 13.0.3**, MIT NuGet dependency.
 - **Microsoft.NETFramework.ReferenceAssemblies.net48 1.0.3**, build-only reference
   assemblies obtained from NuGet; not game/runtime code.
+- **MinHook v1.3.4**, pinned revision
+  `c3fcafdc10146beb5919319d0683e44e3c30d537`, BSD-2-Clause with bundled HDE
+  notices. It is statically linked into the optional native bootstrap. Full
+  notices are in `native/GameVerse.NativeBootstrap/THIRD_PARTY_MINHOOK.txt`.
 
 Behavioral references reviewed:
 - RAGECOOP MIT `SyncedPed`, `SyncedVehicle`, `SyncedEntity`:

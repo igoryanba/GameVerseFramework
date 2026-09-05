@@ -18,6 +18,7 @@ internal sealed class UiBridgeClient : IAsyncDisposable
     internal bool Connected => stream?.IsConnected == true;
     internal event Action? ConnectedToBridge;
     internal event Action? DisconnectedFromBridge;
+    internal event Action<UiResponse>? BridgeEvent;
 
     internal UiBridgeClient(string pipe) => pipeName = NormalizePipe(pipe);
 
@@ -93,6 +94,8 @@ internal sealed class UiBridgeClient : IAsyncDisposable
                     ?? throw new InvalidDataException("Empty bridge response");
                 if (pending.TryRemove(response.RequestId, out TaskCompletionSource<UiResponse>? completion))
                     completion.TrySetResult(response);
+                else if (response.RequestId == "bridge-stage")
+                    BridgeEvent?.Invoke(response);
             }
         }
         catch (Exception error) when (error is IOException or EndOfStreamException or OperationCanceledException or InvalidDataException or JsonException)

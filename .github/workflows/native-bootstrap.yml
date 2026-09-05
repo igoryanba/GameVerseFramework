@@ -1,0 +1,36 @@
+name: Native Bootstrap
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Configure native bootstrap
+        run: cmake -S native/GameVerse.NativeBootstrap -B .build/native-bootstrap -A x64
+      - name: Build native bootstrap with warnings as errors
+        run: cmake --build .build/native-bootstrap --config Release
+      - name: Test scanner, manifest and state machine
+        run: ctest --test-dir .build/native-bootstrap -C Release --output-on-failure
+      - name: Test Rust bootstrap and bridge protocol
+        run: cargo test --locked -p gameverse-protocol -p gameverse-client
+      - name: Build Windows UI and launcher
+        shell: pwsh
+        run: |
+          dotnet build clients/windows/GameVerse.UI/GameVerse.UI.csproj -c Release --nologo
+          dotnet build clients/windows/GameVerse.Launcher/GameVerse.Launcher.csproj -c Release --nologo
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-bootstrap-win-x64
+          path: |
+            .build/native-bootstrap/Release/GameVerse.NativeBootstrap.asi
+            native/GameVerse.NativeBootstrap/compatibility/enhanced-1.0.1158.13.json
+            native/GameVerse.NativeBootstrap/compatibility/enhanced-1.0.1158.13.sig
+            native/GameVerse.NativeBootstrap/THIRD_PARTY_MINHOOK.txt

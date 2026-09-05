@@ -10,6 +10,7 @@ GameVerse must retain the applicable copyright and license notice.
 | GTA Network Platform | `f0ee9f391a0ec9a557c32df549baa6cde4ba0f53` | MIT | interpolation, on-foot sync, streamer and resource API | Secondary reference; old APIs are not copied wholesale |
 | CitizenFX/FiveM | public documentation only | mixed/Creator Platform terms | resource manifest, events, exports and networking concepts | Compatibility specification only; no source copied |
 | QBCore, Qbox, ESX, GTA Coop | no vendored revision | GPL or project-specific | resource shapes used by opt-in fixtures | No source in GameVerse executables |
+| MinHook | `c3fcafdc10146beb5919319d0683e44e3c30d537` (`v1.3.4`) | BSD-2-Clause plus bundled HDE notices | Native hook lifecycle | Pinned build dependency of NativeBootstrap; no hook is installed in telemetry mode |
 
 The M1.2 locomotion code is a new adapter-specific implementation. It uses the
 already transmitted GameVerse state and GTA native tasks; it does not copy a

@@ -14,6 +14,7 @@ internal sealed record LauncherConfig(
     string BridgePath,
     string UiPipe,
     string AdapterPipe,
+    string BootstrapPipe,
     string ServerAddress,
     string CertificatePath,
     string CertificateSha256,
@@ -80,13 +81,16 @@ internal static class Launcher
         {
             PropertyNameCaseInsensitive = true
         }) ?? throw new InvalidDataException("Launcher configuration is empty");
-        if (new[] { config.GameDirectory, config.UiPath, config.BridgePath, config.UiPipe, config.AdapterPipe, config.ServerAddress, config.CertificatePath, config.CertificateSha256, config.UpdateChannel, config.LogLevel }
+        if (new[] { config.GameDirectory, config.UiPath, config.BridgePath, config.UiPipe, config.AdapterPipe, config.BootstrapPipe, config.ServerAddress, config.CertificatePath, config.CertificateSha256, config.UpdateChannel, config.LogLevel }
             .Any(string.IsNullOrWhiteSpace))
             throw new InvalidDataException("Launcher configuration contains an empty required value");
         if (!config.UiPipe.StartsWith(@"\\.\pipe\", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("UiPipe must be a local Windows named-pipe path");
         if (!config.AdapterPipe.StartsWith(@"\\.\pipe\", StringComparison.OrdinalIgnoreCase) || config.AdapterPipe == config.UiPipe)
             throw new InvalidDataException("AdapterPipe must be a distinct local Windows named-pipe path");
+        if (!config.BootstrapPipe.StartsWith(@"\\.\pipe\", StringComparison.OrdinalIgnoreCase)
+            || config.BootstrapPipe == config.UiPipe || config.BootstrapPipe == config.AdapterPipe)
+            throw new InvalidDataException("BootstrapPipe must be a distinct local Windows named-pipe path");
         if (!Regex.IsMatch(config.CertificateSha256, "^[A-Fa-f0-9]{64}$"))
             throw new InvalidDataException("CertificateSha256 must contain 64 hexadecimal characters");
         return config;
@@ -102,6 +106,7 @@ internal static class Launcher
             @"bridge\gameverse-gta-bridge-m2.exe",
             @"\\.\pipe\gameverse-ui-v1",
             @"\\.\pipe\gameverse-gta-v1",
+            @"\\.\pipe\gameverse-bootstrap-v1",
             "127.0.0.1:30122",
             @"server-cert.der",
             new string('0', 64),
@@ -148,6 +153,8 @@ internal static class Launcher
                         ? $"{freeGiB} GiB available; explicit low-memory override enabled"
                         : $"{freeGiB} GiB available; 4 GiB recommended (start with --allow-low-memory to continue at your own risk)"),
             new("adapter", File.Exists(Path.Combine(game, "scripts", "GameVerse.GtaAdapter.dll")), Path.Combine(game, "scripts", "GameVerse.GtaAdapter.dll")),
+            new("native_bootstrap", File.Exists(Path.Combine(game, "GameVerse.NativeBootstrap.asi")), Path.Combine(game, "GameVerse.NativeBootstrap.asi")),
+            new("bootstrap_compatibility", File.Exists(Path.Combine(game, "enhanced-1.0.1158.13.json")) && File.Exists(Path.Combine(game, "enhanced-1.0.1158.13.sig")), Path.Combine(game, "enhanced-1.0.1158.13.json")),
             new("scripthook", File.Exists(Path.Combine(game, "ScriptHookV.dll")), Path.Combine(game, "ScriptHookV.dll")),
             new("scripthookdotnet", File.Exists(Path.Combine(game, "ScriptHookVDotNet.asi")), Path.Combine(game, "ScriptHookVDotNet.asi"))
         };
@@ -205,6 +212,8 @@ internal static class Launcher
         bridgeInfo.ArgumentList.Add(config.UiPipe);
         bridgeInfo.ArgumentList.Add("--pipe");
         bridgeInfo.ArgumentList.Add(config.AdapterPipe);
+        bridgeInfo.ArgumentList.Add("--bootstrap-pipe");
+        bridgeInfo.ArgumentList.Add(config.BootstrapPipe);
         using Process bridgeProcess = Process.Start(bridgeInfo) ?? throw new InvalidOperationException("Bridge did not start");
         try { await WaitForReadyEventAsync(bridgeProcess, "m2_pipe_ready", TimeSpan.FromSeconds(15), "Bridge"); }
         catch
@@ -219,7 +228,7 @@ internal static class Launcher
             WorkingDirectory = game,
             UseShellExecute = true
         });
-        Console.WriteLine(JsonSerializer.Serialize(new { status = "started", ui_pid = uiProcess.Id, bridge_pid = bridgeProcess.Id, stage = "waiting_for_adapter" }));
+        Console.WriteLine(JsonSerializer.Serialize(new { status = "started", ui_pid = uiProcess.Id, bridge_pid = bridgeProcess.Id, stage = "game_starting" }));
         try
         {
             using Process gameProcess = await WaitForGameAsync(TimeSpan.FromMinutes(2));

@@ -10,18 +10,24 @@ internal sealed class MainForm : Form
     private const string AppOrigin = "https://gameverse.local";
     private readonly WebView2 view = new() { Dock = DockStyle.Fill };
     private readonly UiBridgeClient bridge;
+    private Rectangle normalBounds;
 
     internal MainForm(string pipe)
     {
         bridge = new UiBridgeClient(pipe);
         bridge.ConnectedToBridge += BridgeConnected;
         bridge.DisconnectedFromBridge += BridgeDisconnected;
+        bridge.BridgeEvent += BridgeEvent;
         Text = "GameVerse";
         MinimumSize = new Size(960, 640);
         Size = new Size(1280, 800);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.FromArgb(9, 13, 22);
         Controls.Add(view);
+        normalBounds = Bounds;
+        TopMost = true;
+        FormBorderStyle = FormBorderStyle.None;
+        WindowState = FormWindowState.Maximized;
         Shown += InitializeAsync;
         FormClosed += async (_, _) => await bridge.DisposeAsync();
     }
@@ -87,6 +93,24 @@ internal sealed class MainForm : Form
             ok = true,
             payload = new { stage, message, has_saved_session = TokenStore.Exists }
         }, UiJson.Options));
+        if (stage == "active") EndLoadingCover();
+    }
+
+    private void BridgeEvent(UiResponse response)
+    {
+        if (InvokeRequired) { BeginInvoke(() => BridgeEvent(response)); return; }
+        if (response.Payload is not JsonElement payload || payload.ValueKind != JsonValueKind.Object) return;
+        string stage = payload.TryGetProperty("stage", out JsonElement stageValue) ? stageValue.GetString() ?? "checking" : "checking";
+        string message = payload.TryGetProperty("message", out JsonElement messageValue) ? messageValue.GetString() ?? stage : stage;
+        ShowBridgeState(stage, message);
+    }
+
+    private void EndLoadingCover()
+    {
+        TopMost = false;
+        WindowState = FormWindowState.Normal;
+        FormBorderStyle = FormBorderStyle.Sizable;
+        Bounds = normalBounds;
     }
 
     private void Configure(CoreWebView2 core)

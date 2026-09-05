@@ -7,6 +7,7 @@ use crate::{
 use anyhow::Result;
 use gameverse_protocol::{
     adapter::{self, Message},
+    bootstrap,
     control_v2::ControlMessage,
     EntityId,
 };
@@ -40,6 +41,7 @@ impl Drop for ReaderGuard {
 pub async fn run(
     adapter_pipe: &str,
     ui_pipe: &str,
+    bootstrap_pipe: &str,
     server: SocketAddr,
     cert: &Path,
     duration: Duration,
@@ -47,34 +49,50 @@ pub async fn run(
     anyhow::ensure!(
         valid_pipe(adapter_pipe)
             && valid_pipe(ui_pipe)
+            && valid_pipe(bootstrap_pipe)
             && adapter_pipe != ui_pipe
+            && adapter_pipe != bootstrap_pipe
+            && ui_pipe != bootstrap_pipe
             && !duration.is_zero(),
         "invalid pipe or duration"
     );
     let finish = Instant::now() + duration;
     let mut adapter_listener = listener(adapter_pipe, true)?;
     let mut ui_listener = listener(ui_pipe, true)?;
+    let mut bootstrap_listener = listener(bootstrap_pipe, true)?;
     println!(
         "{}",
-        json!({"event":"m2_pipe_ready","adapter_pipe":adapter_pipe,"ui_pipe":ui_pipe})
+        json!({"event":"m2_pipe_ready","adapter_pipe":adapter_pipe,"ui_pipe":ui_pipe,"bootstrap_pipe":bootstrap_pipe})
     );
     loop {
         let left = finish.saturating_duration_since(Instant::now());
         if left.is_zero() {
             return Ok(());
         }
-        let (adapter_result, ui_result) = tokio::join!(
-            timeout(left, adapter_listener.connect()),
-            timeout(left, ui_listener.connect())
+        let (ui_result, bootstrap_result) = tokio::join!(
+            timeout(left, ui_listener.connect()),
+            timeout(left, bootstrap_listener.connect())
         );
-        if adapter_result.is_err() || ui_result.is_err() {
+        if ui_result.is_err() || bootstrap_result.is_err() {
             return Ok(());
         }
-        adapter_result??;
         ui_result??;
-        let adapter = std::mem::replace(&mut adapter_listener, listener(adapter_pipe, false)?);
-        let ui_stream = std::mem::replace(&mut ui_listener, listener(ui_pipe, false)?);
-        if let Err(error) = serve_streams(adapter, ui_stream, server, cert, finish).await {
+        bootstrap_result??;
+        let mut ui_stream = std::mem::replace(&mut ui_listener, listener(ui_pipe, false)?);
+        let mut bootstrap_stream =
+            std::mem::replace(&mut bootstrap_listener, listener(bootstrap_pipe, false)?);
+        let result = async {
+            bootstrap_gate(&mut bootstrap_stream, &mut ui_stream).await?;
+            timeout(
+                finish.saturating_duration_since(Instant::now()),
+                adapter_listener.connect(),
+            )
+            .await??;
+            let adapter = std::mem::replace(&mut adapter_listener, listener(adapter_pipe, false)?);
+            serve_streams_inner(adapter, ui_stream, server, cert, finish, true).await
+        }
+        .await;
+        if let Err(error) = result {
             eprintln!(
                 "{}",
                 json!({"event":"m2_session_disconnected","error":error.to_string()})
@@ -111,26 +129,27 @@ where
     A: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     U: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
+    serve_streams_inner(adapter_stream, ui_stream, server, cert, finish, false).await
+}
+
+async fn serve_streams_inner<A, U>(
+    adapter_stream: A,
+    ui_stream: U,
+    server: SocketAddr,
+    cert: &Path,
+    finish: Instant,
+    ui_handshake_complete: bool,
+) -> Result<()>
+where
+    A: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    U: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
     let (mut adapter_rx, mut adapter_tx) = tokio::io::split(adapter_stream);
     let (mut ui_rx, mut ui_tx) = tokio::io::split(ui_stream);
 
-    let hello: UiRequest = timeout(DEADLINE, ui::read(&mut ui_rx)).await??;
-    anyhow::ensure!(
-        hello.valid() && hello.command == "ui.hello",
-        "invalid UI handshake"
-    );
-    ui::write(
-        &mut ui_tx,
-        &UiResponse::success(
-            &hello.request_id,
-            json!({
-                "bridge_build":env!("CARGO_PKG_VERSION"),
-                "stage":"waiting_for_adapter",
-                "capabilities":["auth","characters","chat","inventory","shop","job"]
-            }),
-        ),
-    )
-    .await?;
+    if !ui_handshake_complete {
+        ui_handshake(&mut ui_rx, &mut ui_tx, "waiting_for_adapter").await?;
+    }
 
     let adapter_hello = timeout(DEADLINE, ipc::read(&mut adapter_rx)).await??;
     anyhow::ensure!(
@@ -230,6 +249,100 @@ where
                     &UiResponse::error(&request.request_id, "request_failed", public_error(&error)),
                 )
                 .await?
+            }
+        }
+    }
+}
+
+async fn ui_handshake(
+    ui_rx: &mut (impl AsyncRead + Unpin),
+    ui_tx: &mut (impl AsyncWrite + Unpin),
+    stage: &str,
+) -> Result<()> {
+    let hello: UiRequest = timeout(DEADLINE, ui::read(ui_rx)).await??;
+    anyhow::ensure!(
+        hello.valid() && hello.command == "ui.hello",
+        "invalid UI handshake"
+    );
+    ui::write(ui_tx, &UiResponse::success(&hello.request_id, json!({
+        "bridge_build":env!("CARGO_PKG_VERSION"), "stage":stage,
+        "capabilities":["auth","characters","chat","inventory","shop","job","native_bootstrap"]
+    }))).await
+}
+
+async fn bootstrap_gate<B, U>(bootstrap_stream: &mut B, ui_stream: &mut U) -> Result<()>
+where
+    B: AsyncRead + AsyncWrite + Unpin,
+    U: AsyncRead + AsyncWrite + Unpin,
+{
+    let (mut ui_rx, mut ui_tx) = tokio::io::split(ui_stream);
+    ui_handshake(&mut ui_rx, &mut ui_tx, "waiting_for_game").await?;
+    let (mut bootstrap_rx, mut bootstrap_tx) = tokio::io::split(bootstrap_stream);
+    let mut hello_seen = false;
+    let mut last_time = 0_u64;
+    loop {
+        let message: bootstrap::Message =
+            timeout(Duration::from_secs(100), ui::read(&mut bootstrap_rx)).await??;
+        anyhow::ensure!(message.valid(), "invalid native bootstrap message");
+        match message {
+            bootstrap::Message::BootstrapHello {
+                gta_edition,
+                gta_build,
+                fingerprint,
+                ..
+            } => {
+                anyhow::ensure!(
+                    gta_edition == "enhanced"
+                        && gta_build == adapter::GAME_VERSION
+                        && fingerprint.eq_ignore_ascii_case(
+                            "0C52864D4521D9C9D441348AA1156958792DDE8825D0297C851753F167336401"
+                        ),
+                    "unsupported native bootstrap fingerprint"
+                );
+                hello_seen = true;
+            }
+            bootstrap::Message::BootstrapStage {
+                monotonic_ms,
+                stage,
+                ..
+            } => {
+                anyhow::ensure!(monotonic_ms >= last_time, "non-monotonic bootstrap clock");
+                last_time = monotonic_ms;
+                ui::write(&mut ui_tx, &UiResponse::success("bridge-stage", json!({
+                    "stage": format!("bootstrap_{}", serde_json::to_value(stage)?.as_str().unwrap_or("failed")),
+                    "message": "GameVerse готовит игровой мир"
+                }))).await?;
+                if stage == bootstrap::Stage::FrontendReady {
+                    anyhow::ensure!(hello_seen, "bootstrap stage preceded hello");
+                    ui::write(
+                        &mut bootstrap_tx,
+                        &bootstrap::Message::BootstrapCommand {
+                            schema_version: bootstrap::VERSION,
+                            command: bootstrap::Command::BeginWorld,
+                        },
+                    )
+                    .await?;
+                }
+                if stage == bootstrap::Stage::WorldReady {
+                    return Ok(());
+                }
+                if stage == bootstrap::Stage::Failed {
+                    anyhow::bail!("native bootstrap entered failed state");
+                }
+            }
+            bootstrap::Message::BootstrapFailure { code, message, .. } => {
+                ui::write(
+                    &mut ui_tx,
+                    &UiResponse::success(
+                        "bridge-stage",
+                        json!({"stage":"failed","message":&message,"error_code":&code}),
+                    ),
+                )
+                .await?;
+                anyhow::bail!("native bootstrap {code}: {message}");
+            }
+            bootstrap::Message::BootstrapCommand { .. } => {
+                anyhow::bail!("unexpected bootstrap command")
             }
         }
     }
@@ -593,5 +706,80 @@ fn public_error(error: &anyhow::Error) -> String {
         text
     } else {
         "Операция не выполнена".into()
+    }
+}
+
+#[cfg(test)]
+mod bootstrap_tests {
+    use super::*;
+
+    fn stage(value: bootstrap::Stage, monotonic_ms: u64) -> bootstrap::Message {
+        bootstrap::Message::BootstrapStage {
+            schema_version: bootstrap::VERSION,
+            monotonic_ms,
+            stage: value,
+        }
+    }
+
+    #[tokio::test]
+    async fn native_gate_requires_verified_identity_and_world_ready() {
+        let (mut bootstrap_host, mut bootstrap_peer) = tokio::io::duplex(4096);
+        let (mut ui_host, mut ui_peer) = tokio::io::duplex(4096);
+        let gate =
+            tokio::spawn(async move { bootstrap_gate(&mut bootstrap_host, &mut ui_host).await });
+        ui::write(
+            &mut ui_peer,
+            &UiRequest {
+                schema_version: ui::VERSION,
+                request_id: "native-gate-test".into(),
+                command: "ui.hello".into(),
+                payload: json!({}),
+            },
+        )
+        .await
+        .unwrap();
+        assert!(ui::read::<UiResponse>(&mut ui_peer).await.unwrap().ok);
+
+        ui::write(&mut bootstrap_peer, &stage(bootstrap::Stage::Loaded, 1))
+            .await
+            .unwrap();
+        assert!(ui::read::<UiResponse>(&mut ui_peer).await.unwrap().ok);
+        ui::write(
+            &mut bootstrap_peer,
+            &bootstrap::Message::BootstrapHello {
+                schema_version: bootstrap::VERSION,
+                bootstrap_build: "0.1.0".into(),
+                gta_edition: "enhanced".into(),
+                gta_build: adapter::GAME_VERSION.into(),
+                fingerprint: "0C52864D4521D9C9D441348AA1156958792DDE8825D0297C851753F167336401"
+                    .into(),
+                capabilities: vec!["telemetry".into()],
+            },
+        )
+        .await
+        .unwrap();
+        for (value, timestamp) in [
+            (bootstrap::Stage::Verified, 2),
+            (bootstrap::Stage::FrontendReady, 3),
+        ] {
+            ui::write(&mut bootstrap_peer, &stage(value, timestamp))
+                .await
+                .unwrap();
+            assert!(ui::read::<UiResponse>(&mut ui_peer).await.unwrap().ok);
+        }
+        assert_eq!(
+            ui::read::<bootstrap::Message>(&mut bootstrap_peer)
+                .await
+                .unwrap(),
+            bootstrap::Message::BootstrapCommand {
+                schema_version: bootstrap::VERSION,
+                command: bootstrap::Command::BeginWorld
+            }
+        );
+        ui::write(&mut bootstrap_peer, &stage(bootstrap::Stage::WorldReady, 4))
+            .await
+            .unwrap();
+        assert!(ui::read::<UiResponse>(&mut ui_peer).await.unwrap().ok);
+        gate.await.unwrap().unwrap();
     }
 }

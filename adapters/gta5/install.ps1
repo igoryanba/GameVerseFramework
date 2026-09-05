@@ -19,7 +19,10 @@ $files = @(
     @{Source=(Join-Path $ShvdnePath 'ScriptHookVDotNet3.dll');Relative='ScriptHookVDotNet3.dll'},
     @{Source=(Join-Path $ShvdnePath 'MinHook.x64.dll');Relative='MinHook.x64.dll'},
     @{Source=(Join-Path $adapter 'GameVerse.GtaAdapter.dll');Relative='scripts/GameVerse.GtaAdapter.dll'},
-    @{Source=(Join-Path $adapter 'Newtonsoft.Json.dll');Relative='scripts/Newtonsoft.Json.dll'}
+    @{Source=(Join-Path $adapter 'Newtonsoft.Json.dll');Relative='scripts/Newtonsoft.Json.dll'},
+    @{Source=(Join-Path $PSScriptRoot '..\..\.build\native-bootstrap\Release\GameVerse.NativeBootstrap.asi');Relative='GameVerse.NativeBootstrap.asi'},
+    @{Source=(Join-Path $PSScriptRoot '..\..\native\GameVerse.NativeBootstrap\compatibility\enhanced-1.0.1158.13.json');Relative='enhanced-1.0.1158.13.json'},
+    @{Source=(Join-Path $PSScriptRoot '..\..\native\GameVerse.NativeBootstrap\compatibility\enhanced-1.0.1158.13.sig');Relative='enhanced-1.0.1158.13.sig'}
 )
 # Validate the entire installation first. Existing mods are not overwritten.
 foreach ($file in $files) {
@@ -47,5 +50,5 @@ catch {
     Remove-Item -LiteralPath ($manifestPath + '.tmp') -Force -ErrorAction SilentlyContinue
     throw
 }
-Write-Output 'Installed adapter files. Start the presence server, bridge and bot, then enter Story Mode.'
+Write-Output 'Installed adapter and native bootstrap files. Start GameVerse with the launcher.'
 # No args.txt, launcher changes, entitlement changes or anti-cheat settings are applied.

@@ -28,14 +28,19 @@ $uiPublish = Join-Path $artifacts 'publish-ui'
 Invoke-Checked $Dotnet @('publish', (Join-Path $PSScriptRoot 'GameVerse.Launcher'), '-c', $Configuration, '-r', $Runtime, '--self-contained', 'true', '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true', '-o', $launcherPublish, '--nologo')
 Invoke-Checked $Dotnet @('publish', (Join-Path $PSScriptRoot 'GameVerse.UI'), '-c', $Configuration, '-r', $Runtime, '--self-contained', 'true', '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true', '-o', $uiPublish, '--nologo')
 Invoke-Checked $Cargo @('build', '--locked', '--release', '-p', 'gameverse-client', '--bin', 'gameverse-gta-bridge-m2')
+Invoke-Checked 'cmake' @('-S', (Join-Path $root 'native\GameVerse.NativeBootstrap'), '-B', (Join-Path $root '.build\native-bootstrap'), '-A', 'x64')
+Invoke-Checked 'cmake' @('--build', (Join-Path $root '.build\native-bootstrap'), '--config', $Configuration)
 
-New-Item -ItemType Directory -Path (Join-Path $stage 'ui'),(Join-Path $stage 'bridge'),(Join-Path $stage 'adapter'),(Join-Path $stage 'licenses') -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $stage 'ui'),(Join-Path $stage 'bridge'),(Join-Path $stage 'adapter'),(Join-Path $stage 'native'),(Join-Path $stage 'licenses') -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $launcherPublish 'GameVerse.Launcher.exe') -Destination $stage
 Copy-Item -Path (Join-Path $uiPublish '*') -Destination (Join-Path $stage 'ui') -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $root 'target\release\gameverse-gta-bridge-m2.exe') -Destination (Join-Path $stage 'bridge')
 $adapterOutput = Join-Path $root "adapters\gta5\GameVerse.GtaAdapter\bin\$Configuration\net48"
 if (-not (Test-Path -LiteralPath (Join-Path $adapterOutput 'GameVerse.GtaAdapter.dll'))) { throw 'Build the GTA adapter with adapters/gta5/setup.ps1 before packaging' }
 Get-ChildItem -LiteralPath $adapterOutput -File | Where-Object Extension -ne '.pdb' | Copy-Item -Destination (Join-Path $stage 'adapter')
+Copy-Item -LiteralPath (Join-Path $root ".build\native-bootstrap\$Configuration\GameVerse.NativeBootstrap.asi") -Destination (Join-Path $stage 'native')
+Copy-Item -Path (Join-Path $root 'native\GameVerse.NativeBootstrap\compatibility\*') -Destination (Join-Path $stage 'native')
+Copy-Item -LiteralPath (Join-Path $root 'native\GameVerse.NativeBootstrap\THIRD_PARTY_MINHOOK.txt') -Destination (Join-Path $stage 'licenses')
 Copy-Item -LiteralPath (Join-Path $root 'adapters\gta5\THIRD_PARTY.md') -Destination (Join-Path $stage 'licenses')
 Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination (Join-Path $stage 'licenses') -ErrorAction SilentlyContinue
 Get-ChildItem -Path $launcherPublish,$uiPublish,$adapterOutput -Filter '*.pdb' -File -Recurse | Copy-Item -Destination $symbols -Force
@@ -58,6 +63,7 @@ $example = [ordered]@{
     BridgePath = 'bridge\gameverse-gta-bridge-m2.exe'
     UiPipe = '\\.\pipe\gameverse-ui-v1'
     AdapterPipe = '\\.\pipe\gameverse-gta-v1'
+    BootstrapPipe = '\\.\pipe\gameverse-bootstrap-v1'
     ServerAddress = '127.0.0.1:30122'
     CertificatePath = 'server-cert.der'
     CertificateSha256 = ('0' * 64)
