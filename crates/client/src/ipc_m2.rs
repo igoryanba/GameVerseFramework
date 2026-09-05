@@ -5,9 +5,10 @@ use crate::{
     ui::{self, UiRequest, UiResponse},
 };
 use anyhow::Result;
+#[cfg(any(windows, test))]
+use gameverse_protocol::bootstrap;
 use gameverse_protocol::{
     adapter::{self, Message},
-    bootstrap,
     control_v2::ControlMessage,
     EntityId,
 };
@@ -319,6 +320,7 @@ async fn ui_handshake(
     }))).await
 }
 
+#[cfg(any(windows, test))]
 async fn bootstrap_gate<B, U>(bootstrap_stream: &mut B, ui_stream: &mut U) -> Result<()>
 where
     B: AsyncRead + AsyncWrite + Unpin,
