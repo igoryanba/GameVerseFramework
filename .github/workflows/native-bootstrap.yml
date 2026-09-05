@@ -20,7 +20,16 @@ jobs:
       - name: Test scanner, manifest and state machine
         run: ctest --test-dir .build/native-bootstrap -C Release --output-on-failure -V
       - name: Test Rust bootstrap and bridge protocol
-        run: cargo test --locked -p gameverse-protocol -p gameverse-client
+        shell: pwsh
+        run: |
+          $lines = cargo test --locked -p gameverse-protocol -p gameverse-client 2>&1
+          $exitCode = $LASTEXITCODE
+          $lines | Write-Output
+          if ($exitCode -ne 0) {
+            $tail = (($lines | Select-Object -Last 30) -join " | ").Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
+            Write-Output "::error file=crates/client/src/ipc_m2.rs::$tail"
+            exit $exitCode
+          }
       - name: Build Windows UI and launcher
         shell: pwsh
         run: |
