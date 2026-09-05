@@ -54,7 +54,7 @@ pub enum Command {
 
 impl Message {
     pub fn valid(&self) -> bool {
-        match self {
+        let envelope_valid = match self {
             Self::BootstrapHello {
                 schema_version,
                 bootstrap_build,
@@ -76,13 +76,14 @@ impl Message {
             Self::BootstrapStage { schema_version, .. }
             | Self::BootstrapFailure { schema_version, .. }
             | Self::BootstrapCommand { schema_version, .. } => *schema_version == VERSION,
-        }
-        &&match self {
+        };
+        let payload_valid = match self {
             Self::BootstrapFailure { code, message, .. } => {
                 !code.is_empty() && code.len() <= 64 && !message.is_empty() && message.len() <= 512
             }
             _ => true,
-        }
+        };
+        envelope_valid && payload_valid
     }
 }
 
