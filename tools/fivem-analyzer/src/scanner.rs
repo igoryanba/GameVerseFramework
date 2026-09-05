@@ -60,6 +60,7 @@ pub struct ResourceReport {
     pub client_scripts: Vec<String>,
     pub server_scripts: Vec<String>,
     pub resolved_files: Vec<PathBuf>,
+    pub missing_patterns: Vec<String>,
     pub files: Vec<String>,
     pub data_files: Vec<DataFile>,
     pub ui_page: Option<String>,
@@ -99,10 +100,34 @@ pub fn to_gameverse_toml(report: &ResourceReport) -> Result<String> {
 pub fn analyze(root: &Path) -> Result<ResourceReport> {
     let parsed = parse_fivem(root)?;
     let manifest = parsed.manifest;
-    let resolved_files = resolve_and_validate(root, &manifest)?;
-    let shared_scripts = expand_patterns(&manifest.shared_scripts, &resolved_files)?;
-    let client_scripts = expand_patterns(&manifest.client_scripts, &resolved_files)?;
-    let server_scripts = expand_patterns(&manifest.server_scripts, &resolved_files)?;
+    validate_declared_patterns(&manifest)?;
+    let resolved_files = match resolve_and_validate(root, &manifest) {
+        Ok(files) => files,
+        Err(error)
+            if error
+                .to_string()
+                .starts_with("resource pattern matched no files:") =>
+        {
+            inventory_files(root)?
+        }
+        Err(error) => return Err(error),
+    };
+    let (shared_scripts, mut missing_patterns) =
+        expand_available(&manifest.shared_scripts, &resolved_files);
+    let (client_scripts, missing_client) =
+        expand_available(&manifest.client_scripts, &resolved_files);
+    let (server_scripts, missing_server) =
+        expand_available(&manifest.server_scripts, &resolved_files);
+    missing_patterns.extend(missing_client);
+    missing_patterns.extend(missing_server);
+    let mut declared_files = manifest.files.clone();
+    declared_files.extend(manifest.data_files.iter().map(|value| value.file.clone()));
+    if let Some(page) = &manifest.ui_page {
+        declared_files.push(page.clone());
+    }
+    missing_patterns.extend(expand_available(&declared_files, &resolved_files).1);
+    missing_patterns.sort();
+    missing_patterns.dedup();
     let mut contents = String::new();
     let mut sources = Vec::<(PathBuf, String)>::new();
     let mut sql_files = Vec::new();
@@ -232,6 +257,13 @@ pub fn analyze(root: &Path) -> Result<ResourceReport> {
         "manifest",
         "static manifest can be converted to gameverse.toml",
     )];
+    for pattern in &missing_patterns {
+        findings.push(finding(
+            CompatibilityCategory::Manual,
+            "missing_file",
+            &format!("manifest pattern matched no files: {pattern}"),
+        ));
+    }
     if !events.is_empty() {
         findings.push(finding(
             CompatibilityCategory::Convertible,
@@ -335,6 +367,7 @@ pub fn analyze(root: &Path) -> Result<ResourceReport> {
         client_scripts,
         server_scripts,
         resolved_files,
+        missing_patterns,
         files: manifest.files,
         data_files: manifest.data_files,
         ui_page: manifest.ui_page,
@@ -354,6 +387,63 @@ pub fn analyze(root: &Path) -> Result<ResourceReport> {
         findings,
         required_capabilities,
     })
+}
+
+fn inventory_files(root: &Path) -> Result<Vec<PathBuf>> {
+    let canonical_root = root.canonicalize()?;
+    let mut files = Vec::new();
+    for entry in WalkDir::new(root).follow_links(false) {
+        let entry = entry?;
+        if entry.file_type().is_symlink() {
+            anyhow::bail!("resource contains a symlink: {}", entry.path().display());
+        }
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let canonical = entry.path().canonicalize()?;
+        anyhow::ensure!(
+            canonical.starts_with(&canonical_root),
+            "resource path escapes its root"
+        );
+        files.push(entry.path().strip_prefix(root)?.to_path_buf());
+    }
+    files.sort();
+    Ok(files)
+}
+
+fn validate_declared_patterns(manifest: &ResourceManifest) -> Result<()> {
+    let patterns = manifest
+        .shared_scripts
+        .iter()
+        .chain(&manifest.client_scripts)
+        .chain(&manifest.server_scripts)
+        .chain(&manifest.files)
+        .chain(manifest.data_files.iter().map(|value| &value.file))
+        .chain(manifest.ui_page.iter());
+    for pattern in patterns {
+        let normalized = pattern.replace('\\', "/");
+        let drive_absolute = normalized.as_bytes().get(1) == Some(&b':');
+        anyhow::ensure!(
+            !normalized.starts_with('/')
+                && !drive_absolute
+                && !normalized.split('/').any(|part| part == "..")
+                && !normalized.contains('\0'),
+            "resource path is unsafe: {pattern}"
+        );
+    }
+    Ok(())
+}
+
+fn expand_available(patterns: &[String], files: &[PathBuf]) -> (Vec<String>, Vec<String>) {
+    let mut expanded = BTreeSet::new();
+    let mut missing = Vec::new();
+    for pattern in patterns {
+        match expand_patterns(std::slice::from_ref(pattern), files) {
+            Ok(matches) => expanded.extend(matches),
+            Err(_) => missing.push(pattern.clone()),
+        }
+    }
+    (expanded.into_iter().collect(), missing)
 }
 
 fn finding(category: CompatibilityCategory, feature: &str, detail: &str) -> Finding {

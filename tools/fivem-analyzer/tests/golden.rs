@@ -92,3 +92,29 @@ fn external_corpus_is_pinned_and_copyleft_is_analysis_only() {
         }
     }
 }
+
+#[test]
+fn missing_build_output_is_reported_but_unsafe_paths_still_fail() {
+    let missing = tempfile::tempdir().unwrap();
+    std::fs::write(
+        missing.path().join("fxmanifest.lua"),
+        "fx_version 'cerulean'\ngame 'gta5'\nclient_script 'dist/index.js'\n",
+    )
+    .unwrap();
+    let report = analyze(missing.path()).unwrap();
+    assert_eq!(report.missing_patterns, ["dist/index.js"]);
+    assert!(report.findings.iter().any(|finding| {
+        finding.feature == "missing_file" && finding.category == CompatibilityCategory::Manual
+    }));
+
+    let unsafe_resource = tempfile::tempdir().unwrap();
+    std::fs::write(
+        unsafe_resource.path().join("fxmanifest.lua"),
+        "fx_version 'cerulean'\ngame 'gta5'\nclient_script '../escape.lua'\n",
+    )
+    .unwrap();
+    assert!(analyze(unsafe_resource.path())
+        .unwrap_err()
+        .to_string()
+        .contains("unsafe"));
+}
