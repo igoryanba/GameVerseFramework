@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include <array>
+#include <chrono>
 #include <iostream>
 #include <fstream>
 #include <iterator>
@@ -68,6 +69,20 @@ int main() {
             "telemetry serialization failed");
     Require(telemetry_json.find("0x") == std::string::npos,
             "telemetry leaked an absolute address");
+    Require(gameverse::TelemetryPageKey(0, ".text", 1) !=
+                gameverse::TelemetryPageKey(1, ".text", 1),
+            "duplicate PE section names share a telemetry page key");
+    const auto adapter_log = std::filesystem::temp_directory_path() /
+                             L"gameverse-native-adapter-test.log";
+    const auto probe_started = std::filesystem::file_time_type::clock::now();
+    std::ofstream(adapter_log) << "GTA_ADAPTER_LOADED=true BUILD=1.0.1158.13\n";
+    Require(gameverse::AdapterLogIsCurrent(adapter_log, probe_started),
+            "current managed adapter log was not detected");
+    std::filesystem::last_write_time(adapter_log,
+        probe_started - std::chrono::seconds(2));
+    Require(!gameverse::AdapterLogIsCurrent(adapter_log, probe_started),
+            "stale managed adapter log was accepted");
+    std::filesystem::remove(adapter_log);
     std::cout << "native bootstrap tests passed\n";
     return 0;
   } catch (const std::exception& error) {

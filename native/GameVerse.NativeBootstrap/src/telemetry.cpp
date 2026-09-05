@@ -80,10 +80,51 @@ std::filesystem::path ReportPath() {
           std::to_wstring(GetTickCount64()) + L".jsonl");
 }
 
+std::filesystem::path AdapterLogPath() {
+  std::array<wchar_t, 32768> process{};
+  const DWORD length = GetModuleFileNameW(
+      nullptr, process.data(), static_cast<DWORD>(process.size()));
+  if (length == 0 || length >= process.size()) return {};
+  return std::filesystem::path(process.data()).parent_path() / L"scripts" /
+         L"GameVerse.GtaAdapter.log";
+}
+
 }  // namespace
 
 TelemetryRecorder::TelemetryRecorder(void* image)
-    : image_(image), report_path_(ReportPath()) {}
+    : image_(image),
+      report_path_(ReportPath()),
+      adapter_log_path_(AdapterLogPath()),
+      started_at_(std::filesystem::file_time_type::clock::now()) {}
+
+std::string TelemetryPageKey(std::size_t section_index,
+                             std::string_view section_name,
+                             std::size_t page_index) {
+  return std::to_string(section_index) + ":" + std::string(section_name) +
+         ":" + std::to_string(page_index);
+}
+
+bool AdapterLogIsCurrent(
+    const std::filesystem::path& path,
+    std::filesystem::file_time_type probe_started_at) noexcept {
+  try {
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(path, error) || error ||
+        std::filesystem::last_write_time(path, error) < probe_started_at || error)
+      return false;
+    const auto size = std::filesystem::file_size(path, error);
+    if (error || size == 0) return false;
+    std::ifstream input(path, std::ios::binary);
+    if (!input) return false;
+    constexpr std::streamoff kTailBytes = 4096;
+    if (size > static_cast<std::uintmax_t>(kTailBytes))
+      input.seekg(static_cast<std::streamoff>(size) - kTailBytes);
+    const std::string tail(std::istreambuf_iterator<char>(input), {});
+    return tail.find("GTA_ADAPTER_LOADED=true") != std::string::npos;
+  } catch (...) {
+    return false;
+  }
+}
 
 TelemetryReadiness TelemetryRecorder::ObserveReadiness() const noexcept {
   TelemetryReadiness result;
@@ -95,7 +136,8 @@ TelemetryReadiness TelemetryRecorder::ObserveReadiness() const noexcept {
       GetModuleHandleW(L"ScriptHookVDotNet3.dll") != nullptr;
   result.adapter_loaded =
       GetModuleHandleW(L"GameVerse.GtaAdapter.dll") != nullptr ||
-      GetModuleHandleW(L"GameVerse.GtaAdapter.asi") != nullptr;
+      GetModuleHandleW(L"GameVerse.GtaAdapter.asi") != nullptr ||
+      AdapterLogIsCurrent(adapter_log_path_, started_at_);
   return result;
 }
 
@@ -165,8 +207,7 @@ TelemetrySnapshot TelemetryRecorder::Capture(std::string_view stage) {
       // PE section names are not unique. Enhanced 1.0.1158.13 contains repeated
       // .text/.xbld names, so name-only keys compare unrelated pages and report
       // thousands of false changes inside a single capture.
-      const auto key = std::to_string(index) + ":" + section.name + ":" +
-                       std::to_string(offset / page_size);
+      const auto key = TelemetryPageKey(index, section.name, offset / page_size);
       const auto previous = page_hashes_.find(key);
       if (previous != page_hashes_.end() && previous->second != page_hash)
         ++section.changed_pages;
