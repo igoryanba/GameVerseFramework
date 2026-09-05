@@ -28,3 +28,8 @@ The produced `GameVerse.NativeBootstrap.asi` and the two files under
 exact executable are recorded, signed, uniquely matched, checked against the PE
 executable section and covered by tests. Do not derive patterns from DRM,
 entitlement, Social Club, GTA Online or anti-cheat functions.
+
+Compatibility manifests are signed with ECDSA P-256 in fixed-field `R || S`
+format. `tools/sign-manifest.ps1` requires the private key to live outside the
+repository and regenerates both the detached `.sig` and embedded public-key
+header. Release signing should use a protected CI secret or an offline key.
