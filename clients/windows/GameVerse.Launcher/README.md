@@ -2,6 +2,8 @@
 
 This is the deterministic launcher shell for the closed alpha. It checks GTA V Enhanced, WebView2 Runtime, GameVerse UI, the M2 bridge, the pinned server certificate, ScriptHook components, the adapter, and available memory. It starts the UI first, waits for explicit UI and bridge readiness events, and only then starts `PlayGTAV.exe`. It remains alive while GTA is running and cleans up only the UI/bridge processes it created. It can also open logs and create a diagnostics archive without configuration secrets.
 
+The normal `start` command requires 4 GiB of free physical memory to reduce GTA DirectX out-of-memory failures. This is a conservative launch guard rather than a protocol requirement. A tester with a configured pagefile can explicitly run `start --allow-low-memory`; the launcher records the override and available memory while continuing to enforce every other installation and security check.
+
 ```powershell
 GameVerse.Launcher.exe init
 # edit launcher.json

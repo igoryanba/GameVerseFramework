@@ -58,7 +58,7 @@ internal static class Launcher
             return command switch
             {
                 "verify" => Verify(config),
-                "start" => await StartAsync(config),
+                "start" => await StartAsync(config, args.Any(value => value.Equals("--allow-low-memory", StringComparison.OrdinalIgnoreCase))),
                 "logs" => OpenLogs(config),
                 "diagnostics" => Diagnostics(config, args.ElementAtOrDefault(1)),
                 "update" => await UpdateAsync(config),
@@ -117,7 +117,7 @@ internal static class Launcher
         return 0;
     }
 
-    private static List<Check> Checks(LauncherConfig config)
+    private static List<Check> Checks(LauncherConfig config, bool allowLowMemory = false)
     {
         string game = ResolvePath(config.GameDirectory);
         string ui = ResolvePath(config.UiPath);
@@ -141,7 +141,12 @@ internal static class Launcher
             new("bridge", File.Exists(bridge), bridge),
             new("server_certificate", File.Exists(cert), cert),
             new("server_certificate_fingerprint", File.Exists(cert) && CertificateHash(cert).Equals(config.CertificateSha256, StringComparison.OrdinalIgnoreCase), File.Exists(cert) ? CertificateHash(cert) : "certificate unavailable"),
-            new("free_memory", freeGiB >= 4, $"{freeGiB} GiB available"),
+            new("free_memory", freeGiB >= 4 || allowLowMemory,
+                freeGiB >= 4
+                    ? $"{freeGiB} GiB available"
+                    : allowLowMemory
+                        ? $"{freeGiB} GiB available; explicit low-memory override enabled"
+                        : $"{freeGiB} GiB available; 4 GiB recommended (start with --allow-low-memory to continue at your own risk)"),
             new("adapter", File.Exists(Path.Combine(game, "scripts", "GameVerse.GtaAdapter.dll")), Path.Combine(game, "scripts", "GameVerse.GtaAdapter.dll")),
             new("scripthook", File.Exists(Path.Combine(game, "ScriptHookV.dll")), Path.Combine(game, "ScriptHookV.dll")),
             new("scripthookdotnet", File.Exists(Path.Combine(game, "ScriptHookVDotNet.asi")), Path.Combine(game, "ScriptHookVDotNet.asi"))
@@ -155,9 +160,16 @@ internal static class Launcher
         return checks.All(value => value.Passed) ? 0 : 3;
     }
 
-    private static async Task<int> StartAsync(LauncherConfig config)
+    private static async Task<int> StartAsync(LauncherConfig config, bool allowLowMemory)
     {
-        if (Verify(config) != 0) return 3;
+        List<Check> checks = Checks(config, allowLowMemory);
+        Console.WriteLine(JsonSerializer.Serialize(new
+        {
+            status = checks.All(value => value.Passed) ? "ready" : "failed",
+            low_memory_override = allowLowMemory,
+            checks
+        }));
+        if (checks.Any(value => !value.Passed)) return 3;
         string game = ResolvePath(config.GameDirectory);
         string ui = ResolvePath(config.UiPath);
         string bridge = ResolvePath(config.BridgePath);
@@ -565,7 +577,7 @@ internal static class Launcher
     }
     private static int Usage()
     {
-        Console.Error.WriteLine("Usage: GameVerse.Launcher init|verify|start|update|logs|diagnostics [output.zip]|self-test|verify-update <manifest> <signature> <public-key.pem>");
+        Console.Error.WriteLine("Usage: GameVerse.Launcher init|verify|start [--allow-low-memory]|update|logs|diagnostics [output.zip]|self-test|verify-update <manifest> <signature> <public-key.pem>");
         return 1;
     }
 
