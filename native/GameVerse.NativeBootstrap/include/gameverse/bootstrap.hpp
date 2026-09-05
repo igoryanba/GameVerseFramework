@@ -55,6 +55,7 @@ struct SignatureSpec {
   std::string section;
   std::vector<PatternByte> pattern;
   std::vector<std::uint8_t> prologue;
+  std::string entry_sha256;
 };
 
 struct CompatibilityManifest {
@@ -92,6 +93,25 @@ std::vector<TelemetryCandidate> InspectImageCandidates(
     void* image, const CompatibilityManifest& manifest);
 std::string SerializeTelemetryCandidates(
     std::span<const TelemetryCandidate> candidates);
+
+struct ObserveHook {
+  void* target{};
+  void* allocation{};
+  volatile long long* counter{};
+};
+
+class ObserveHookSession {
+ public:
+  ~ObserveHookSession();
+  bool Start(void* image, const CompatibilityManifest& manifest,
+             std::vector<TelemetryCandidate>& candidates, std::string& error);
+  void Refresh(std::vector<TelemetryCandidate>& candidates) const noexcept;
+
+ private:
+  void Stop() noexcept;
+  std::vector<ObserveHook> hooks_;
+  bool initialized_{};
+};
 
 struct TelemetryModule {
   std::string name;

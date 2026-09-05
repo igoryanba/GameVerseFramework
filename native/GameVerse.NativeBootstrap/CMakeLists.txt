@@ -45,18 +45,20 @@ target_link_libraries(gameverse_bootstrap_core PUBLIC bcrypt user32 version)
 add_library(GameVerse.NativeBootstrap SHARED
   src/bootstrap.cpp
   src/dllmain.cpp
+  src/observe_hooks.cpp
 )
 set_target_properties(GameVerse.NativeBootstrap PROPERTIES PREFIX "" SUFFIX ".asi")
 target_include_directories(GameVerse.NativeBootstrap PRIVATE include)
 target_compile_definitions(GameVerse.NativeBootstrap PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
 target_link_libraries(GameVerse.NativeBootstrap PRIVATE gameverse_bootstrap_core minhook)
 
-add_executable(gameverse_native_bootstrap_tests tests/tests.cpp)
-target_link_libraries(gameverse_native_bootstrap_tests PRIVATE gameverse_bootstrap_core)
+add_executable(gameverse_native_bootstrap_tests tests/tests.cpp src/observe_hooks.cpp)
+target_link_libraries(gameverse_native_bootstrap_tests PRIVATE gameverse_bootstrap_core minhook)
 target_compile_definitions(gameverse_native_bootstrap_tests PRIVATE
   GAMEVERSE_TEST_MANIFEST=L"${CMAKE_CURRENT_SOURCE_DIR}/compatibility/enhanced-1.0.1158.13.json"
   GAMEVERSE_TEST_SIGNATURE=L"${CMAKE_CURRENT_SOURCE_DIR}/compatibility/enhanced-1.0.1158.13.sig"
   GAMEVERSE_TEST_CANDIDATES=L"${CMAKE_CURRENT_SOURCE_DIR}/compatibility/telemetry-candidates-v1.json"
+  GAMEVERSE_TEST_CANDIDATE_SIGNATURE=L"${CMAKE_CURRENT_SOURCE_DIR}/compatibility/telemetry-candidates-v1.sig"
 )
 enable_testing()
 add_test(NAME native_bootstrap_tests COMMAND gameverse_native_bootstrap_tests)
@@ -81,6 +83,7 @@ install(FILES
   compatibility/enhanced-1.0.1158.13.json
   compatibility/enhanced-1.0.1158.13.sig
   compatibility/telemetry-candidates-v1.json
+  compatibility/telemetry-candidates-v1.sig
   DESTINATION .
 )
 install(FILES THIRD_PARTY_MINHOOK.txt THIRD_PARTY_ZYDIS.txt DESTINATION licenses)

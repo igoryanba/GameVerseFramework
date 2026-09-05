@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <cctype>
 #include <stdexcept>
 
 namespace gameverse {
@@ -24,6 +25,12 @@ std::string StringField(std::string_view json, std::string_view name) {
   const auto end = json.find('"', position + 1);
   if (end == std::string_view::npos) throw std::invalid_argument("unterminated string field");
   return std::string(json.substr(position + 1, end - position - 1));
+}
+
+std::string OptionalStringField(std::string_view json, std::string_view name) {
+  const std::string key = "\"" + std::string(name) + "\"";
+  return json.find(key) == std::string_view::npos ? std::string{}
+                                                  : StringField(json, name);
 }
 
 std::uint64_t IntegerField(std::string_view json, std::string_view name) {
@@ -59,7 +66,8 @@ CompatibilityManifest ParseManifest(std::string_view json) {
   manifest.mode = StringField(json, "mode");
   if (manifest.schema_version != 1 || manifest.edition != "enhanced" ||
       manifest.pe_sha256.size() != 64 ||
-      (manifest.mode != "telemetry_only" && manifest.mode != "world_loader"))
+      (manifest.mode != "telemetry_only" && manifest.mode != "observe_only" &&
+       manifest.mode != "world_loader"))
     throw std::invalid_argument("unsupported compatibility manifest");
   const auto signatures_key = json.find("\"signatures\"");
   if (signatures_key == std::string_view::npos) throw std::invalid_argument("missing signatures");
@@ -83,7 +91,12 @@ CompatibilityManifest ParseManifest(std::string_view json) {
                     [](const PatternByte& value) { return value.wildcard; }))
       throw std::invalid_argument("invalid signature prologue");
     for (const auto value : prologue) spec.prologue.push_back(value.value);
+    spec.entry_sha256 = OptionalStringField(object, "entry_sha256");
     if (spec.name.empty() || spec.name.size() > 64 || spec.section != ".text" ||
+        (!spec.entry_sha256.empty() &&
+         (spec.entry_sha256.size() != 64 ||
+          !std::all_of(spec.entry_sha256.begin(), spec.entry_sha256.end(),
+                       [](unsigned char value) { return std::isxdigit(value) != 0; }))) ||
         std::any_of(manifest.signatures.begin(), manifest.signatures.end(),
                     [&](const SignatureSpec& existing) { return existing.name == spec.name; }))
       throw std::invalid_argument("invalid signature identity");
@@ -91,7 +104,8 @@ CompatibilityManifest ParseManifest(std::string_view json) {
     cursor = object_end + 1;
   }
   if (manifest.signatures.size() > 16 ||
-      (manifest.mode == "world_loader" && manifest.signatures.empty()))
+      ((manifest.mode == "world_loader" || manifest.mode == "observe_only") &&
+       manifest.signatures.empty()))
     throw std::invalid_argument("world loader requires verified signatures");
   return manifest;
 }

@@ -110,6 +110,8 @@ void AppendStartupDiagnostic(std::string_view event) noexcept {
 void RunBootstrap(void* module) noexcept {
   PipeClient pipe;
   StateMachine state;
+  ObserveHookSession observe_hooks;
+  std::vector<TelemetryCandidate> observed_candidates;
   bool minhook_initialized = false;
   try {
     AppendStartupDiagnostic("bootstrap_entered");
@@ -173,18 +175,30 @@ void RunBootstrap(void* module) noexcept {
     if (manifest.mode == "telemetry_only") {
       const auto candidates_path = directory / L"telemetry-candidates-v1.json";
       if (std::filesystem::exists(candidates_path)) {
-        const auto candidate_bytes = ReadBytes(candidates_path);
-        const std::string candidate_text(candidate_bytes.begin(), candidate_bytes.end());
-        const auto candidate_manifest = ParseManifest(candidate_text);
-        if (candidate_manifest.mode != "telemetry_only" ||
+      const auto candidate_bytes = ReadBytes(candidates_path);
+      const auto candidate_signature =
+          ReadBytes(directory / L"telemetry-candidates-v1.sig");
+      if (!VerifyManifestSignature(candidate_bytes, candidate_signature))
+        throw std::runtime_error("telemetry_candidates_signature_invalid");
+      const std::string candidate_text(candidate_bytes.begin(), candidate_bytes.end());
+      const auto candidate_manifest = ParseManifest(candidate_text);
+        if ((candidate_manifest.mode != "telemetry_only" &&
+             candidate_manifest.mode != "observe_only") ||
             candidate_manifest.edition != manifest.edition ||
             candidate_manifest.build != manifest.build ||
             candidate_manifest.pe_size != manifest.pe_size ||
             candidate_manifest.pe_sha256 != manifest.pe_sha256)
           throw std::runtime_error("telemetry_candidates_identity_mismatch");
-        const auto candidates =
-            InspectImageCandidates(GetModuleHandleW(nullptr), candidate_manifest);
-        if (!pipe.Send(SerializeTelemetryCandidates(candidates)))
+        if (candidate_manifest.mode == "observe_only") {
+          std::string observe_error;
+          if (!observe_hooks.Start(GetModuleHandleW(nullptr), candidate_manifest,
+                                   observed_candidates, observe_error))
+            throw std::runtime_error(observe_error);
+        } else {
+          observed_candidates =
+              InspectImageCandidates(GetModuleHandleW(nullptr), candidate_manifest);
+        }
+        if (!pipe.Send(SerializeTelemetryCandidates(observed_candidates)))
           throw std::runtime_error("telemetry_candidates_frame_rejected");
       }
       auto previous = telemetry.ObserveReadiness();
@@ -207,6 +221,10 @@ void RunBootstrap(void* module) noexcept {
           snapshot = telemetry.Capture("world_transition");
           telemetry.AppendLocal(snapshot);
           if (!pipe.Send(SerializeTelemetrySnapshot(snapshot))) return;
+          observe_hooks.Refresh(observed_candidates);
+          if (!observed_candidates.empty() &&
+              !pipe.Send(SerializeTelemetryCandidates(observed_candidates)))
+            return;
           snapshot.stage = "adapter_loaded";
           telemetry.AppendLocal(snapshot);
           if (!pipe.Send(SerializeTelemetrySnapshot(snapshot))) return;

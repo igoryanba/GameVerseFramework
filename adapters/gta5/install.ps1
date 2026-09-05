@@ -23,7 +23,8 @@ $files = @(
     @{Source=(Join-Path $PSScriptRoot '..\..\.build\native-bootstrap\Release\GameVerse.NativeBootstrap.asi');Relative='GameVerse.NativeBootstrap.asi'},
     @{Source=(Join-Path $PSScriptRoot '..\..\native\GameVerse.NativeBootstrap\compatibility\enhanced-1.0.1158.13.json');Relative='enhanced-1.0.1158.13.json'},
     @{Source=(Join-Path $PSScriptRoot '..\..\native\GameVerse.NativeBootstrap\compatibility\enhanced-1.0.1158.13.sig');Relative='enhanced-1.0.1158.13.sig'},
-    @{Source=(Join-Path $PSScriptRoot '..\..\native\GameVerse.NativeBootstrap\compatibility\telemetry-candidates-v1.json');Relative='telemetry-candidates-v1.json'}
+    @{Source=(Join-Path $PSScriptRoot '..\..\native\GameVerse.NativeBootstrap\compatibility\telemetry-candidates-v1.json');Relative='telemetry-candidates-v1.json'},
+    @{Source=(Join-Path $PSScriptRoot '..\..\native\GameVerse.NativeBootstrap\compatibility\telemetry-candidates-v1.sig');Relative='telemetry-candidates-v1.sig'}
 )
 # Validate the entire installation first. Existing mods are not overwritten.
 foreach ($file in $files) {

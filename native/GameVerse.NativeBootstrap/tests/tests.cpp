@@ -13,6 +13,14 @@ namespace {
 void Require(bool condition, const char* message) {
   if (!condition) throw std::runtime_error(message);
 }
+
+#pragma optimize("", off)
+__declspec(noinline) int ObserveTarget(int value) {
+  volatile int result = value;
+  for (volatile int index = 0; index < 7; ++index) result += index * 3;
+  return result;
+}
+#pragma optimize("", on)
 }
 
 int main() {
@@ -89,8 +97,15 @@ int main() {
     Require(telemetry_json.find("0x") == std::string::npos,
             "telemetry leaked an absolute address");
     const auto candidate_manifest_bytes = read(GAMEVERSE_TEST_CANDIDATES);
+    const auto candidate_signature = read(GAMEVERSE_TEST_CANDIDATE_SIGNATURE);
+    Require(gameverse::VerifyManifestSignature(candidate_manifest_bytes,
+                                                candidate_signature),
+            "observe-only manifest signature rejected");
     const auto candidate_manifest = gameverse::ParseManifest(
         std::string(candidate_manifest_bytes.begin(), candidate_manifest_bytes.end()));
+    Require(candidate_manifest.mode == "observe_only" &&
+                candidate_manifest.signatures[0].entry_sha256.size() == 64,
+            "observe-only attestation was not parsed");
     const auto candidates = gameverse::InspectImageCandidates(
         GetModuleHandleW(nullptr), candidate_manifest);
     Require(candidates.size() == 2, "research candidates were not inspected");
@@ -113,6 +128,30 @@ int main() {
     Require(gameverse::AdapterLogContainsMarkerAfter(adapter_log, initial_size),
             "current managed adapter log was not detected");
     std::filesystem::remove(adapter_log);
+
+    gameverse::CompatibilityManifest observe_manifest;
+    observe_manifest.schema_version = 1;
+    observe_manifest.edition = "enhanced";
+    observe_manifest.mode = "observe_only";
+    gameverse::SignatureSpec observe_signature;
+    observe_signature.name = "synthetic_observe_target";
+    observe_signature.section = ".text";
+    const auto* observe_bytes = reinterpret_cast<const std::uint8_t*>(&ObserveTarget);
+    for (std::size_t index = 0; index < 32; ++index)
+      observe_signature.pattern.push_back({observe_bytes[index], false});
+    observe_signature.entry_sha256 =
+        gameverse::Sha256Bytes(std::span(observe_bytes, std::size_t{32}));
+    observe_manifest.signatures.push_back(std::move(observe_signature));
+    std::vector<gameverse::TelemetryCandidate> observed;
+    std::string observe_error;
+    gameverse::ObserveHookSession observe_session;
+    if (!observe_session.Start(GetModuleHandleW(nullptr), observe_manifest,
+                               observed, observe_error))
+      throw std::runtime_error(observe_error);
+    Require(ObserveTarget(5) == 68, "observe hook changed function result");
+    observe_session.Refresh(observed);
+    Require(observed.size() == 1 && observed[0].call_count == 1,
+            "observe hook did not count exactly one call");
     std::cout << "native bootstrap tests passed\n";
     return 0;
   } catch (const std::exception& error) {
