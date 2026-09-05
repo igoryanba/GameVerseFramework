@@ -2,6 +2,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <array>
 
 namespace gameverse {
@@ -11,12 +12,25 @@ PipeClient::~PipeClient() { Close(); }
 bool PipeClient::Connect(std::wstring_view pipe, std::uint32_t timeout_ms) noexcept {
   Close();
   const std::wstring name(pipe);
-  if (!WaitNamedPipeW(name.c_str(), timeout_ms)) return false;
-  HANDLE value = CreateFileW(name.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
-                             OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-  if (value == INVALID_HANDLE_VALUE) return false;
-  handle_ = value;
-  return true;
+  const auto deadline = GetTickCount64() + timeout_ms;
+  do {
+    HANDLE value = CreateFileW(name.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
+                               OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (value != INVALID_HANDLE_VALUE) {
+      handle_ = value;
+      return true;
+    }
+    const auto error = GetLastError();
+    if (error != ERROR_FILE_NOT_FOUND && error != ERROR_PIPE_BUSY) return false;
+    const auto now = GetTickCount64();
+    if (now >= deadline) return false;
+    const auto remaining =
+        static_cast<DWORD>(std::min<std::uint64_t>(deadline - now, 100));
+    if (error == ERROR_PIPE_BUSY)
+      static_cast<void>(WaitNamedPipeW(name.c_str(), remaining));
+    else
+      Sleep(remaining);
+  } while (true);
 }
 
 bool PipeClient::Send(std::string_view json) noexcept {

@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iterator>
 #include <stdexcept>
+#include <thread>
 
 namespace {
 void Require(bool condition, const char* message) {
@@ -26,6 +27,25 @@ int main() {
     bool malformed = false;
     try { static_cast<void>(gameverse::ParsePattern("4Z")); } catch (const std::invalid_argument&) { malformed = true; }
     Require(malformed, "malformed pattern accepted");
+
+    const std::wstring delayed_pipe =
+        LR"(\\.\pipe\gameverse-bootstrap-delayed-test-)" +
+        std::to_wstring(GetCurrentProcessId());
+    std::thread server([&] {
+      Sleep(150);
+      const HANDLE handle = CreateNamedPipeW(
+          delayed_pipe.c_str(), PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE | PIPE_WAIT,
+          1, 4096, 4096, 0, nullptr);
+      if (handle != INVALID_HANDLE_VALUE) {
+        static_cast<void>(ConnectNamedPipe(handle, nullptr));
+        CloseHandle(handle);
+      }
+    });
+    gameverse::PipeClient delayed_client;
+    Require(delayed_client.Connect(delayed_pipe, 2'000),
+            "pipe client did not wait for a delayed server");
+    delayed_client.Close();
+    server.join();
 
     gameverse::StateMachine state;
     Require(!state.Advance(gameverse::BootstrapState::world_ready), "state skip accepted");
