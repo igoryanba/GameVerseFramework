@@ -46,6 +46,10 @@ pub enum Message {
         schema_version: u16,
         candidates: Vec<TelemetryCandidateV1>,
     },
+    TelemetryCallersV1 {
+        schema_version: u16,
+        callers: Vec<TelemetryCallerV1>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -128,6 +132,17 @@ pub struct TelemetryCandidateV1 {
     pub entry_sha256: Option<String>,
 }
 
+/// Read-only direct-call inventory derived inside the loaded image. RVAs and
+/// hashes remain local research data and are never forwarded to the launcher.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TelemetryCallerV1 {
+    pub candidate_id: String,
+    pub caller_rva: u32,
+    pub direct_call_sites: u32,
+    pub entry_sha256: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TelemetryReportV1 {
@@ -164,7 +179,8 @@ impl Message {
             | Self::BootstrapFailure { schema_version, .. }
             | Self::BootstrapCommand { schema_version, .. }
             | Self::TelemetrySnapshotV1 { schema_version, .. }
-            | Self::TelemetryCandidatesV1 { schema_version, .. } => *schema_version == VERSION,
+            | Self::TelemetryCandidatesV1 { schema_version, .. }
+            | Self::TelemetryCallersV1 { schema_version, .. } => *schema_version == VERSION,
             Self::TelemetryHelloV1 {
                 schema_version,
                 probe_build,
@@ -200,6 +216,20 @@ impl Message {
                                 digest.len() == 64
                                     && digest.bytes().all(|value| value.is_ascii_hexdigit())
                             })
+                    })
+            }
+            Self::TelemetryCallersV1 { callers, .. } => {
+                callers.len() <= 128
+                    && callers.iter().all(|caller| {
+                        !caller.candidate_id.is_empty()
+                            && caller.candidate_id.len() <= 64
+                            && caller.direct_call_sites > 0
+                            && caller.direct_call_sites <= 1024
+                            && caller.entry_sha256.len() == 64
+                            && caller
+                                .entry_sha256
+                                .bytes()
+                                .all(|value| value.is_ascii_hexdigit())
                     })
             }
             _ => true,
@@ -322,5 +352,16 @@ mod tests {
             decode(&encode(&candidates).unwrap()[4..]).unwrap(),
             candidates
         );
+
+        let callers = Message::TelemetryCallersV1 {
+            schema_version: VERSION,
+            callers: vec![TelemetryCallerV1 {
+                candidate_id: "transition_ref_c".into(),
+                caller_rva: 0x11d_1ad0,
+                direct_call_sites: 1,
+                entry_sha256: "22".repeat(32),
+            }],
+        };
+        assert_eq!(decode(&encode(&callers).unwrap()[4..]).unwrap(), callers);
     }
 }

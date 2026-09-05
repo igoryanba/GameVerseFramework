@@ -94,6 +94,18 @@ std::vector<TelemetryCandidate> InspectImageCandidates(
 std::string SerializeTelemetryCandidates(
     std::span<const TelemetryCandidate> candidates);
 
+struct TelemetryCallerCandidate {
+  std::string candidate_id;
+  std::uint32_t caller_rva{};
+  std::uint32_t direct_call_sites{};
+  std::string entry_sha256;
+};
+
+std::vector<TelemetryCallerCandidate> InspectDirectCallers(
+    void* image, std::span<const TelemetryCandidate> candidates);
+std::string SerializeTelemetryCallers(
+    std::span<const TelemetryCallerCandidate> callers);
+
 struct ObserveHook {
   void* target{};
   void* allocation{};

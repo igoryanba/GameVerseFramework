@@ -200,6 +200,10 @@ void RunBootstrap(void* module) noexcept {
         }
         if (!pipe.Send(SerializeTelemetryCandidates(observed_candidates)))
           throw std::runtime_error("telemetry_candidates_frame_rejected");
+        const auto caller_candidates = InspectDirectCallers(
+            GetModuleHandleW(nullptr), observed_candidates);
+        if (!pipe.Send(SerializeTelemetryCallers(caller_candidates)))
+          throw std::runtime_error("telemetry_callers_frame_rejected");
       }
       auto previous = telemetry.ObserveReadiness();
       const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(15);

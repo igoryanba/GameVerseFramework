@@ -313,4 +313,21 @@ std::string SerializeTelemetryCandidates(
   return output;
 }
 
+std::string SerializeTelemetryCallers(
+    std::span<const TelemetryCallerCandidate> callers) {
+  std::string output =
+      "{\"type\":\"telemetry_callers_v1\",\"schema_version\":1,\"callers\":[";
+  for (std::size_t index = 0; index < callers.size(); ++index) {
+    if (index != 0) output += ',';
+    const auto& caller = callers[index];
+    output += "{\"candidate_id\":\"" + JsonEscape(caller.candidate_id) +
+              "\",\"caller_rva\":" + std::to_string(caller.caller_rva) +
+              ",\"direct_call_sites\":" +
+              std::to_string(caller.direct_call_sites) +
+              ",\"entry_sha256\":\"" + caller.entry_sha256 + "\"}";
+  }
+  output += "]}";
+  return output;
+}
+
 }  // namespace gameverse

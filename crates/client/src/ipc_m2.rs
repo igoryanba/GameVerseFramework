@@ -520,6 +520,25 @@ where
                 )
                 .await?;
             }
+            bootstrap::Message::TelemetryCallersV1 { callers, .. } => {
+                anyhow::ensure!(hello_seen, "caller telemetry preceded bootstrap identity");
+                // Caller RVAs and entry hashes are kept in the ignored research
+                // trace. Only a bounded count reaches the player-facing UI.
+                ui::write(
+                    ui_tx,
+                    &UiResponse::success(
+                        "bridge-stage",
+                        json!({
+                            "stage": "telemetry_callers_observed",
+                            "message": format!(
+                                "GameVerse проверил {} вызывающих функций",
+                                callers.len()
+                            )
+                        }),
+                    ),
+                )
+                .await?;
+            }
             bootstrap::Message::BootstrapStage {
                 monotonic_ms,
                 stage,

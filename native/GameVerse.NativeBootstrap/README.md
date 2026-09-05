@@ -79,6 +79,12 @@ monotonic call-count delta while every frontend-only control records a zero
 delta. The analyzer reports this separately as `observe_gate_satisfied`; a page
 correlation alone never authorizes a behavioral hook.
 
+After a candidate passes that correlation, the probe inventories direct relative
+call sites in the loaded executable and reports only owning-function RVAs,
+call-site counts and entry hashes. This read-only caller inventory narrows the
+one-shot transition initiator without exposing process addresses or code bytes
+and without installing additional hooks.
+
 `world_loader` mode is rejected until independently verified patterns for this
 exact executable are recorded, signed, uniquely matched, checked against the PE
 executable section and covered by tests. Do not derive patterns from DRM,

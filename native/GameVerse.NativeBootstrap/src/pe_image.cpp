@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <map>
 
 namespace gameverse {
 
@@ -106,6 +107,51 @@ std::vector<TelemetryCandidate> InspectImageCandidates(
             Sha256Bytes(std::span(base + candidate.rva, std::size_t{32}));
     }
     result.push_back(std::move(candidate));
+  }
+  return result;
+}
+
+std::vector<TelemetryCallerCandidate> InspectDirectCallers(
+    void* image, std::span<const TelemetryCandidate> candidates) {
+  std::vector<TelemetryCallerCandidate> result;
+  const std::uint8_t* base = nullptr;
+  const IMAGE_NT_HEADERS64* nt = nullptr;
+  if (!ReadImage(image, base, nt)) return result;
+  const auto image_base = reinterpret_cast<std::uintptr_t>(base);
+  const auto image_end = image_base + nt->OptionalHeader.SizeOfImage;
+  const auto first = IMAGE_FIRST_SECTION(nt);
+  for (const auto& candidate : candidates) {
+    if (candidate.rva == 0 || candidate.unique_match_count != 1) continue;
+    const auto target = image_base + candidate.rva;
+    std::map<std::uint32_t, std::uint32_t> callers;
+    for (unsigned index = 0; index < nt->FileHeader.NumberOfSections; ++index) {
+      const auto& section = first[index];
+      if ((section.Characteristics & IMAGE_SCN_MEM_EXECUTE) == 0) continue;
+      const auto section_begin = base + section.VirtualAddress;
+      const auto section_size = static_cast<std::size_t>(section.Misc.VirtualSize);
+      if (section_size < 5) continue;
+      for (std::size_t offset = 0; offset <= section_size - 5; ++offset) {
+        if (section_begin[offset] != 0xe8) continue;
+        std::int32_t displacement = 0;
+        std::memcpy(&displacement, section_begin + offset + 1,
+                    sizeof(displacement));
+        const auto call_address = reinterpret_cast<std::uintptr_t>(section_begin + offset);
+        if (call_address + 5 + displacement != target) continue;
+        DWORD64 lookup_base = static_cast<DWORD64>(image_base);
+        const auto entry = RtlLookupFunctionEntry(
+            static_cast<DWORD64>(call_address), &lookup_base, nullptr);
+        if (!entry || lookup_base != image_base ||
+            entry->BeginAddress >= nt->OptionalHeader.SizeOfImage) continue;
+        ++callers[entry->BeginAddress];
+      }
+    }
+    for (const auto& [caller_rva, call_sites] : callers) {
+      if (result.size() >= 128) return result;
+      if (image_base + caller_rva + 32 > image_end) continue;
+      result.push_back(
+          {candidate.candidate_id, caller_rva, call_sites,
+           Sha256Bytes(std::span(base + caller_rva, std::size_t{32}))});
+    }
   }
   return result;
 }

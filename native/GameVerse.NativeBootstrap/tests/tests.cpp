@@ -153,6 +153,13 @@ int main() {
     observe_session.Refresh(observed);
     Require(observed.size() == 1 && observed[0].call_count == 1,
             "observe hook did not count exactly one call");
+    const auto callers = gameverse::InspectDirectCallers(
+        GetModuleHandleW(nullptr), observed);
+    const auto callers_json = gameverse::SerializeTelemetryCallers(callers);
+    Require(callers_json.find("telemetry_callers_v1") != std::string::npos,
+            "direct caller telemetry serialization failed");
+    Require(callers_json.find("0x") == std::string::npos,
+            "direct caller telemetry leaked an absolute address");
     std::cout << "native bootstrap tests passed\n";
     return 0;
   } catch (const std::exception& error) {

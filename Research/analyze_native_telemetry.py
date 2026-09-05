@@ -17,6 +17,7 @@ KNOWN_TYPES = {
     "telemetry_hello_v1",
     "telemetry_snapshot_v1",
     "telemetry_candidates_v1",
+    "telemetry_callers_v1",
 }
 SENSITIVE = re.compile(
     r"(?i)(password|access[_-]?token|refresh[_-]?token|dpapi|0x[0-9a-f]{8,})"
@@ -52,6 +53,7 @@ def summarize(path: Path) -> dict[str, Any]:
     failure = None
     candidates: list[dict[str, Any]] = []
     candidate_series: dict[str, list[dict[str, Any]]] = {}
+    callers: list[dict[str, Any]] = []
     for message in messages:
         kind = message["type"]
         if kind == "bootstrap_stage":
@@ -94,6 +96,25 @@ def summarize(path: Path) -> dict[str, Any]:
                     raise ValueError(f"{path}: malformed telemetry candidate")
                 candidates.append(candidate)
                 candidate_series.setdefault(candidate["candidate_id"], []).append(candidate)
+        elif kind == "telemetry_callers_v1":
+            raw_callers = message.get("callers")
+            if not isinstance(raw_callers, list) or len(raw_callers) > 128:
+                raise ValueError(f"{path}: malformed telemetry callers")
+            for caller in raw_callers:
+                if (
+                    not isinstance(caller, dict)
+                    or not isinstance(caller.get("candidate_id"), str)
+                    or not isinstance(caller.get("caller_rva"), int)
+                    or caller["caller_rva"] < 0
+                    or caller["caller_rva"] > 0xFFFFFFFF
+                    or not isinstance(caller.get("direct_call_sites"), int)
+                    or caller["direct_call_sites"] < 1
+                    or not isinstance(caller.get("entry_sha256"), str)
+                    or re.fullmatch(r"[0-9A-Fa-f]{64}", caller["entry_sha256"])
+                    is None
+                ):
+                    raise ValueError(f"{path}: malformed telemetry caller")
+                callers.append(caller)
 
     candidate_observations = []
     for candidate_id, series in sorted(candidate_series.items()):
@@ -184,6 +205,7 @@ def summarize(path: Path) -> dict[str, Any]:
         "sections": sections,
         "candidates": candidates,
         "candidate_observations": candidate_observations,
+        "callers": callers,
     }
 
 

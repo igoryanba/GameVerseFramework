@@ -185,6 +185,30 @@ class AnalyzeNativeTelemetryTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "call count decreased"):
                 summarize(decreasing)
 
+    def test_caller_inventory_is_validated(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "caller"
+            write_trace(path, False)
+            with path.open("a", encoding="utf-8") as stream:
+                stream.write(
+                    json.dumps(
+                        {
+                            "type": "telemetry_callers_v1",
+                            "schema_version": 1,
+                            "callers": [
+                                {
+                                    "candidate_id": "candidate",
+                                    "caller_rva": 8192,
+                                    "direct_call_sites": 1,
+                                    "entry_sha256": "2" * 64,
+                                }
+                            ],
+                        }
+                    )
+                    + "\n"
+                )
+            self.assertEqual(summarize(path)["callers"][0]["caller_rva"], 8192)
+
     def test_rejects_sensitive_data_and_oversized_frames(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "bad"
