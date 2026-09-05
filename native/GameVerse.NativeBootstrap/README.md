@@ -12,7 +12,9 @@ active, or world-loader signatures are absent or ambiguous.
 It can inventory string locations by their query hash or generate a wildcard
 signature from an independently selected RVA. RIP-relative displacements and
 relative immediates are masked and the resulting pattern is counted across all
-executable sections.
+executable sections. String inventory also reports x64 RIP-relative instruction
+RVAs that reference an exact match, providing the first independent candidate
+chain without copying third-party signatures.
 
 ```text
 gameverse-native-inspector --image GTA5_Enhanced.exe --string frontend

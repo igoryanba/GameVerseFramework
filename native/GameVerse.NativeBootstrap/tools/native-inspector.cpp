@@ -191,6 +191,57 @@ std::vector<std::uint32_t> FindStringRvas(const Image& image, const std::string&
   return output;
 }
 
+std::vector<std::uint32_t> FindReferences(
+    const Image& image, const std::vector<std::uint32_t>& targets) {
+  std::vector<std::uint32_t> references;
+  ZydisDecoder decoder;
+  if (!ZYAN_SUCCESS(ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_64,
+                                      ZYDIS_STACK_WIDTH_64)))
+    throw std::runtime_error("decoder_initialization_failed");
+  for (const auto& section : image.sections) {
+    if ((section.characteristics & IMAGE_SCN_MEM_EXECUTE) == 0 ||
+        section.raw_offset >= image.bytes.size())
+      continue;
+    const auto size = std::min<std::size_t>(section.raw_size,
+                                            image.bytes.size() - section.raw_offset);
+    std::size_t offset = 0;
+    while (offset < size && references.size() < 256) {
+      ZydisDecodedInstruction instruction{};
+      ZydisDecodedOperand operands[ZYDIS_MAX_OPERAND_COUNT]{};
+      if (!ZYAN_SUCCESS(ZydisDecoderDecodeFull(
+              &decoder, image.bytes.data() + section.raw_offset + offset,
+              size - offset, &instruction, operands))) {
+        ++offset;
+        continue;
+      }
+      const auto instruction_rva =
+          static_cast<std::uint64_t>(section.rva) + offset;
+      for (std::uint8_t operand_index = 0;
+           operand_index < instruction.operand_count_visible; ++operand_index) {
+        const auto& operand = operands[operand_index];
+        if (!((operand.type == ZYDIS_OPERAND_TYPE_MEMORY &&
+               operand.mem.base == ZYDIS_REGISTER_RIP) ||
+              (operand.type == ZYDIS_OPERAND_TYPE_IMMEDIATE &&
+               operand.imm.is_relative)))
+          continue;
+        ZyanU64 absolute = 0;
+        if (ZYAN_SUCCESS(ZydisCalcAbsoluteAddress(
+                &instruction, &operand, instruction_rva, &absolute)) &&
+            absolute <= 0xffff'ffffULL &&
+            std::binary_search(targets.begin(), targets.end(),
+                               static_cast<std::uint32_t>(absolute))) {
+          references.push_back(static_cast<std::uint32_t>(instruction_rva));
+          break;
+        }
+      }
+      offset += instruction.length;
+    }
+  }
+  std::sort(references.begin(), references.end());
+  references.erase(std::unique(references.begin(), references.end()), references.end());
+  return references;
+}
+
 }  // namespace
 
 int wmain(int argc, wchar_t** argv) {
@@ -233,7 +284,9 @@ int wmain(int argc, wchar_t** argv) {
                 << "\",\"unique_match_count\":" << matches << '}';
     }
     if (search) {
-      const auto rvas = FindStringRvas(image, *search);
+      auto rvas = FindStringRvas(image, *search);
+      std::sort(rvas.begin(), rvas.end());
+      const auto references = FindReferences(image, rvas);
       std::cout << ",\"string_query\":{\"sha256\":\""
                 << gameverse::Sha256Bytes(std::span(
                        reinterpret_cast<const std::uint8_t*>(search->data()), search->size()))
@@ -241,6 +294,11 @@ int wmain(int argc, wchar_t** argv) {
       for (std::size_t index = 0; index < rvas.size(); ++index) {
         if (index != 0) std::cout << ',';
         std::cout << '"' << Hex(rvas[index]) << '"';
+      }
+      std::cout << "],\"reference_rvas\":[";
+      for (std::size_t index = 0; index < references.size(); ++index) {
+        if (index != 0) std::cout << ',';
+        std::cout << '"' << Hex(references[index]) << '"';
       }
       std::cout << "]}";
     }
