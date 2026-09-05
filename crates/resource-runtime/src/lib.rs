@@ -8,7 +8,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicU64, AtomicUsize, Ordering},
         Arc, Mutex,
     },
     time::Instant,
@@ -99,6 +99,7 @@ pub struct ResourceHost {
     instruction_count: Arc<AtomicUsize>,
     dispatch_started: Arc<Mutex<Instant>>,
     convars: Arc<Mutex<BTreeMap<String, String>>>,
+    session_source: Arc<AtomicU64>,
     generation: u64,
 }
 
@@ -150,6 +151,7 @@ impl ResourceHost {
             instruction_count,
             dispatch_started,
             convars: Arc::new(Mutex::new(BTreeMap::new())),
+            session_source: Arc::new(AtomicU64::new(0)),
             generation: 0,
         };
         host.install_sandbox()?;
@@ -176,6 +178,13 @@ impl ResourceHost {
         Ok(())
     }
 
+    /// Assigns the server-issued session ID used as `source` by a client VM.
+    /// Zero clears the identity while disconnected. Server VMs always emit
+    /// without a client source and the M2 server supplies the authenticated ID.
+    pub fn set_session_source(&self, source: u64) {
+        self.session_source.store(source, Ordering::Relaxed);
+    }
+
     fn reset_budget(&self) {
         self.instruction_count.store(0, Ordering::Relaxed);
         if let Ok(mut started) = self.dispatch_started.lock() {
@@ -193,6 +202,7 @@ impl ResourceHost {
         let queue = self.outbound.clone();
         let resource = self.manifest.name.clone();
         let side = self.side;
+        let session_source = self.session_source.clone();
         let limits = self.limits.clone();
         globals.set(
             "__gv_emit",
@@ -206,7 +216,8 @@ impl ResourceHost {
                         resource: resource.clone(),
                         name,
                         source: if side == HostSide::Client {
-                            Some(1)
+                            let value = session_source.load(Ordering::Relaxed);
+                            (value != 0).then_some(value)
                         } else {
                             None
                         },
@@ -1076,5 +1087,29 @@ RegisterNetEvent('source-check', function() TriggerServerEvent('source-result', 
         })
         .unwrap();
         assert_eq!(host.drain_outbound()[0].arguments, [serde_json::json!(37)]);
+    }
+
+    #[test]
+    fn client_events_use_only_the_server_assigned_session_source() {
+        let (dir, manifest) = fixture("TriggerServerEvent('ready')");
+        let mut host =
+            ResourceHost::new(dir.path(), manifest, HostSide::Client, Limits::default()).unwrap();
+        host.start().unwrap();
+        assert_eq!(host.drain_outbound()[0].source, None);
+        host.set_session_source(37);
+        host.dispatch(&ResourceEvent {
+            resource: "fixture".into(),
+            name: "unused".into(),
+            source: None,
+            target: None,
+            arguments: vec![],
+            correlation_id: None,
+        })
+        .unwrap();
+        host.lua
+            .load("TriggerServerEvent('connected')")
+            .exec()
+            .unwrap();
+        assert_eq!(host.drain_outbound()[0].source, Some(37));
     }
 }
