@@ -158,7 +158,13 @@ void RunBootstrap(void* module) noexcept {
           if (!pipe.Send(SerializeTelemetrySnapshot(snapshot))) return;
         }
         if (current.adapter_loaded && !previous.adapter_loaded) {
-          snapshot = telemetry.Capture("adapter_loaded");
+          // A managed SHVDN adapter starts only after the local world exists.
+          // Preserve that transition as a distinct trace stage while reusing a
+          // single bounded PE snapshot for both observations.
+          snapshot = telemetry.Capture("world_transition");
+          telemetry.AppendLocal(snapshot);
+          if (!pipe.Send(SerializeTelemetrySnapshot(snapshot))) return;
+          snapshot.stage = "adapter_loaded";
           telemetry.AppendLocal(snapshot);
           if (!pipe.Send(SerializeTelemetrySnapshot(snapshot))) return;
           pipe.Send(ObservedStage("adapter_ready"));
