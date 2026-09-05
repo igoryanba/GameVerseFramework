@@ -54,7 +54,7 @@ try {
     $a=Get-Content (Join-Path $Output 'adapter.json') -Raw | ConvertFrom-Json
     $b=Get-Content (Join-Path $Output 'bot.json') -Raw | ConvertFrom-Json
     $metrics=(Get-Content (Join-Path $Output 'server.log') | Select-Object -Last 1) | ConvertFrom-Json
-    if ($a.sessions.Count -lt 2 -or $a.creates -lt 2 -or $a.updates -lt 20 -or $a.destroys -lt 1 -or $b.received_remote_states -lt 10 -or $metrics.players -ne 0 -or $metrics.max_input_depth -gt 128) { throw 'Acceptance checks failed' }
+    if ($a.sessions.Count -lt 2 -or $a.activations -lt 2 -or $a.creates -lt 2 -or $a.updates -lt 20 -or $a.destroys -lt 1 -or $b.received_remote_states -lt 10 -or $metrics.players -ne 0 -or $metrics.max_input_depth -gt 128) { throw 'Acceptance checks failed' }
     [ordered]@{ backend='synthetic-adapter-harness'; gta_loaded=$false; seconds=$Seconds; passed=$true; csharp_named_pipe_rust_quic=$true; reconnect=$true; remote_create_update_destroy=$true; bidirectional_3d_state=$true; metrics=$metrics } | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $Output 'acceptance.json')
     Get-Content (Join-Path $Output 'acceptance.json')
 }

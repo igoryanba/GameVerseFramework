@@ -46,7 +46,7 @@ bool stalled=false;
 var timer=Stopwatch.StartNew();
 var remotes=new Dictionary<EntityId,RemoteEntity>();
 var sessions=new HashSet<ulong>();
-ulong creates=0,updates=0,destroys=0,resets=0;
+ulong creates=0,updates=0,destroys=0,resets=0,activations=0;
 var logGate=new object();
 void Log(string line){lock(logGate)Console.WriteLine(line);}
 PipeLink MakeLink(){var l=new PipeLink(Log,Wire.GameBuild,"synthetic-adapter-harness",pipeName);l.Start();return l;}
@@ -65,7 +65,10 @@ try
         {
             switch((string)command["type"])
             {
-                case "session_begin": remotes.Clear();sessions.Add((ulong)command["session"]);break;
+                case "session_begin":
+                    remotes.Clear();sessions.Add((ulong)command["session"]);
+                    link.Report("session_ready",command["entity"].ToObject<EntityId>());break;
+                case "session_active": activations++;break;
                 case "remote_entity_create":
                     var entity=Wire.Entity(command);remotes[entity.id]=entity;last=entity;creates++;break;
                 case "remote_entity_update":
@@ -81,9 +84,9 @@ try
     }
 }
 finally{link.Dispose();}
-var report=new JObject { ["backend"]="synthetic-adapter-harness",["runtime"]=Environment.Version.ToString(),["gta_loaded"]=false,["elapsed_seconds"]=timer.Elapsed.TotalSeconds,["sessions"]=JArray.FromObject(sessions),["creates"]=creates,["updates"]=updates,["destroys"]=destroys,["resets"]=resets,["last_remote"]=last==null?JValue.CreateNull():JToken.FromObject(last),["clean_shutdown"]=true };
+var report=new JObject { ["backend"]="synthetic-adapter-harness",["runtime"]=Environment.Version.ToString(),["gta_loaded"]=false,["elapsed_seconds"]=timer.Elapsed.TotalSeconds,["sessions"]=JArray.FromObject(sessions),["activations"]=activations,["creates"]=creates,["updates"]=updates,["destroys"]=destroys,["resets"]=resets,["last_remote"]=last==null?JValue.CreateNull():JToken.FromObject(last),["clean_shutdown"]=true };
 if(output!=null)File.WriteAllText(output,report.ToString());Console.WriteLine(report);
-if(creates==0||updates==0||(reconnect>0&&sessions.Count<2))throw new Exception("Presence scenario not exercised");
+if(creates==0||updates==0||activations==0||(reconnect>0&&sessions.Count<2))throw new Exception("Presence scenario not exercised");
 if(stallAfter>0&&sessions.Count<3)throw new Exception("Stalled game callback did not reset the session");
 
 string Value(string option,string fallback){int index=Array.IndexOf(args,option);return index>=0?args[index+1]:fallback;}
