@@ -30,6 +30,7 @@ use tokio::{
 use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
 
 const DEADLINE: Duration = Duration::from_secs(8);
+const INTERACTIVE_INPUT_DEADLINE: Duration = Duration::from_secs(10 * 60);
 
 struct ReaderGuard(tokio::task::JoinHandle<()>);
 impl Drop for ReaderGuard {
@@ -266,7 +267,8 @@ where
     let mut interactive = Some(InteractiveClient::connect(server, cert, Some(build)).await?);
     let mut authenticated = false;
     loop {
-        let request: UiRequest = timeout(DEADLINE * 8, ui::read(&mut ui_rx)).await??;
+        let request: UiRequest =
+            timeout(INTERACTIVE_INPUT_DEADLINE, ui::read(&mut ui_rx)).await??;
         if !request.valid() {
             ui::write(
                 &mut ui_tx,
