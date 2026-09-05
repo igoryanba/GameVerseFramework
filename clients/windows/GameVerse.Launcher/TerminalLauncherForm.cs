@@ -182,8 +182,6 @@ internal sealed class TerminalLauncherForm : Form
             bridge.Disconnected += BridgeDisconnected;
             bridge.BridgeEvent += BridgeEvent;
             await bridge.ConnectWithRetryAsync(TimeSpan.FromSeconds(15));
-            UiResponse ready = await bridge.SendAsync(UiBridgeClient.Request("ui.ready"), stopping.Token);
-            ShowResponse(ready);
 
             if (existingGames.Length > 0 && attachExisting)
             {
@@ -195,6 +193,8 @@ internal sealed class TerminalLauncherForm : Form
             {
                 await LaunchGameOnceAsync(config, existingGames.Select(value => value.Id).ToHashSet());
             }
+            UiResponse ready = await bridge.SendAsync(UiBridgeClient.Request("ui.ready"), stopping.Token);
+            ShowResponse(ready);
             WindowState = FormWindowState.Minimized;
             if (gameProcess is not null) _ = WatchGameAsync(gameProcess);
         }
