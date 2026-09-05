@@ -74,6 +74,10 @@ python Research/analyze_native_telemetry.py `
 
 The candidate gate remains false until two adapter-ready traces and one
 frontend-only control trace share the same executable fingerprint.
+For an observe-only candidate, both adapter-ready traces must record a positive,
+monotonic call-count delta while every frontend-only control records a zero
+delta. The analyzer reports this separately as `observe_gate_satisfied`; a page
+correlation alone never authorizes a behavioral hook.
 
 `world_loader` mode is rejected until independently verified patterns for this
 exact executable are recorded, signed, uniquely matched, checked against the PE

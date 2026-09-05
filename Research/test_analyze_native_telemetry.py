@@ -55,6 +55,29 @@ def write_trace(path: Path, adapter: bool, changed_rvas: list[int] | None = None
     path.write_text("".join(json.dumps(v) + "\n" for v in messages), encoding="utf-8")
 
 
+def append_candidate(path: Path, count: int, *, candidate_id: str = "candidate") -> None:
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write(
+            json.dumps(
+                {
+                    "type": "telemetry_candidates_v1",
+                    "schema_version": 1,
+                    "candidates": [
+                        {
+                            "candidate_id": candidate_id,
+                            "rva": 4096,
+                            "section": ".text",
+                            "unique_match_count": 1,
+                            "call_count": count,
+                            "entry_sha256": "1" * 64,
+                        }
+                    ],
+                }
+            )
+            + "\n"
+        )
+
+
 class AnalyzeNativeTelemetryTests(unittest.TestCase):
     def test_candidate_message_is_bounded_and_preserved(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -116,6 +139,51 @@ class AnalyzeNativeTelemetryTests(unittest.TestCase):
             write_trace(malformed, True, [-1])
             with self.assertRaisesRegex(ValueError, "malformed changed page RVA"):
                 build_report([malformed])
+
+    def test_observe_gate_requires_two_positive_manual_deltas_and_zero_control(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manual_one, manual_two, control = (
+                root / "manual-one",
+                root / "manual-two",
+                root / "control",
+            )
+            for path in (manual_one, manual_two):
+                write_trace(path, True)
+                append_candidate(path, 0)
+                append_candidate(path, 42)
+            write_trace(control, False)
+            append_candidate(control, 0)
+            append_candidate(control, 0)
+            report = build_report([manual_one, manual_two, control])
+            observation = report["candidate_observations"][0]
+            self.assertEqual(observation["manual_call_deltas"], [42, 42])
+            self.assertEqual(observation["control_call_deltas"], [0])
+            self.assertTrue(observation["observe_gate_satisfied"])
+
+    def test_observe_gate_rejects_control_calls_and_decreasing_counter(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = [root / "manual-one", root / "manual-two", root / "control"]
+            for path in paths[:2]:
+                write_trace(path, True)
+                append_candidate(path, 0)
+                append_candidate(path, 1)
+            write_trace(paths[2], False)
+            append_candidate(paths[2], 0)
+            append_candidate(paths[2], 1)
+            self.assertFalse(
+                build_report(paths)["candidate_observations"][0][
+                    "observe_gate_satisfied"
+                ]
+            )
+
+            decreasing = root / "decreasing"
+            write_trace(decreasing, True)
+            append_candidate(decreasing, 2)
+            append_candidate(decreasing, 1)
+            with self.assertRaisesRegex(ValueError, "call count decreased"):
+                summarize(decreasing)
 
     def test_rejects_sensitive_data_and_oversized_frames(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

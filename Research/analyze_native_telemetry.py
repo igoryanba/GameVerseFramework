@@ -51,6 +51,7 @@ def summarize(path: Path) -> dict[str, Any]:
     fingerprint = None
     failure = None
     candidates: list[dict[str, Any]] = []
+    candidate_series: dict[str, list[dict[str, Any]]] = {}
     for message in messages:
         kind = message["type"]
         if kind == "bootstrap_stage":
@@ -92,6 +93,38 @@ def summarize(path: Path) -> dict[str, Any]:
                 ):
                     raise ValueError(f"{path}: malformed telemetry candidate")
                 candidates.append(candidate)
+                candidate_series.setdefault(candidate["candidate_id"], []).append(candidate)
+
+    candidate_observations = []
+    for candidate_id, series in sorted(candidate_series.items()):
+        identities = {
+            (
+                item["rva"],
+                item.get("section", ""),
+                item["unique_match_count"],
+                item.get("entry_sha256", ""),
+            )
+            for item in series
+        }
+        counts = [item["call_count"] for item in series]
+        if len(identities) != 1:
+            raise ValueError(f"{path}: candidate identity changed inside trace")
+        if counts != sorted(counts):
+            raise ValueError(f"{path}: candidate call count decreased")
+        latest_candidate = series[-1]
+        candidate_observations.append(
+            {
+                "candidate_id": candidate_id,
+                "rva": latest_candidate["rva"],
+                "section": latest_candidate.get("section", ""),
+                "unique_match_count": latest_candidate["unique_match_count"],
+                "entry_sha256": latest_candidate.get("entry_sha256", ""),
+                "initial_call_count": counts[0],
+                "final_call_count": counts[-1],
+                "call_delta": counts[-1] - counts[0],
+                "sample_count": len(counts),
+            }
+        )
 
     if fingerprint is None or "frontend_stable" not in stages:
         classification = "incomplete"
@@ -150,6 +183,7 @@ def summarize(path: Path) -> dict[str, Any]:
         "readiness": readiness,
         "sections": sections,
         "candidates": candidates,
+        "candidate_observations": candidate_observations,
     }
 
 
@@ -192,6 +226,62 @@ def build_report(paths: list[Path]) -> dict[str, Any]:
                     "control_trace_hits": control_hits,
                 }
             )
+
+    observation_keys: set[tuple[str, int, str, str]] = set()
+    for trace in traces:
+        for observation in trace["candidate_observations"]:
+            observation_keys.add(
+                (
+                    observation["candidate_id"],
+                    observation["rva"],
+                    observation["section"],
+                    observation["entry_sha256"],
+                )
+            )
+    candidate_observations = []
+    for candidate_id, rva, section, entry_sha256 in sorted(observation_keys):
+        manual_deltas = []
+        control_deltas = []
+        invalid_matches = 0
+        for trace in traces:
+            matches = [
+                item
+                for item in trace["candidate_observations"]
+                if (
+                    item["candidate_id"],
+                    item["rva"],
+                    item["section"],
+                    item["entry_sha256"],
+                )
+                == (candidate_id, rva, section, entry_sha256)
+            ]
+            for item in matches:
+                if item["unique_match_count"] != 1:
+                    invalid_matches += 1
+                if trace["classification"] == "adapter_ready":
+                    manual_deltas.append(item["call_delta"])
+                elif trace["classification"] == "control_frontend":
+                    control_deltas.append(item["call_delta"])
+        confirmed = (
+            len(fingerprints) == 1
+            and len(manual_deltas) >= 2
+            and len(control_deltas) >= 1
+            and all(delta > 0 for delta in manual_deltas)
+            and all(delta == 0 for delta in control_deltas)
+            and invalid_matches == 0
+        )
+        candidate_observations.append(
+            {
+                "candidate_id": candidate_id,
+                "rva": rva,
+                "section": section,
+                "entry_sha256": entry_sha256,
+                "manual_call_deltas": manual_deltas,
+                "control_call_deltas": control_deltas,
+                "invalid_match_count": invalid_matches,
+                "observe_gate_satisfied": confirmed,
+            }
+        )
     return {
         "schema_version": 1,
         "trace_count": len(traces),
@@ -204,6 +294,7 @@ def build_report(paths: list[Path]) -> dict[str, Any]:
             and sum(t["classification"] == "control_frontend" for t in traces) >= 1
         ),
         "candidate_pages": candidate_pages,
+        "candidate_observations": candidate_observations,
         "traces": traces,
     }
 
