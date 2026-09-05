@@ -1,6 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 use gameverse_transport::{generate_identity, server_endpoint};
+use sha2::{Digest, Sha256};
 use std::{net::SocketAddr, path::PathBuf, time::Duration};
 
 #[derive(Parser)]
@@ -46,9 +47,21 @@ async fn main() -> Result<()> {
     );
     let (tx, rx) = tokio::sync::watch::channel(false);
     let metrics = gameverse_server::presence_m2::MetricsHandle::default();
+    let certificate_sha256 = format!("{:X}", Sha256::digest(std::fs::read(&args.cert)?));
+    let directory = gameverse_server::health::DirectoryInfo {
+        server_id: "local-alpha".into(),
+        name: "GameVerse RP Alpha".into(),
+        description: "Закрытая исследовательская RP-альфа".into(),
+        mode: "Roleplay".into(),
+        address: endpoint.local_addr()?.to_string(),
+        max_players: 32,
+        gta_build: gameverse_protocol::adapter::GAME_VERSION.into(),
+        certificate_sha256,
+    };
     let health = tokio::spawn(gameverse_server::health::serve(
         args.http_bind,
         metrics.clone(),
+        directory,
         rx.clone(),
     ));
     let admin_bind = args

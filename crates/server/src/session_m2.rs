@@ -120,7 +120,10 @@ impl SessionMachine {
             Phase::Connected => Duration::from_secs(15),
             Phase::Negotiated | Phase::Authenticated => Duration::from_secs(10 * 60),
             Phase::CharacterSelected => Duration::from_secs(2 * 60),
-            Phase::SpawnPending => Duration::from_secs(30),
+            // GTA process startup and the native world transition happen while
+            // this reservation is pending. The adapter itself still has a
+            // separate 30-second deadline once it connects.
+            Phase::SpawnPending => Duration::from_secs(3 * 60),
             Phase::Active => Duration::from_secs(120),
             Phase::Closing => Duration::from_secs(5),
         }

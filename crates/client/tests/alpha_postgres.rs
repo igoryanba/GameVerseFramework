@@ -262,6 +262,9 @@ async fn ui_bridge_adapter_quic_and_postgres_form_one_alpha_path() -> anyhow::Re
         },
     )
     .await?;
+    let reserved: ui::UiResponse = ui::read(&mut ui_rx).await?;
+    assert!(reserved.ok);
+    assert_eq!(reserved.payload["stage"], "reserved");
     let begin = ipc::read(&mut adapter_rx).await?;
     let first_generation = match begin {
         adapter::Message::SessionBegin { entity, config, .. } => {

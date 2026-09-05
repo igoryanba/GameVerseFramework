@@ -38,6 +38,16 @@ internal sealed class TerminalLauncherForm : Form
     private enum Prompt { None, LoginName, LoginPassword, RegisterInvite, RegisterName, RegisterPassword, CharacterFirst, CharacterLast }
     private readonly RichTextBox history = new();
     private readonly TextBox input = new();
+    private readonly DataGridView servers = new();
+    private readonly TextBox search = new();
+    private readonly Button playButton = new();
+    private readonly Button loginButton = new();
+    private readonly Button registerButton = new();
+    private readonly Button characterButton = new();
+    private readonly Button refreshButton = new();
+    private readonly Button diagnosticsButton = new();
+    private readonly Label statusLabel = new();
+    private readonly List<ServerSummary> directory = new();
     private readonly LauncherConfig? config;
     private readonly bool allowLowMemory;
     private readonly bool attachExisting;
@@ -55,6 +65,9 @@ internal sealed class TerminalLauncherForm : Form
     private Prompt prompt;
     private string? firstValue;
     private string stage = "checking";
+    private HashSet<int> previousGameIds = new();
+    private bool reservationLaunchStarted;
+    private string? launchBlockReason;
 
     internal int ExitCode { get; private set; }
 
@@ -70,8 +83,8 @@ internal sealed class TerminalLauncherForm : Form
             && form.MinimizeBox
             && !form.MaximizeBox
             && !form.TopMost
-            && form.Controls.Find("history", true).Length == 1
-            && form.Controls.Find("input", true).Length == 1
+            && form.Controls.Find("servers", true).Length == 1
+            && form.Controls.Find("play", true).Length == 1
             && SupportedCommands.Distinct(StringComparer.Ordinal).Count() == SupportedCommands.Length
             && gate.TryBegin()
             && !gate.TryBegin()
@@ -82,6 +95,10 @@ internal sealed class TerminalLauncherForm : Form
     {
         if (string.IsNullOrWhiteSpace(output)) return 1;
         using TerminalLauncherForm form = new(null, new[] { "start", "--ui-only" });
+        form.directory.Add(new ServerSummary(
+            "preview", "GameVerse RP Alpha", "Закрытая RP-альфа", "Roleplay", "127.0.0.1:30122",
+            7, 32, "online", new[] { "ru", "rp" }, "enhanced", "1.0.1158.13", new string('0', 64)));
+        form.ApplyServerFilter();
         form.Show();
         form.PerformLayout();
         Application.DoEvents();
@@ -127,19 +144,69 @@ internal sealed class TerminalLauncherForm : Form
         input.Font = new Font("Consolas", 10F);
         input.BorderStyle = BorderStyle.FixedSingle;
         input.KeyDown += InputKeyDown;
+        search.Name = "search";
+        search.PlaceholderText = "Поиск серверов";
+        search.Dock = DockStyle.Fill;
+        search.TextChanged += (_, _) => ApplyServerFilter();
+
+        servers.Name = "servers";
+        servers.Dock = DockStyle.Fill;
+        servers.ReadOnly = true;
+        servers.AllowUserToAddRows = false;
+        servers.AllowUserToDeleteRows = false;
+        servers.AllowUserToResizeRows = false;
+        servers.AutoGenerateColumns = false;
+        servers.MultiSelect = false;
+        servers.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+        servers.RowHeadersVisible = false;
+        servers.BackgroundColor = SystemColors.Window;
+        servers.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Сервер", DataPropertyName = nameof(ServerSummary.Name), AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill });
+        servers.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Режим", DataPropertyName = nameof(ServerSummary.Mode), Width = 100 });
+        servers.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Игроки", DataPropertyName = "PlayersText", Width = 70 });
+        servers.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Статус", DataPropertyName = nameof(ServerSummary.Status), Width = 80 });
+        servers.SelectionChanged += (_, _) => UpdateServerSelection();
+
+        playButton.Name = "play";
+        playButton.Text = "Играть";
+        playButton.AutoSize = true;
+        playButton.Enabled = false;
+        playButton.Click += async (_, _) => await StartPreflightAsync();
+        loginButton.Text = "Войти";
+        loginButton.AutoSize = true;
+        loginButton.Click += async (_, _) => await ShowLoginAsync();
+        registerButton.Text = "Регистрация";
+        registerButton.AutoSize = true;
+        registerButton.Click += async (_, _) => await ShowRegistrationAsync();
+        characterButton.Text = "Персонаж";
+        characterButton.AutoSize = true;
+        characterButton.Click += async (_, _) => await ShowCharacterAsync();
+        refreshButton.Text = "Обновить";
+        refreshButton.AutoSize = true;
+        refreshButton.Click += async (_, _) => await RefreshServersAsync();
+        diagnosticsButton.Text = "Диагностика";
+        diagnosticsButton.AutoSize = true;
+        diagnosticsButton.Click += (_, _) => new DiagnosticsForm(history.Text).Show(this);
+        statusLabel.AutoEllipsis = true;
+        statusLabel.Dock = DockStyle.Fill;
+        statusLabel.TextAlign = ContentAlignment.MiddleLeft;
+
+        FlowLayoutPanel actions = new() { Dock = DockStyle.Fill, AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
+        actions.Controls.AddRange(new Control[] { playButton, loginButton, registerButton, characterButton, refreshButton, diagnosticsButton });
         TableLayoutPanel layout = new()
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 2,
-            Margin = Padding.Empty,
-            Padding = Padding.Empty
+            ColumnCount = 1, RowCount = 4,
+            Margin = new Padding(8), Padding = new Padding(8)
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 26F));
-        layout.Controls.Add(history, 0, 0);
-        layout.Controls.Add(input, 0, 1);
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
+        layout.Controls.Add(search, 0, 0);
+        layout.Controls.Add(servers, 0, 1);
+        layout.Controls.Add(actions, 0, 2);
+        layout.Controls.Add(statusLabel, 0, 3);
         Controls.Add(layout);
         Shown += (_, _) => _ = InitializeAsync();
         FormClosing += OnClosing;
@@ -159,7 +226,7 @@ internal sealed class TerminalLauncherForm : Form
 
     private async Task InitializeAsync()
     {
-        Log("GameVerse готов. Команда help показывает доступные команды.");
+        Log("GameVerse launcher готов.");
         if (config is null)
         {
             SetStage("auth_required", "Режим проверки интерфейса: bridge и GTA не запускаются.");
@@ -169,43 +236,15 @@ internal sealed class TerminalLauncherForm : Form
         {
             List<Check> checks = Launcher.Checks(config, allowLowMemory);
             foreach (Check check in checks.Where(value => !value.Passed)) Log($"Проверка {check.Name}: {check.Detail}", true);
-            if (checks.Any(value => !value.Passed)) throw new InvalidOperationException("Проверка установки не пройдена.");
+            Check? bootstrap = checks.FirstOrDefault(value => value.Name == "bootstrap_compatibility");
+            if (bootstrap is { Passed: false }) launchBlockReason = bootstrap.Detail;
+            if (checks.Any(value => !value.Passed && value.Name != "bootstrap_compatibility"))
+                throw new InvalidOperationException("Проверка установки не пройдена.");
 
-            Process[] existingGames = Process.GetProcessesByName("GTA5_Enhanced");
-            Process[] existingLaunchers = Process.GetProcessesByName("PlayGTAV");
-            if ((existingGames.Length > 0 || existingLaunchers.Length > 0) && !attachExisting)
-                throw new InvalidOperationException("GTA уже запущена. GameVerse не будет запускать второй экземпляр.");
-
-            SetStage("bridge_starting", "Запуск bridge…");
-            bridgeProcess = StartBridge(config);
-            await WaitForReadyEventAsync(bridgeProcess, "m2_pipe_ready", TimeSpan.FromSeconds(15), stopping.Token);
-            _ = DrainBridgeAsync(bridgeProcess.StandardError, stopping.Token);
-            SetStage("bridge_ready", "Bridge готов.");
-
-            bridge = new UiBridgeClient(config.UiPipe);
-            bridge.Disconnected += BridgeDisconnected;
-            bridge.BridgeEvent += BridgeEvent;
-            await bridge.ConnectWithRetryAsync(TimeSpan.FromSeconds(15));
-
-            if (existingGames.Length > 0 && attachExisting)
-            {
-                gameProcess = existingGames[0];
-                ownsGame = false;
-                SetStage("game_ready", "Подключение к уже запущенной GTA разрешено режимом разработчика.");
-            }
-            else
-            {
-                await LaunchGameOnceAsync(config, existingGames.Select(value => value.Id).ToHashSet());
-            }
-            WindowState = FormWindowState.Minimized;
-            if (gameProcess is not null) _ = WatchGameAsync(gameProcess);
-            UiResponse ready = await bridge.SendAsync(
-                UiBridgeClient.Request("ui.ready"),
-                stopping.Token,
-                config.DeveloperTelemetryStory || config.DeveloperManualStory
-                    ? TimeSpan.FromMinutes(16)
-                    : TimeSpan.FromMinutes(3));
-            ShowResponse(ready);
+            await RefreshServersAsync();
+            SetStage("idle", launchBlockReason is null
+                ? "Выберите сервер и нажмите «Играть»."
+                : $"Автоматический запуск временно недоступен: {launchBlockReason}");
         }
         catch (Exception error)
         {
@@ -215,7 +254,143 @@ internal sealed class TerminalLauncherForm : Form
         }
     }
 
-    private static Process StartBridge(LauncherConfig config)
+    private async Task RefreshServersAsync()
+    {
+        if (config is null) return;
+        SetStage("refreshing_servers", "Обновление списка серверов…");
+        try
+        {
+            IReadOnlyList<ServerSummary> loaded = await ServerDirectoryClient.LoadAsync(config, stopping.Token);
+            directory.Clear(); directory.AddRange(loaded);
+            ApplyServerFilter();
+            SetStage("idle", loaded.Count == 0 ? "Доступных серверов нет."
+                : launchBlockReason is null ? "Выберите сервер и нажмите «Играть»."
+                : $"Автоматический запуск временно недоступен: {launchBlockReason}");
+        }
+        catch (Exception error)
+        {
+            directory.Clear(); directory.Add(ServerDirectoryClient.Local(config));
+            ApplyServerFilter();
+            SetStage("idle", $"Каталог недоступен; показан локальный сервер. {error.Message}");
+        }
+    }
+
+    private void ApplyServerFilter()
+    {
+        string filter = search.Text.Trim();
+        var rows = directory.Where(value => filter.Length == 0 || value.Name.Contains(filter, StringComparison.CurrentCultureIgnoreCase)
+            || value.Mode.Contains(filter, StringComparison.CurrentCultureIgnoreCase) || value.Tags.Any(tag => tag.Contains(filter, StringComparison.OrdinalIgnoreCase)))
+            .Select(value => new ServerRow(value)).ToList();
+        servers.DataSource = rows;
+        string? favorite = LauncherPreferences.FavoriteServerId;
+        if (favorite is not null)
+            foreach (DataGridViewRow row in servers.Rows)
+                if (row.DataBoundItem is ServerRow item && item.Server.ServerId == favorite) { row.Selected = true; break; }
+        UpdateServerSelection();
+    }
+
+    private void UpdateServerSelection()
+    {
+        ServerSummary? selected = SelectedServer();
+        playButton.Enabled = selected is { Status: "online" } && bridgeProcess is null && launchBlockReason is null;
+        if (selected is not null) statusLabel.Text = $"{selected.Description}  •  {selected.Players}/{selected.MaxPlayers}  •  GTA {selected.GtaBuild}";
+    }
+
+    private ServerSummary? SelectedServer() => servers.CurrentRow?.DataBoundItem is ServerRow row ? row.Server : null;
+
+    private async Task StartPreflightAsync()
+    {
+        if (config is null || SelectedServer() is not ServerSummary selected || busy) return;
+        busy = true; playButton.Enabled = false;
+        try
+        {
+            if (!selected.Address.Equals(config.ServerAddress, StringComparison.OrdinalIgnoreCase)
+                || !selected.CertificateSha256.Equals(config.CertificateSha256, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Для выбранного сервера отсутствует закреплённая конфигурация подключения.");
+            Process[] existingGames = Process.GetProcessesByName("GTA5_Enhanced");
+            Process[] existingLaunchers = Process.GetProcessesByName("PlayGTAV");
+            if ((existingGames.Length > 0 || existingLaunchers.Length > 0) && !attachExisting)
+                throw new InvalidOperationException("GTA уже запущена. Закройте её перед подключением к GameVerse.");
+            previousGameIds = existingGames.Select(value => value.Id).ToHashSet();
+            LauncherPreferences.SaveServer(selected.ServerId);
+            SetStage("bridge_starting", "Подготовка подключения…");
+            bridgeProcess = StartBridge(config, selected.Address);
+            await WaitForReadyEventAsync(bridgeProcess, "m2_pipe_ready", TimeSpan.FromSeconds(15), stopping.Token);
+            _ = DrainBridgeAsync(bridgeProcess.StandardError, stopping.Token);
+            bridge = new UiBridgeClient(config.UiPipe);
+            bridge.Disconnected += BridgeDisconnected;
+            bridge.BridgeEvent += BridgeEvent;
+            await bridge.ConnectWithRetryAsync(TimeSpan.FromSeconds(15));
+            ShowResponse(await bridge.SendAsync(UiBridgeClient.Request("ui.ready"), stopping.Token));
+            if (TokenStore.Exists)
+            {
+                string? token = TokenStore.Load();
+                if (token is not null)
+                {
+                    UiResponse resumed = await bridge.SendAsync(UiBridgeClient.Request("auth.resume", new { refresh_token = token }), stopping.Token);
+                    ShowResponse(resumed);
+                    if (resumed.Ok) await RequestCharactersAsync();
+                }
+            }
+            else SetStage("auth_required", "Войдите или зарегистрируйтесь. GTA ещё не запущена.");
+        }
+        catch (Exception error) { SetStage("failed", error.Message); }
+        finally { busy = false; UpdateServerSelection(); }
+    }
+
+    private async Task ShowLoginAsync()
+    {
+        if (bridge?.Connected != true) { SetStage("failed", "Сначала выберите сервер и нажмите «Играть»."); return; }
+        using LoginDialog dialog = new();
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        UiResponse? response = await SendAsync("auth.login", new { login = dialog.Login, password = dialog.Password });
+        dialog.ClearPassword();
+        if (response?.Ok == true) await RequestCharactersAsync();
+    }
+
+    private async Task ShowRegistrationAsync()
+    {
+        if (bridge?.Connected != true) { SetStage("failed", "Сначала выберите сервер и нажмите «Играть»."); return; }
+        using RegistrationDialog dialog = new();
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        UiResponse? response = await SendAsync("auth.register", new { invite = dialog.Invite, login = dialog.Login, password = dialog.Password });
+        dialog.ClearPassword();
+        if (response?.Ok == true) await RequestCharactersAsync();
+    }
+
+    private async Task ShowCharacterAsync()
+    {
+        if (bridge?.Connected != true) { SetStage("failed", "Сначала подключитесь к серверу."); return; }
+        using CharacterDialog dialog = new();
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        UiResponse? response = await SendAsync("characters.create", new { first_name = dialog.FirstName, last_name = dialog.LastName });
+        if (response?.Ok == true) await RequestCharactersAsync();
+    }
+
+    private async Task RequestCharactersAsync()
+    {
+        UiResponse? response = await SendAsync("characters.list", new { });
+        if (response?.Ok != true || response.Payload.ValueKind != JsonValueKind.Object
+            || !response.Payload.TryGetProperty("characters", out JsonElement list)) return;
+        JsonElement[] values = list.EnumerateArray().ToArray();
+        if (values.Length == 0) { SetStage("character_required", "Создайте первого персонажа кнопкой «Персонаж»."); return; }
+        ulong? preferred = LauncherPreferences.LastCharacterId;
+        JsonElement selected = values.FirstOrDefault(value => preferred.HasValue && value.GetProperty("id").GetUInt64() == preferred.Value);
+        if (selected.ValueKind == JsonValueKind.Undefined) selected = values[0];
+        ulong id = selected.GetProperty("id").GetUInt64();
+        LauncherPreferences.SaveCharacter(id);
+        await SendAsync("characters.select", new { character_id = id });
+    }
+
+    private sealed record ServerRow(ServerSummary Server)
+    {
+        public string Name => Server.Name;
+        public string Mode => Server.Mode;
+        public string PlayersText => $"{Server.Players}/{Server.MaxPlayers}";
+        public string Status => Server.Status == "online" ? "Доступен" : "Недоступен";
+    }
+
+    private static Process StartBridge(LauncherConfig config, string serverAddress)
     {
         string bridgePath = Launcher.ResolvePath(config.BridgePath);
         ProcessStartInfo info = new()
@@ -229,7 +404,7 @@ internal sealed class TerminalLauncherForm : Form
         };
         foreach (string value in new[]
         {
-            "--server", config.ServerAddress,
+            "--server", serverAddress,
             "--cert", Launcher.ResolvePath(config.CertificatePath),
             "--ui-pipe", config.UiPipe,
             "--pipe", config.AdapterPipe,
@@ -441,6 +616,7 @@ internal sealed class TerminalLauncherForm : Form
     {
         if (InvokeRequired) { BeginInvoke(() => SetStage(value, message)); return; }
         stage = value;
+        statusLabel.Text = message;
         Log(message, value == "failed");
         if (value is "auth_required" or "character_required")
         {
@@ -448,10 +624,37 @@ internal sealed class TerminalLauncherForm : Form
             RestoreWindow();
         }
         else if (value is "failed" or "reconnecting") RestoreWindow();
+        else if (value == "reserved" && !reservationLaunchStarted)
+        {
+            reservationLaunchStarted = true;
+            _ = LaunchReservedGameAsync();
+        }
         if (value == "active")
         {
             RestoreGameAfterInteraction();
             WindowState = FormWindowState.Minimized;
+        }
+    }
+
+    private async Task LaunchReservedGameAsync()
+    {
+        if (config is null) return;
+        try
+        {
+            if (attachExisting && Process.GetProcessesByName("GTA5_Enhanced").FirstOrDefault() is Process existing)
+            {
+                gameProcess = existing;
+                ownsGame = false;
+                SetStage("game_ready", "Подключение к запущенной GTA разрешено developer-флагом.");
+            }
+            else await LaunchGameOnceAsync(config, previousGameIds);
+            WindowState = FormWindowState.Minimized;
+            if (gameProcess is not null) _ = WatchGameAsync(gameProcess);
+        }
+        catch (Exception error)
+        {
+            reservationLaunchStarted = false;
+            SetStage("failed", error.Message);
         }
     }
 
@@ -483,8 +686,10 @@ internal sealed class TerminalLauncherForm : Form
 
     private static string StageText(string? value) => value switch
     {
-        "auth_required" => "Войдите в аккаунт командой login или register.",
-        "character_required" => "Выберите персонажа командой play <id>.",
+        "auth_required" => "Войдите или зарегистрируйтесь. GTA ещё не запущена.",
+        "character_required" => "Подготовка персонажа…",
+        "reserved" => "Персонаж выбран. Запуск GTA…",
+        "world_loading" => "Загрузка игрового мира…",
         "spawning" => "Загрузка персонажа…",
         "active" => "Сессия активна.",
         _ => value ?? "Готово"
@@ -561,6 +766,137 @@ internal sealed class TerminalLauncherForm : Form
         catch (InvalidOperationException) { }
         catch (System.ComponentModel.Win32Exception) { }
         finally { process.Dispose(); }
+    }
+}
+
+internal sealed class LoginDialog : Form
+{
+    private readonly TextBox login = new();
+    private readonly TextBox password = new();
+    internal string Login => login.Text.Trim();
+    internal string Password => password.Text;
+
+    internal LoginDialog()
+    {
+        Text = "Вход в GameVerse";
+        ClientSize = new Size(360, 145);
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        StartPosition = FormStartPosition.CenterParent;
+        MaximizeBox = false;
+        MinimizeBox = false;
+        ShowInTaskbar = false;
+        login.Dock = DockStyle.Fill;
+        password.Dock = DockStyle.Fill;
+        password.UseSystemPasswordChar = true;
+        Button ok = new() { Text = "Войти", DialogResult = DialogResult.OK, AutoSize = true };
+        Button cancel = new() { Text = "Отмена", DialogResult = DialogResult.Cancel, AutoSize = true };
+        FlowLayoutPanel buttons = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft };
+        buttons.Controls.Add(cancel); buttons.Controls.Add(ok);
+        TableLayoutPanel layout = new() { Dock = DockStyle.Fill, Padding = new Padding(10), ColumnCount = 2, RowCount = 3 };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 75));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        layout.Controls.Add(new Label { Text = "Логин", TextAlign = ContentAlignment.MiddleLeft, Dock = DockStyle.Fill }, 0, 0);
+        layout.Controls.Add(login, 1, 0);
+        layout.Controls.Add(new Label { Text = "Пароль", TextAlign = ContentAlignment.MiddleLeft, Dock = DockStyle.Fill }, 0, 1);
+        layout.Controls.Add(password, 1, 1);
+        layout.Controls.Add(buttons, 0, 2);
+        layout.SetColumnSpan(buttons, 2);
+        Controls.Add(layout);
+        AcceptButton = ok;
+        CancelButton = cancel;
+    }
+
+    internal void ClearPassword()
+    {
+        password.Clear();
+    }
+}
+
+internal sealed class DiagnosticsForm : Form
+{
+    internal DiagnosticsForm(string text)
+    {
+        Text = "GameVerse — диагностика";
+        Size = new Size(720, 360);
+        StartPosition = FormStartPosition.CenterParent;
+        RichTextBox output = new()
+        {
+            Dock = DockStyle.Fill,
+            ReadOnly = true,
+            Font = new Font("Consolas", 9F),
+            Text = text,
+            BackColor = SystemColors.Window,
+            ForeColor = SystemColors.WindowText
+        };
+        Controls.Add(output);
+    }
+}
+
+internal sealed class RegistrationDialog : Form
+{
+    private readonly TextBox invite = new();
+    private readonly TextBox login = new();
+    private readonly TextBox password = new() { UseSystemPasswordChar = true };
+    internal string Invite => invite.Text.Trim();
+    internal string Login => login.Text.Trim();
+    internal string Password => password.Text;
+
+    internal RegistrationDialog()
+    {
+        Text = "Регистрация в GameVerse";
+        ClientSize = new Size(390, 185);
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        StartPosition = FormStartPosition.CenterParent;
+        MaximizeBox = false; MinimizeBox = false; ShowInTaskbar = false;
+        Button ok = new() { Text = "Создать аккаунт", DialogResult = DialogResult.OK, AutoSize = true };
+        Button cancel = new() { Text = "Отмена", DialogResult = DialogResult.Cancel, AutoSize = true };
+        TableLayoutPanel layout = DialogLayout(new[] { ("Инвайт", invite), ("Логин", login), ("Пароль", password) }, ok, cancel);
+        Controls.Add(layout); AcceptButton = ok; CancelButton = cancel;
+    }
+
+    internal void ClearPassword() => password.Clear();
+
+    internal static TableLayoutPanel DialogLayout((string Label, TextBox Input)[] fields, Button ok, Button cancel)
+    {
+        TableLayoutPanel layout = new() { Dock = DockStyle.Fill, Padding = new Padding(10), ColumnCount = 2, RowCount = fields.Length + 1 };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        for (int index = 0; index < fields.Length; index++)
+        {
+            fields[index].Input.Dock = DockStyle.Fill;
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+            layout.Controls.Add(new Label { Text = fields[index].Label, TextAlign = ContentAlignment.MiddleLeft, Dock = DockStyle.Fill }, 0, index);
+            layout.Controls.Add(fields[index].Input, 1, index);
+        }
+        FlowLayoutPanel buttons = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft };
+        buttons.Controls.Add(cancel); buttons.Controls.Add(ok);
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        layout.Controls.Add(buttons, 0, fields.Length); layout.SetColumnSpan(buttons, 2);
+        return layout;
+    }
+}
+
+internal sealed class CharacterDialog : Form
+{
+    private readonly TextBox firstName = new();
+    private readonly TextBox lastName = new();
+    internal string FirstName => firstName.Text.Trim();
+    internal string LastName => lastName.Text.Trim();
+
+    internal CharacterDialog()
+    {
+        Text = "Новый персонаж";
+        ClientSize = new Size(390, 150);
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        StartPosition = FormStartPosition.CenterParent;
+        MaximizeBox = false; MinimizeBox = false; ShowInTaskbar = false;
+        Button ok = new() { Text = "Создать", DialogResult = DialogResult.OK, AutoSize = true };
+        Button cancel = new() { Text = "Отмена", DialogResult = DialogResult.Cancel, AutoSize = true };
+        Controls.Add(RegistrationDialog.DialogLayout(new[] { ("Имя", firstName), ("Фамилия", lastName) }, ok, cancel));
+        AcceptButton = ok; CancelButton = cancel;
     }
 }
 

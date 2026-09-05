@@ -120,8 +120,13 @@ async fn run_with_bootstrap_mode(
         let mut ui_stream = std::mem::replace(&mut ui_listener, listener(ui_pipe, false)?);
         {
             let (mut ui_rx, mut ui_tx) = tokio::io::split(&mut ui_stream);
-            ui_handshake(&mut ui_rx, &mut ui_tx, "waiting_for_game").await?;
+            ui_handshake(&mut ui_rx, &mut ui_tx, "auth_required").await?;
         }
+        // Authentication and character selection deliberately happen before GTA
+        // starts. The launcher starts the game only after it receives `reserved`.
+        let interactive = InteractiveClient::connect(server, cert, None).await?;
+        let (pending, reservation_request_id) =
+            preflight_session(&mut ui_stream, interactive).await?;
         let left = finish.saturating_duration_since(Instant::now());
         if left.is_zero() {
             return Ok(());
@@ -138,7 +143,8 @@ async fn run_with_bootstrap_mode(
             )
             .await??;
             let adapter = std::mem::replace(&mut adapter_listener, listener(adapter_pipe, false)?);
-            serve_streams_inner(adapter, ui_stream, server, cert, finish, true).await
+            activate_reserved_session(adapter, ui_stream, pending, &reservation_request_id, finish)
+                .await
         }
         .await;
         if let Err(error) = result {
@@ -148,6 +154,135 @@ async fn run_with_bootstrap_mode(
             );
         }
     }
+}
+
+async fn preflight_session<U>(
+    ui_stream: &mut U,
+    mut interactive: InteractiveClient,
+) -> Result<(crate::m2::PendingClient, String)>
+where
+    U: AsyncRead + AsyncWrite + Unpin,
+{
+    let mut authenticated = false;
+    loop {
+        let request: UiRequest =
+            timeout(INTERACTIVE_INPUT_DEADLINE, ui::read(&mut *ui_stream)).await??;
+        if !request.valid() {
+            ui::write(
+                &mut *ui_stream,
+                &UiResponse::error(
+                    request.request_id,
+                    "invalid_request",
+                    "Некорректная команда интерфейса",
+                ),
+            )
+            .await?;
+            continue;
+        }
+        match handle_bootstrap(&mut interactive, authenticated, &request).await {
+            Ok(Bootstrap::Response(response, now_authenticated)) => {
+                authenticated = now_authenticated;
+                ui::write(&mut *ui_stream, &response).await?;
+            }
+            Ok(Bootstrap::Select(character_id)) => {
+                let pending = interactive
+                    .select_character(&request.request_id, character_id)
+                    .await?;
+                ui::write(
+                    &mut *ui_stream,
+                    &UiResponse::success(
+                        &request.request_id,
+                        json!({
+                            "stage":"reserved",
+                            "character_id":pending.config.character_id
+                        }),
+                    ),
+                )
+                .await?;
+                return Ok((pending, request.request_id));
+            }
+            Err(error) => {
+                ui::write(
+                    &mut *ui_stream,
+                    &UiResponse::error(&request.request_id, "request_failed", public_error(&error)),
+                )
+                .await?;
+            }
+        }
+    }
+}
+
+async fn activate_reserved_session<A, U>(
+    adapter_stream: A,
+    ui_stream: U,
+    pending: crate::m2::PendingClient,
+    reservation_request_id: &str,
+    finish: Instant,
+) -> Result<()>
+where
+    A: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    U: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
+    let (mut adapter_rx, mut adapter_tx) = tokio::io::split(adapter_stream);
+    let (ui_rx, mut ui_tx) = tokio::io::split(ui_stream);
+    let adapter_hello = timeout(DEADLINE, ipc::read(&mut adapter_rx)).await??;
+    anyhow::ensure!(
+        matches!(
+            adapter_hello,
+            Message::AdapterHello {
+                version: adapter::VERSION,
+                ..
+            }
+        ),
+        "unsupported adapter protocol"
+    );
+    match timeout(DEADLINE, ipc::read(&mut adapter_rx)).await?? {
+        Message::GameInfo { edition, build }
+            if edition == "enhanced" && build == adapter::GAME_VERSION => {}
+        _ => anyhow::bail!("unsupported GTA edition or build"),
+    }
+    ipc::write(
+        &mut adapter_tx,
+        &Message::SessionBegin {
+            session: pending.session,
+            entity: pending.entity,
+            config: pending.config.clone(),
+        },
+    )
+    .await?;
+    loop {
+        match timeout(Duration::from_secs(30), ipc::read(&mut adapter_rx)).await?? {
+            Message::AdapterStatus { event, .. } if event == "session_ready" => break,
+            Message::AdapterError { code, message }
+            | Message::BootstrapFailure { code, message } => {
+                anyhow::bail!("adapter {code}: {message}")
+            }
+            Message::AdapterHeartbeat { game_ready: true } | Message::AdapterStatus { .. } => {}
+            _ => anyhow::bail!("adapter did not confirm session bootstrap"),
+        }
+    }
+    let client = pending.spawn_ready(reservation_request_id).await?;
+    ipc::write(
+        &mut adapter_tx,
+        &Message::SessionActive {
+            session: client.session,
+        },
+    )
+    .await?;
+    ui::write(
+        &mut ui_tx,
+        &UiResponse::success(
+            reservation_request_id,
+            json!({
+                "stage":"active",
+                "session":client.session,
+                "entity":client.entity,
+                "character_id":client.config.character_id
+            }),
+        ),
+    )
+    .await?;
+    serve_active(client, adapter_rx, adapter_tx, ui_rx, ui_tx, finish).await
 }
 
 /// Developer-only fallback for diagnosing the managed adapter after manually
@@ -227,130 +362,14 @@ where
     A: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     U: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
-    serve_streams_inner(adapter_stream, ui_stream, server, cert, finish, false).await
-}
-
-async fn serve_streams_inner<A, U>(
-    adapter_stream: A,
-    ui_stream: U,
-    server: SocketAddr,
-    cert: &Path,
-    finish: Instant,
-    ui_handshake_complete: bool,
-) -> Result<()>
-where
-    A: AsyncRead + AsyncWrite + Unpin + Send + 'static,
-    U: AsyncRead + AsyncWrite + Unpin + Send + 'static,
-{
-    let (mut adapter_rx, mut adapter_tx) = tokio::io::split(adapter_stream);
-    let (mut ui_rx, mut ui_tx) = tokio::io::split(ui_stream);
-
-    if !ui_handshake_complete {
-        ui_handshake(&mut ui_rx, &mut ui_tx, "waiting_for_adapter").await?;
+    let mut ui_stream = ui_stream;
+    {
+        let (mut ui_rx, mut ui_tx) = tokio::io::split(&mut ui_stream);
+        ui_handshake(&mut ui_rx, &mut ui_tx, "auth_required").await?;
     }
-
-    let adapter_hello = timeout(DEADLINE, ipc::read(&mut adapter_rx)).await??;
-    anyhow::ensure!(
-        matches!(
-            adapter_hello,
-            Message::AdapterHello {
-                version: adapter::VERSION,
-                ..
-            }
-        ),
-        "unsupported adapter protocol"
-    );
-    let build = match timeout(DEADLINE, ipc::read(&mut adapter_rx)).await?? {
-        Message::GameInfo { edition, build } if edition == "enhanced" => build,
-        _ => anyhow::bail!("unsupported GTA edition"),
-    };
-    let mut interactive = Some(InteractiveClient::connect(server, cert, Some(build)).await?);
-    let mut authenticated = false;
-    loop {
-        let request: UiRequest =
-            timeout(INTERACTIVE_INPUT_DEADLINE, ui::read(&mut ui_rx)).await??;
-        if !request.valid() {
-            ui::write(
-                &mut ui_tx,
-                &UiResponse::error(
-                    request.request_id,
-                    "invalid_request",
-                    "Некорректная команда интерфейса",
-                ),
-            )
-            .await?;
-            continue;
-        }
-        let result = handle_bootstrap(
-            interactive.as_mut().expect("interactive client"),
-            authenticated,
-            &request,
-        )
-        .await;
-        match result {
-            Ok(Bootstrap::Response(response, now_authenticated)) => {
-                authenticated = now_authenticated;
-                ui::write(&mut ui_tx, &response).await?;
-            }
-            Ok(Bootstrap::Select(character_id)) => {
-                let pending = interactive
-                    .take()
-                    .expect("interactive client")
-                    .select_character(&request.request_id, character_id)
-                    .await?;
-                ipc::write(
-                    &mut adapter_tx,
-                    &Message::SessionBegin {
-                        session: pending.session,
-                        entity: pending.entity,
-                        config: pending.config.clone(),
-                    },
-                )
-                .await?;
-                loop {
-                    match timeout(Duration::from_secs(30), ipc::read(&mut adapter_rx)).await?? {
-                        Message::AdapterStatus { event, .. } if event == "session_ready" => break,
-                        Message::AdapterError { code, message }
-                        | Message::BootstrapFailure { code, message } => {
-                            anyhow::bail!("adapter {code}: {message}")
-                        }
-                        Message::AdapterHeartbeat { game_ready: true }
-                        | Message::AdapterStatus { .. } => {}
-                        _ => anyhow::bail!("adapter did not confirm session bootstrap"),
-                    }
-                }
-                let client = pending.spawn_ready(&request.request_id).await?;
-                ipc::write(
-                    &mut adapter_tx,
-                    &Message::SessionActive {
-                        session: client.session,
-                    },
-                )
-                .await?;
-                ui::write(
-                    &mut ui_tx,
-                    &UiResponse::success(
-                        &request.request_id,
-                        json!({
-                            "stage":"active",
-                            "session":client.session,
-                            "entity":client.entity,
-                            "character_id":client.config.character_id
-                        }),
-                    ),
-                )
-                .await?;
-                return serve_active(client, adapter_rx, adapter_tx, ui_rx, ui_tx, finish).await;
-            }
-            Err(error) => {
-                ui::write(
-                    &mut ui_tx,
-                    &UiResponse::error(&request.request_id, "request_failed", public_error(&error)),
-                )
-                .await?
-            }
-        }
-    }
+    let interactive = InteractiveClient::connect(server, cert, None).await?;
+    let (pending, request_id) = preflight_session(&mut ui_stream, interactive).await?;
+    activate_reserved_session(adapter_stream, ui_stream, pending, &request_id, finish).await
 }
 
 async fn ui_handshake(
@@ -1060,7 +1079,7 @@ mod bootstrap_tests {
             .expect("UI handshake waited for native bootstrap")
             .unwrap();
         assert!(response.ok);
-        assert_eq!(response.payload["stage"], "waiting_for_game");
+        assert_eq!(response.payload["stage"], "auth_required");
         runner.abort();
     }
 }

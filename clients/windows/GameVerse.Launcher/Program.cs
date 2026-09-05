@@ -26,6 +26,7 @@ internal sealed record LauncherConfig(
     string AdapterPipe,
     string BootstrapPipe,
     string ServerAddress,
+    string? DirectoryUrl,
     string CertificatePath,
     string CertificateSha256,
     string UpdateChannel,
@@ -122,6 +123,7 @@ internal static class Launcher
             @"\\.\pipe\gameverse-gta-v1",
             @"\\.\pipe\gameverse-bootstrap-v1",
             "127.0.0.1:30122",
+            "http://127.0.0.1:30123/v1/servers",
             @"server-cert.der",
             new string('0', 64),
             "alpha",
@@ -145,6 +147,7 @@ internal static class Launcher
         string cert = ResolvePath(config.CertificatePath);
         string enhanced = Path.Combine(game, "GTA5_Enhanced.exe");
         string play = Path.Combine(game, "PlayGTAV.exe");
+        string compatibility = Path.Combine(game, "enhanced-1.0.1158.13.json");
         MemoryStatus memory = new();
         GlobalMemoryStatusEx(memory);
         ulong freeGiB = memory.AvailablePhysical / 1024 / 1024 / 1024;
@@ -167,10 +170,37 @@ internal static class Launcher
                         : $"{freeGiB} GiB available; 4 GiB recommended (start with --allow-low-memory to continue at your own risk)"),
             new("adapter", File.Exists(Path.Combine(game, "scripts", "GameVerse.GtaAdapter.dll")), Path.Combine(game, "scripts", "GameVerse.GtaAdapter.dll")),
             new("native_bootstrap", config.DeveloperManualStory || File.Exists(Path.Combine(game, "GameVerse.NativeBootstrap.asi")), config.DeveloperManualStory ? "developer manual Story diagnostic" : Path.Combine(game, "GameVerse.NativeBootstrap.asi")),
-            new("bootstrap_compatibility", config.DeveloperManualStory || (File.Exists(Path.Combine(game, "enhanced-1.0.1158.13.json")) && File.Exists(Path.Combine(game, "enhanced-1.0.1158.13.sig"))), config.DeveloperManualStory ? "developer manual Story diagnostic" : Path.Combine(game, "enhanced-1.0.1158.13.json")),
+            CheckBootstrapCompatibility(config, compatibility, Path.Combine(game, "enhanced-1.0.1158.13.sig")),
             new("scripthook", File.Exists(Path.Combine(game, "ScriptHookV.dll")), Path.Combine(game, "ScriptHookV.dll")),
             new("scripthookdotnet", File.Exists(Path.Combine(game, "ScriptHookVDotNet.asi")), Path.Combine(game, "ScriptHookVDotNet.asi"))
         };
+    }
+
+    private static Check CheckBootstrapCompatibility(LauncherConfig config, string manifestPath, string signaturePath)
+    {
+        if (config.DeveloperManualStory)
+            return new("bootstrap_compatibility", true, "developer manual Story diagnostic");
+        if (!File.Exists(manifestPath) || !File.Exists(signaturePath))
+            return new("bootstrap_compatibility", false, "compatibility manifest or signature is missing");
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllBytes(manifestPath));
+            string? mode = document.RootElement.TryGetProperty("mode", out JsonElement value) ? value.GetString() : null;
+            bool telemetryAllowed = config.DeveloperTelemetryStory && mode == "telemetry_only";
+            bool productionReady = !config.DeveloperTelemetryStory && mode == "world_loader"
+                && document.RootElement.TryGetProperty("signatures", out JsonElement signatures)
+                && signatures.ValueKind == JsonValueKind.Array && signatures.GetArrayLength() > 0;
+            return new(
+                "bootstrap_compatibility",
+                telemetryAllowed || productionReady,
+                productionReady ? "verified automatic world loader"
+                    : telemetryAllowed ? "developer telemetry Story diagnostic"
+                    : "automatic world loader is not verified for this GTA build");
+        }
+        catch (JsonException error)
+        {
+            return new("bootstrap_compatibility", false, $"invalid compatibility manifest: {error.Message}");
+        }
     }
 
     private static int Verify(LauncherConfig config)

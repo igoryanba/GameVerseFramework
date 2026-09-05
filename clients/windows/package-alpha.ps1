@@ -4,6 +4,7 @@ param(
     [string]$OutputDirectory = '',
     [string]$Dotnet = 'dotnet',
     [string]$Cargo = 'cargo',
+    [string]$CMake = 'cmake',
     [string]$SigningKeyPath = '',
     [string]$UpdateBaseUrl = '',
     [string]$Version = '0.1.0-alpha.1',
@@ -26,8 +27,8 @@ function Invoke-Checked([string]$program, [string[]]$arguments) {
 $launcherPublish = Join-Path $artifacts 'publish-launcher'
 Invoke-Checked $Dotnet @('publish', (Join-Path $PSScriptRoot 'GameVerse.Launcher'), '-c', $Configuration, '-r', $Runtime, '--self-contained', 'true', '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true', '-o', $launcherPublish, '--nologo')
 Invoke-Checked $Cargo @('build', '--locked', '--release', '-p', 'gameverse-client', '--bin', 'gameverse-gta-bridge-m2')
-Invoke-Checked 'cmake' @('-S', (Join-Path $root 'native\GameVerse.NativeBootstrap'), '-B', (Join-Path $root '.build\native-bootstrap'), '-A', 'x64')
-Invoke-Checked 'cmake' @('--build', (Join-Path $root '.build\native-bootstrap'), '--config', $Configuration)
+Invoke-Checked $CMake @('-S', (Join-Path $root 'native\GameVerse.NativeBootstrap'), '-B', (Join-Path $root '.build\native-bootstrap'), '-A', 'x64')
+Invoke-Checked $CMake @('--build', (Join-Path $root '.build\native-bootstrap'), '--config', $Configuration)
 
 New-Item -ItemType Directory -Path (Join-Path $stage 'bridge'),(Join-Path $stage 'adapter'),(Join-Path $stage 'native'),(Join-Path $stage 'licenses') -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $launcherPublish 'GameVerse.Launcher.exe') -Destination $stage
@@ -61,6 +62,7 @@ $example = [ordered]@{
     AdapterPipe = '\\.\pipe\gameverse-gta-v1'
     BootstrapPipe = '\\.\pipe\gameverse-bootstrap-v1'
     ServerAddress = '127.0.0.1:30122'
+    DirectoryUrl = 'http://127.0.0.1:30123/v1/servers'
     CertificatePath = 'server-cert.der'
     CertificateSha256 = ('0' * 64)
     UpdateChannel = 'alpha'

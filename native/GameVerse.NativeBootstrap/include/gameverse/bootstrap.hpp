@@ -93,6 +93,7 @@ struct TelemetrySection {
   std::uint32_t executable_pages{};
   std::uint32_t readonly_pages{};
   std::uint32_t changed_pages{};
+  std::vector<std::uint32_t> changed_page_rvas;
   std::string aggregate_sha256;
 };
 

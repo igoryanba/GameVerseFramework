@@ -18,6 +18,7 @@ constexpr std::size_t kMaximumModules = 96;
 constexpr std::size_t kMaximumSections = 32;
 constexpr std::uint32_t kMaximumSnapshots = 64;
 constexpr std::uintmax_t kMaximumReportBytes = 4 * 1024 * 1024;
+constexpr std::size_t kMaximumChangedPageRvas = 256;
 
 std::string Narrow(std::wstring_view value) {
   if (value.empty()) return {};
@@ -215,8 +216,12 @@ TelemetrySnapshot TelemetryRecorder::Capture(std::string_view stage) {
       // thousands of false changes inside a single capture.
       const auto key = TelemetryPageKey(index, section.name, offset / page_size);
       const auto previous = page_hashes_.find(key);
-      if (previous != page_hashes_.end() && previous->second != page_hash)
+      if (previous != page_hashes_.end() && previous->second != page_hash) {
         ++section.changed_pages;
+        if (section.changed_page_rvas.size() < kMaximumChangedPageRvas)
+          section.changed_page_rvas.push_back(source.VirtualAddress +
+                                              static_cast<std::uint32_t>(offset));
+      }
       page_hashes_[key] = page_hash;
       for (std::size_t byte = 0; byte < page_hash.size(); byte += 2) {
         page_digests.push_back(static_cast<std::uint8_t>(
@@ -270,7 +275,12 @@ std::string SerializeTelemetrySnapshot(const TelemetrySnapshot& value) {
               ",\"executable_pages\":" + std::to_string(section.executable_pages) +
               ",\"readonly_pages\":" + std::to_string(section.readonly_pages) +
               ",\"changed_pages\":" + std::to_string(section.changed_pages) +
-              ",\"aggregate_sha256\":\"" + section.aggregate_sha256 + "\"}";
+              ",\"changed_page_rvas\":[";
+    for (std::size_t page = 0; page < section.changed_page_rvas.size(); ++page) {
+      if (page != 0) output += ',';
+      output += std::to_string(section.changed_page_rvas[page]);
+    }
+    output += "],\"aggregate_sha256\":\"" + section.aggregate_sha256 + "\"}";
   }
   const auto& ready = value.readiness;
   output += "],\"readiness\":{\"window_visible\":" + Bool(ready.window_visible) +
