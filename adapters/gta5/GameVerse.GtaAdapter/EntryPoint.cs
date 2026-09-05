@@ -48,6 +48,7 @@ namespace GameVerse.GtaAdapter
                 if (bootstrapApplied && !bootstrapReported)
                 {
                     bootstrapReported = true;
+                    link.Report("story_isolation_ready", local);
                     link.Report("session_ready", local);
                 }
                 else if (bootstrap.Error != null && bootstrap.Error != reportedBootstrapError)

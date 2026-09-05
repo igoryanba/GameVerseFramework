@@ -35,12 +35,18 @@ namespace GameVerse.GtaAdapter
             Function.Call(Hash.SET_PLAYER_WANTED_LEVEL_NOW, Game.Player.Handle, false);
             Function.Call(Hash.SET_MISSION_FLAG, false);
             if (Function.Call<bool>(Hash.IS_CUTSCENE_ACTIVE)) Function.Call(Hash.STOP_CUTSCENE_IMMEDIATELY);
+            if (Function.Call<bool>(Hash.IS_PLAYER_SWITCH_IN_PROGRESS)) Function.Call(Hash.STOP_PLAYER_SWITCH);
             if (applied)
             {
                 Ped activePlayer = Game.Player.Character;
-                if (activePlayer == null || !activePlayer.Exists() || unchecked((uint)activePlayer.Model.Hash) != pending.model_hash)
+                if (activePlayer == null || !activePlayer.Exists() ||
+                    IsStoryProtagonist(unchecked((uint)activePlayer.Model.Hash)) ||
+                    unchecked((uint)activePlayer.Model.Hash) != pending.model_hash ||
+                    Function.Call<bool>(Hash.IS_CUTSCENE_ACTIVE) ||
+                    Function.Call<bool>(Hash.GET_MISSION_FLAG) ||
+                    Function.Call<bool>(Hash.IS_PLAYER_SWITCH_IN_PROGRESS))
                 {
-                    Fail("player_model_replaced");
+                    Fail("story_isolation_failed");
                     return false;
                 }
                 return true;
@@ -114,5 +120,7 @@ namespace GameVerse.GtaAdapter
         }
 
         private static bool IsFreemode(uint hash) => hash == 0x705e61f2u || hash == 0x9c9effd8u;
+        private static bool IsStoryProtagonist(uint hash) =>
+            hash == 0x0d7114c9u || hash == 0x9b22dbafu || hash == 0x9b810fa2u;
     }
 }
