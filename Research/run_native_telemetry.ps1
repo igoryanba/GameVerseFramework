@@ -2,6 +2,8 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$OutputPath,
 
+    [string]$ReadyPath,
+
     [ValidateRange(10, 1200)]
     [int]$TimeoutSeconds = 900
 )
@@ -90,6 +92,13 @@ $pipe = [System.IO.Pipes.NamedPipeServerStream]::new(
     $maximumFrame,
     $maximumFrame
 )
+if ($ReadyPath) {
+    $readyFile = [System.IO.Path]::GetFullPath($ReadyPath)
+    [System.IO.Directory]::CreateDirectory(
+        [System.IO.Path]::GetDirectoryName($readyFile)
+    ) | Out-Null
+    [System.IO.File]::WriteAllText($readyFile, "ready`n", $utf8)
+}
 $writer = $null
 $cancellation = [System.Threading.CancellationTokenSource]::new(
     [TimeSpan]::FromSeconds($TimeoutSeconds)
